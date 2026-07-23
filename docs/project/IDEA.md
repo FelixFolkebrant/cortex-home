@@ -136,7 +136,7 @@ close enough to define as a useful vertical slice.
 | Device | Intended Role | Known Unknowns |
 |---|---|---|
 | 2020 Lenovo ThinkPad, Ubuntu Server | Always-on compute, coordination, and durable state | Exact model, ports, CPU, RAM, and current services |
-| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and likely nearby audio/USB endpoint | Exact 20- or 24-inch configuration, CPU, RAM, storage, and sustained thermals |
+| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and likely nearby audio/USB endpoint | Kiosk load, thermals, power draw, persistent audio routing, and Wi-Fi after firmware installation |
 | Sonos Play:5 Gen 1 | Speaker through its analog line-in | Currently near the iMac; a direct ThinkPad cable would require changing the physical layout |
 | Philips Hue bridge and three lamps | Local lighting control | Bridge generation and existing room/scene setup |
 | iPhone 17 | Personal controller, Spotify source, and possible casting source | None needed for the first slice |
@@ -145,27 +145,36 @@ close enough to define as a useful vertical slice.
 
 ### iMac Qualification Baseline
 
-Observed on 2026-07-23, approximately five minutes after boot:
+Inventory and server-idle behavior observed on 2026-07-23:
 
 | Area | Observation |
 |---|---|
-| Identity | Apple `iMac8,1`; firmware `IM81.88Z.00C1.B00.0802091538` |
+| Identity | Apple `iMac8,1`; 24-inch panel; firmware `IM81.88Z.00C1.B00.0802091538` |
 | Access | Hostname `imac`; administrative username `imac`; SSH confirmed working |
 | Operating system | Ubuntu 24.04.4 LTS, x86-64 |
 | Kernel | Linux `6.8.0-136-generic` |
+| Processor | Intel Core 2 Duo E8235; two cores; 800 MHz to 2.8 GHz |
+| Memory | 4 GiB installed RAM; 3.8 GiB usable RAM; 3.8 GiB swap |
+| Storage | 1 TB WDC WD1002FAEX rotational disk; Optiarc DVD drive |
+| Display | Internal 52 × 32 cm panel; native 1920 × 1200 mode; 32-bit `radeondrmfb` framebuffer |
 | Graphics | AMD/ATI RV630/M76 Mobility Radeon HD 2600 XT/2700 using the `radeon` kernel driver |
 | Audio | Intel HDA with ALC889A analog and digital playback devices using `snd_hda_intel` |
-| Ethernet | Marvell 88E8058 Gigabit Ethernet using the `sky2` kernel driver |
-| Wi-Fi | Broadcom BCM4321 detected through `b43-pci-bridge`; connection not qualified |
-| Idle load | Load averages `0.01`, `0.13`, and `0.08`; no sustained CPU-heavy process observed |
-| Temperature | CPU sensors at 56°C; Radeon sensor at 76°C |
-| Noise | Fans subjectively quiet at the preliminary idle baseline |
-| Audio test | ALSA accepted a 440 Hz sine stream on the default device, but no sound was audible |
+| Ethernet | Marvell 88E8058 using `sky2`; link up at 1 Gbit/s full duplex |
+| Wi-Fi | Broadcom BCM4321 detected through `b43`; no wireless interface because `b43/ucode11.fw` is missing; Ubuntu provides `firmware-b43-installer` |
+| USB | Intel ICH8 UHCI/EHCI USB 1.1/2.0 controllers; built-in Bluetooth, iSight, and infrared; Apple keyboard; wireless input receiver; no USB device required by Planpoint 1 |
+| System health | No failed systemd services or currently indexed package upgrades |
+| Fifteen-minute idle load | 97–100% CPU idle; 3.4 GiB memory available; no swap use |
+| Fifteen-minute temperature | CPU cores 54–58°C; Radeon 75–77°C |
+| Fifteen-minute fan speed | Optical drive 985–997 RPM; hard drive 1207–1211 RPM; CPU 1197–1201 RPM |
+| Noise | Awaiting final subjective confirmation; the preliminary idle observation was quiet |
+| Audio test | Separate internal-speaker and rear analog ALSA streams succeeded after temporarily unmuting `Master`; the user heard the internal speakers; Sonos playback awaits physical connection |
+| Boot and recovery | A controlled reboot returned to SSH without local intervention; Ethernet was up and no services had failed at 38 seconds uptime |
+| Unattended device access | After reboot with no local login, `imac` lacks `audio`, `video`, and `render` device access; GH-003 must provide an intentional endpoint session or service permission |
 
-The initial temperature and noise observations are provisional. Repeat them
-after at least fifteen minutes at idle and again with the full-screen client
-running. Machine ID, boot ID, network addresses, and other host-specific
-identifiers are deliberately not recorded.
+The server-only resource baseline is qualified. Measure power draw and repeat
+the resource, temperature, fan, and noise observations with the full-screen
+client running in GH-003. Machine ID, boot ID, network addresses, and other
+host-specific identifiers are deliberately not recorded.
 
 ## Constraints
 
@@ -239,10 +248,12 @@ identifiers are deliberately not recorded.
 
 ## Open Facts
 
-- Exact iMac screen size, CPU, RAM, storage, sustained idle temperature, and
-  temperature and fan behavior under kiosk load.
-- Whether the iMac's internal speakers and analog output need explicit ALSA
-  routing or mixer configuration.
+- iMac idle power draw, plus temperature, fan behavior, and power draw under
+  kiosk load.
+- Unattended audio and graphics device permissions, persistent mixer
+  configuration, and end-to-end Sonos playback after the iMac moves into place.
+- Wi-Fi operation after GH-003 installs the required Broadcom firmware and
+  configures the home network.
 - Exact ThinkPad model, available ports, and current services.
 - Whether Spotify Premium is available; headless Spotify Connect receivers
   require it.
