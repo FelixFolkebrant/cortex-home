@@ -166,7 +166,7 @@ Inventory and server-idle behavior observed on 2026-07-23:
 | Fifteen-minute idle load | 97–100% CPU idle; 3.4 GiB memory available; no swap use |
 | Fifteen-minute temperature | CPU cores 54–58°C; Radeon 75–77°C |
 | Fifteen-minute fan speed | Optical drive 985–997 RPM; hard drive 1207–1211 RPM; CPU 1197–1201 RPM |
-| Noise | Awaiting final subjective confirmation; the preliminary idle observation was quiet |
+| Noise | The user confirmed that idle fan noise is acceptable for the room and not a current priority |
 | Audio test | Separate internal-speaker and rear analog ALSA streams succeeded after temporarily unmuting `Master`; the user heard the internal speakers; Sonos playback awaits physical connection |
 | Boot and recovery | A controlled reboot returned to SSH without local intervention; Ethernet was up and no services had failed at 38 seconds uptime |
 | Unattended device access | After reboot with no local login, `imac` lacks `audio`, `video`, and `render` device access; GH-003 must provide an intentional endpoint session or service permission |
