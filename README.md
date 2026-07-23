@@ -26,7 +26,7 @@ The iMac's qualified hardware and operating-system baseline is recorded in
 | [`IDEA.md`](docs/project/IDEA.md) | Product intent, hardware, user flows, and constraints |
 | [`ROADMAP.md`](docs/project/ROADMAP.md) | Current direction and deferred decisions |
 | [`PP-1.md`](docs/planpoints/PP-1.md) | Current connected-room-endpoint slice |
-| [`GH-001-PLAN.md`](docs/wip/GH-001-PLAN.md) | Current repository-bootstrap issue plan |
+| [`GH-001.md`](docs/issues/GH-001.md) | Completed repository-bootstrap record |
 
 Cortex Home uses the Crossroads workflow described in
 [`WORKFLOW.md`](docs/project/WORKFLOW.md).
