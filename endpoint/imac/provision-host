@@ -1,0 +1,181 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [[ $EUID -ne 0 ]]; then
+  echo "Run this installer as root." >&2
+  exit 1
+fi
+
+source_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+
+source /etc/os-release
+
+if [[ ${ID:-} != ubuntu || ${VERSION_ID:-} != 24.04 ]]; then
+  echo "GH-003 provisioning requires Ubuntu 24.04." >&2
+  exit 1
+fi
+
+if [[ $(< /sys/devices/virtual/dmi/id/product_name) != iMac8,1 ]]; then
+  echo "GH-003 provisioning requires the qualified iMac8,1." >&2
+  exit 1
+fi
+
+wireless_pci=$(lspci -Dn -d 14e4:4328 | awk 'NR == 1 { print $1 }')
+
+if [[ -z $wireless_pci ]]; then
+  echo "GH-003 provisioning requires the qualified BCM4321 adapter." >&2
+  exit 1
+fi
+
+read -r -p "Wi-Fi SSID: " wifi_ssid
+read -r -s -p "Wi-Fi password: " wifi_password
+echo
+
+if [[ -z $wifi_ssid || -z $wifi_password ]]; then
+  echo "Wi-Fi SSID and password are required." >&2
+  exit 1
+fi
+
+if [[ $wifi_ssid == *$'\n'* || $wifi_password == *$'\n'* ]]; then
+  echo "Wi-Fi values cannot contain newlines." >&2
+  exit 1
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+apt-get purge --yes firmware-b43-installer b43-fwcutter
+apt-get install --yes --no-install-recommends \
+  alsa-utils \
+  avahi-daemon \
+  bcmwl-kernel-source \
+  chromium-browser \
+  dbus-x11 \
+  lightdm \
+  openbox \
+  unclutter \
+  wpasupplicant \
+  x11-xserver-utils \
+  xinit \
+  xserver-xorg-core \
+  xserver-xorg-input-libinput \
+  xserver-xorg-video-radeon \
+  xterm
+
+if ! id cortex-endpoint >/dev/null 2>&1; then
+  useradd \
+    --create-home \
+    --home-dir /home/cortex-endpoint \
+    --shell /bin/bash \
+    cortex-endpoint
+fi
+
+passwd --lock cortex-endpoint
+usermod --append --groups audio,render,video cortex-endpoint
+
+install -D --mode=644 \
+  "$source_dir/files/cortex-endpoint.desktop" \
+  /usr/share/xsessions/cortex-endpoint.desktop
+install -D --mode=755 \
+  "$source_dir/files/cortex-endpoint-session" \
+  /usr/local/bin/cortex-endpoint-session
+install -D --mode=644 \
+  "$source_dir/files/lightdm.conf" \
+  /etc/lightdm/lightdm.conf.d/50-cortex-endpoint.conf
+install -D --mode=644 \
+  "$source_dir/files/network-wait-online.conf" \
+  /etc/systemd/system/systemd-networkd-wait-online.service.d/50-cortex-endpoint.conf
+install -D --mode=644 \
+  "$source_dir/files/broadcom.conf" \
+  /etc/modprobe.d/50-cortex-broadcom.conf
+install -D \
+  --owner=cortex-endpoint \
+  --group=cortex-endpoint \
+  --mode=644 \
+  "$source_dir/files/openbox-rc.xml" \
+  /home/cortex-endpoint/.config/openbox/rc.xml
+install -D --mode=644 \
+  "$source_dir/files/qualification.html" \
+  /home/cortex-endpoint/qualification.html
+chown root:root /home/cortex-endpoint/qualification.html
+
+update-initramfs -u
+
+wireless_driver=$(
+  basename "$(readlink -f "/sys/bus/pci/devices/$wireless_pci/driver")" \
+    2>/dev/null ||
+    true
+)
+
+if [[ $wireless_driver != wl ]]; then
+  modprobe -r wl 2>/dev/null || true
+  modprobe -r b43 2>/dev/null || true
+  modprobe -r ssb_hcd
+  modprobe -r ssb
+  modprobe wl
+
+  for _ in {1..10}; do
+    if compgen -G "/sys/class/net/*/wireless" >/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+fi
+
+wireless_paths=(/sys/class/net/*/wireless)
+
+if [[ ${#wireless_paths[@]} -ne 1 || ! -d ${wireless_paths[0]} ]]; then
+  echo "Expected exactly one interface from the Broadcom STA driver." >&2
+  exit 1
+fi
+
+wireless_interface=$(basename -- "$(dirname -- "${wireless_paths[0]}")")
+escaped_ssid=$(printf '%s' "$wifi_ssid" | sed "s/'/''/g")
+escaped_password=$(printf '%s' "$wifi_password" | sed "s/'/''/g")
+
+install -D --mode=600 /dev/null /etc/netplan/60-cortex-wifi.yaml
+cat > /etc/netplan/60-cortex-wifi.yaml <<EOF
+network:
+  version: 2
+  wifis:
+    $wireless_interface:
+      dhcp4: true
+      access-points:
+        '$escaped_ssid':
+          password: '$escaped_password'
+EOF
+
+unset wifi_ssid wifi_password escaped_ssid escaped_password
+
+netplan generate
+netplan apply
+
+wireless_ready=false
+
+for _ in {1..30}; do
+  if [[ -n $(ip -4 -o address show dev "$wireless_interface" scope global) ]]; then
+    wireless_ready=true
+    break
+  fi
+
+  sleep 1
+done
+
+if [[ $wireless_ready != true ]]; then
+  echo "Wi-Fi did not receive an address after Netplan applied." >&2
+  exit 1
+fi
+
+amixer -c 0 sset Master 70% unmute
+amixer -c 0 sset Speaker mute
+amixer -c 0 sset Headphone 70% unmute
+alsactl store 0
+
+systemctl set-default graphical.target
+systemctl enable --now avahi-daemon.service
+systemctl daemon-reload
+systemctl restart systemd-networkd-wait-online.service
+systemctl restart lightdm.service
+
+echo "GH-003 endpoint provisioning completed."

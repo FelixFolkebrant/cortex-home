@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cortex Home endpoint qualification</title>
+    <style>
+      :root {
+        color: #f7f0df;
+        background: #171612;
+        font-family: sans-serif;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+      }
+
+      main {
+        width: min(70rem, 80vw);
+      }
+
+      p {
+        color: #bdb5a5;
+        font-size: 1.5rem;
+      }
+
+      h1 {
+        margin: 0.25rem 0;
+        font-size: clamp(4rem, 8vw, 8rem);
+        letter-spacing: -0.06em;
+      }
+
+      button {
+        margin-top: 3rem;
+        padding: 1rem 1.5rem;
+        border: 1px solid #f7f0df;
+        border-radius: 0.25rem;
+        color: inherit;
+        background: transparent;
+        font: inherit;
+        font-size: 1.25rem;
+      }
+
+      output {
+        display: block;
+        min-height: 1.5em;
+        margin-top: 1rem;
+        color: #d7a84d;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>Cortex Home endpoint</p>
+      <h1>Ready for GH-004.</h1>
+      <p id="clock"></p>
+      <button id="sound" type="button">Play qualification sound</button>
+      <output id="result" aria-live="polite"></output>
+    </main>
+    <script>
+      const clock = document.querySelector("#clock");
+      const result = document.querySelector("#result");
+      const sound = document.querySelector("#sound");
+
+      function updateClock() {
+        clock.textContent = new Intl.DateTimeFormat(undefined, {
+          dateStyle: "full",
+          timeStyle: "medium",
+        }).format(new Date());
+      }
+
+      async function playSound() {
+        const context = new AudioContext();
+
+        for (const [frequency, start] of [[440, 0], [660, 0.4]]) {
+          const oscillator = new OscillatorNode(context, { frequency });
+          const gain = new GainNode(context, { gain: 0.12 });
+
+          oscillator.connect(gain).connect(context.destination);
+          oscillator.start(context.currentTime + start);
+          oscillator.stop(context.currentTime + start + 0.25);
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        await context.close();
+        result.textContent = "Qualification sound completed.";
+      }
+
+      sound.addEventListener("click", () => {
+        playSound().catch((error) => {
+          result.textContent = `Sound failed: ${error.message}`;
+        });
+      });
+
+      updateClock();
+      setInterval(updateClock, 1000);
+    </script>
+  </body>
+</html>

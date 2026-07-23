@@ -1,0 +1,57 @@
+#!/bin/sh
+
+set -eu
+
+xset -dpms
+xset s off
+xset s noblank
+
+display_output=$(xrandr --query | awk '$2 == "connected" { print $1; exit }')
+
+if [ -z "$display_output" ]; then
+  echo "No connected display was detected." >&2
+  exit 1
+fi
+
+xrandr --output "$display_output" --mode 1920x1200 --primary
+
+python3 -m http.server \
+  --bind 127.0.0.1 \
+  --directory /home/cortex-endpoint \
+  8765 \
+  >/dev/null 2>&1 &
+http_server_pid=$!
+
+sleep 1
+
+if ! kill -0 "$http_server_pid" 2>/dev/null; then
+  echo "The local qualification server failed to start." >&2
+  exit 1
+fi
+
+openbox --sm-disable &
+openbox_pid=$!
+unclutter -idle 0.5 -root &
+unclutter_pid=$!
+
+cleanup() {
+  kill \
+    "$http_server_pid" \
+    "$openbox_pid" \
+    "$unclutter_pid" \
+    2>/dev/null ||
+    true
+}
+
+trap cleanup EXIT
+trap 'exit 0' HUP INT TERM
+
+while true; do
+  /snap/bin/chromium \
+    --autoplay-policy=no-user-gesture-required \
+    --disable-session-crashed-bubble \
+    --kiosk \
+    --no-first-run \
+    http://127.0.0.1:8765/qualification.html
+  sleep 2
+done
