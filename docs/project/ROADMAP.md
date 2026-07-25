@@ -7,8 +7,8 @@ architecture remains open.
 
 ## Planpoints
 
-Planpoint 1 is complete. Planpoint 2 is the next planning target; its open
-Crossroads remain undecided.
+Planpoint 1 is complete. Planpoint 2 is accepted and active. Its iMac-hosted
+Raspotify receiver is qualified; publishing local playback state is next.
 
 ### [1 COMPLETE - Connected Room Endpoint](../planpoints/PP-1.md)
 
@@ -29,15 +29,15 @@ This slice defines the minimum action and feedback shape that later interfaces
 and agents inherit. It does not choose an agent provider, speech stack, broad
 automation model, or child-repository layout.
 
-### 2 NEXT - Spotify Music Channel
+### [2 ACTIVE - Spotify Music Channel](../planpoints/PP-2.md)
 
 Spotify on the iPhone can select one Cortex Home receiver, audio plays through the
 Sonos line-in, and the iMac shows useful now-playing feedback.
 
 | Crossroad | Decision | Alternatives Rejected |
 |---|---|---|
-| Spotify Connect endpoint | ? | ? |
-| Playback state source | ? | ? |
+| Spotify Connect endpoint | Raspotify on the iMac | Receiver on the ThinkPad with network audio; browser playback |
+| Playback state source | Normalized local librespot events | Spotify Web API polling; browser or audio inference |
 
 General system audio, synchronized multi-room audio, and a local music library
 remain deferred.

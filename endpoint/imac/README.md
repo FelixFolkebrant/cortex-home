@@ -7,6 +7,15 @@ iMac is reachable through the `imac` SSH host:
 ./endpoint/imac/provision
 ```
 
+When the base endpoint is already provisioned, install or restore only its
+Spotify receiver:
+
+```sh
+./endpoint/imac/provision-raspotify
+```
+
+The focused command asks only for the existing `imac` account's sudo password.
+
 The command copies the fixed provisioning files to a temporary directory on
 the iMac and asks for:
 
@@ -20,10 +29,16 @@ They are written only to the root-readable Netplan configuration on the iMac.
 The coordinator URL is written only to the endpoint's local configuration. The
 temporary remote copy is removed when provisioning exits.
 
-Provisioning installs the minimal graphical and wireless packages, creates the
-locked `cortex-endpoint` account, configures its automatic full-screen session,
-points Chromium at the network client, and persists the rear analog mixer route.
-The command can be rerun to restore the committed configuration.
+Provisioning installs the minimal graphical and wireless packages plus the
+reviewed Raspotify build, creates the locked `cortex-endpoint` account,
+configures its automatic full-screen session, points Chromium at the network
+client, and persists the rear analog mixer route. The command can be rerun to
+restore the committed configuration.
+
+Raspotify advertises one `Cortex Home` Spotify Connect receiver. It runs as the
+endpoint user and shares that user's PulseAudio session with Chromium so both
+Spotify and endpoint feedback use the qualified Sonos route. Raspotify remains
+an unofficial, Premium-only Spotify client intended for personal use.
 
 The endpoint advertises itself as `imac.local` on the home network. Press
 `Control`+`Option`+`Return` on the iMac keyboard to open an unprivileged
