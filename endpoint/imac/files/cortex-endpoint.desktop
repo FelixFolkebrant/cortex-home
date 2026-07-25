@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=Cortex Home Endpoint
+Comment=Full-screen Cortex Home room endpoint
+Exec=/usr/local/bin/cortex-endpoint-session
+Type=Application
