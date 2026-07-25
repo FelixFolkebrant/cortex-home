@@ -416,7 +416,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                 "Content-Security-Policy",
                 "default-src 'self'; "
                 "connect-src 'self'; "
-                "img-src 'self' data:; "
+                "img-src 'self' data: https:; "
                 "media-src blob:; "
                 "script-src 'self'; "
                 "style-src 'self'",

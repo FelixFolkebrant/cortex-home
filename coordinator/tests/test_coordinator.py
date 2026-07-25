@@ -429,6 +429,14 @@ class HttpTests(unittest.TestCase):
             "media-src blob:",
             response.getheader("Content-Security-Policy"),
         )
+        self.assertIn(
+            "img-src 'self' data: https:",
+            response.getheader("Content-Security-Policy"),
+        )
+        self.assertIn(
+            "connect-src 'self'",
+            response.getheader("Content-Security-Policy"),
+        )
 
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=1)
         self.addCleanup(connection.close)
