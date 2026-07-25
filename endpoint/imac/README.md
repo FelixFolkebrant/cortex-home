@@ -35,7 +35,7 @@ configures its automatic full-screen session, points Chromium at the network
 client, and persists the rear analog mixer route. The command can be rerun to
 restore the committed configuration.
 
-Raspotify advertises one `Cortex Home` Spotify Connect receiver. It runs as the
+Raspotify advertises one `Högtalaren` Spotify Connect receiver. It runs as the
 endpoint user and shares that user's PulseAudio session with Chromium so both
 Spotify and endpoint feedback use the qualified Sonos route. Raspotify remains
 an unofficial, Premium-only Spotify client intended for personal use.

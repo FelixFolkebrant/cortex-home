@@ -31,7 +31,7 @@ automation model, or child-repository layout.
 
 ### [2 ACTIVE - Spotify Music Channel](../planpoints/PP-2.md)
 
-Spotify on the iPhone can select one Cortex Home receiver, audio plays through the
+Spotify on the iPhone can select the `Högtalaren` receiver, audio plays through the
 Sonos line-in, and the iMac shows useful now-playing feedback.
 
 | Crossroad | Decision | Alternatives Rejected |

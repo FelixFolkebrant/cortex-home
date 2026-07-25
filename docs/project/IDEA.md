@@ -82,7 +82,7 @@ The exact MVP is not accepted yet. The current candidate is:
 3. A Today channel shows time, weather, and a small amount of genuinely useful
    daily context.
 4. A Music channel shows what is playing.
-5. Spotify on the iPhone can select a Cortex Home receiver and play through the
+5. Spotify on the iPhone can select the `Högtalaren` receiver and play through the
    Sonos line-in.
 6. The three Philips Hue lamps can be controlled through a small set of
    room-level actions with immediate visible feedback.
@@ -114,7 +114,7 @@ close enough to define as a useful vertical slice.
 ### Play Spotify
 
 1. The user opens Spotify on the iPhone.
-2. The user selects the Cortex Home receiver.
+2. The user selects the `Högtalaren` receiver.
 3. Audio starts through the Sonos Play:5 line-in.
 4. The iMac changes to or updates the Music channel with clear playback
    feedback.
@@ -203,7 +203,7 @@ Inventory and server-idle behavior observed on 2026-07-23:
 | Wireless recovery | Wi-Fi-only boot returns the kiosk and key-based SSH through `imac.local`; Ethernet remains a fallback and wait-online accepts either routable interface |
 | Kiosk spot check | 99% CPU idle, 3.1 GiB memory available, about 1.0 GiB endpoint RSS, 56°C CPU cores, 75°C Radeon, and approximately 700/1200/1200 RPM fans |
 | Endpoint audio | The kiosk starts a per-user PulseAudio bridge; Chromium media reaches the restored rear analog route and the connected Sonos |
-| Spotify receiver | Raspotify 0.48.2 with librespot 0.8.0 advertises `Cortex Home`, runs as the endpoint user through the existing PulseAudio route, and plays an iPhone-selected Spotify track through the Sonos |
+| Spotify receiver | Raspotify 0.48.2 with librespot 0.8.0 advertises `Högtalaren`, runs as the endpoint user through the existing PulseAudio route, and plays an iPhone-selected Spotify track through the Sonos |
 | Spotify playback load | During the first bounded playback window Raspotify used 25.6–28.0 MiB RSS with 2.9–3.0 GiB available memory; a follow-up steady interval remained 91% CPU idle with no swap use |
 | Real-client sample | Over fifteen minutes the live client held 98–100% CPU idle, 3.1 GiB memory available, 1.07 GiB endpoint RSS, 54–56°C CPU cores, and 75–76°C Radeon |
 | Real-client fans | Optical-drive, hard-drive, and CPU fans respectively held at 820–998, 1203–1217, and 1197–1201 RPM |
