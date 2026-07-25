@@ -2,9 +2,28 @@
 
 set -eu
 
+pulseaudio --start --exit-idle-time=-1
+
 xset -dpms
 xset s off
 xset s noblank
+
+coordinator_url_file=/etc/cortex-endpoint/coordinator-url
+
+if [ ! -r "$coordinator_url_file" ]; then
+  echo "The coordinator URL is not configured." >&2
+  exit 1
+fi
+
+coordinator_url=$(sed -n '1p' "$coordinator_url_file")
+
+case "$coordinator_url" in
+  http://*) ;;
+  *)
+    echo "The coordinator URL is invalid." >&2
+    exit 1
+    ;;
+esac
 
 display_output=$(xrandr --query | awk '$2 == "connected" { print $1; exit }')
 
@@ -15,20 +34,6 @@ fi
 
 xrandr --output "$display_output" --mode 1920x1200 --primary
 
-python3 -m http.server \
-  --bind 127.0.0.1 \
-  --directory /home/cortex-endpoint \
-  8765 \
-  >/dev/null 2>&1 &
-http_server_pid=$!
-
-sleep 1
-
-if ! kill -0 "$http_server_pid" 2>/dev/null; then
-  echo "The local qualification server failed to start." >&2
-  exit 1
-fi
-
 openbox --sm-disable &
 openbox_pid=$!
 unclutter -idle 0.5 -root &
@@ -36,7 +41,6 @@ unclutter_pid=$!
 
 cleanup() {
   kill \
-    "$http_server_pid" \
     "$openbox_pid" \
     "$unclutter_pid" \
     2>/dev/null ||
@@ -52,6 +56,6 @@ while true; do
     --disable-session-crashed-bubble \
     --kiosk \
     --no-first-run \
-    http://127.0.0.1:8765/qualification.html
+    "$coordinator_url"
   sleep 2
 done

@@ -27,7 +27,7 @@ control seam that later channels and controls need.
 - An AI agent, agent adapter, language model, speech recognition, or TTS.
 - Microphone, camera, gesture, and presence input.
 - General-purpose remote desktop, video streaming, or casting.
-- A permanent channel framework, visual design system, or plugin system.
+- A permanent channel architecture, visual design system, or plugin system.
 - Public internet access or remote control from outside the home network.
 
 ## Deferred To Later Planpoints
@@ -89,6 +89,21 @@ control seam that later channels and controls need.
   forcing product-specific display state into a future device authority.
 - Status: decided
 
+### C4 - Frontend Application Stack
+
+- Decision: Which frontend toolchain implements the full-screen client and
+  becomes the starting point for later channels.
+- Options: React with a small client build; a React framework; another component
+  library; dependency-free HTML and JavaScript.
+- Impact if wrong: Later interface work would inherit components, styling, and
+  build assumptions that are expensive to replace.
+- Proposed choice: Use React with Vite, Tailwind CSS, pnpm, `clsx`, CVA,
+  `tailwind-merge`, and Biome. Keep routing, data libraries, and the long-term
+  channel architecture out of this slice.
+- Why: The user selected this frontend stack during GH-004. It supports
+  state-driven room feedback without making Planpoint 3's channel decision.
+- Status: decided
+
 ## Plumbing
 
 - Threaded now: `endpoint.identify` carries a caller-provided request ID through
@@ -122,6 +137,7 @@ Reference: `../project/HEATMAP.md`.
 - C1: parent repository boundary; see Crossroads section.
 - C2: iMac presentation path; see Crossroads section.
 - C3: shared control boundary; see Crossroads section.
+- C4: frontend application stack; see Crossroads section.
 
 ### Hot
 
@@ -144,11 +160,12 @@ Reference: `../project/HEATMAP.md`.
 - Alternatives: Connect the Sonos directly to the ThinkPad; implement a general
   network-audio system in this slice.
 
-#### H3 - Keep The Proof Stack Provisional
+#### H3 - Keep The Accepted Frontend Stack Narrow
 
-- Decision: Use one small coordinator process and one static web client for the
-  identify path without declaring a permanent backend or frontend framework.
-- Why: This slice needs to qualify the seam, not make Planpoint 3's long-term
-  channel-stack decision indirectly.
-- Alternatives: Start the complete React application now; use Home Assistant as
-  the whole frontend; introduce a broker or plugin framework.
+- Decision: Use the accepted React toolchain for one client screen without
+  adding routing, a data framework, a component library, or a general channel
+  abstraction.
+- Why: The identify slice can establish the frontend foundation while leaving
+  Planpoint 3's long-term channel composition decision open.
+- Alternatives: Keep the dependency-free prototype; start a complete channel
+  framework now; use Home Assistant as the whole frontend.

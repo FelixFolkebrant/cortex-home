@@ -1,0 +1,77 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Run this installer as root." >&2
+  exit 1
+fi
+
+if [ ! -x /usr/bin/python3 ]; then
+  echo "Cortex Home requires Python 3 at /usr/bin/python3." >&2
+  exit 1
+fi
+
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "Cortex Home requires systemd." >&2
+  exit 1
+fi
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+if [ ! -f "$script_dir/dist/index.html" ]; then
+  echo "The built Cortex Home client is missing." >&2
+  exit 1
+fi
+
+if ! id cortex-home >/dev/null 2>&1; then
+  useradd \
+    --system \
+    --home-dir /nonexistent \
+    --no-create-home \
+    --shell /usr/sbin/nologin \
+    cortex-home
+fi
+
+install -d --owner=root --group=root --mode=755 /opt/cortex-home/client
+find /opt/cortex-home/client -mindepth 1 -delete
+cp -R "$script_dir/dist/." /opt/cortex-home/client/
+chown -R root:root /opt/cortex-home/client
+install --owner=root --group=root --mode=755 \
+  "$script_dir/cortex_home.py" \
+  /opt/cortex-home/cortex_home.py
+install --owner=root --group=root --mode=644 \
+  "$script_dir/files/cortex-home.service" \
+  /etc/systemd/system/cortex-home.service
+
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "^Status: active"; then
+  default_interface=$(
+    ip -4 route show default |
+      awk 'NR == 1 { for (field = 1; field <= NF; field++) if ($field == "dev") { print $(field + 1); exit } }'
+  )
+
+  if [ -z "$default_interface" ]; then
+    echo "Could not identify the coordinator's default network interface." >&2
+    exit 1
+  fi
+
+  lan_cidr=$(
+    ip -4 route show dev "$default_interface" proto kernel scope link |
+      awk '$1 ~ /^[0-9]+\./ && $1 ~ /\// { print $1; exit }'
+  )
+
+  if [ -z "$lan_cidr" ]; then
+    echo "Could not identify the coordinator LAN for its firewall rule." >&2
+    exit 1
+  fi
+
+  ufw allow from "$lan_cidr" to any port 8080 proto tcp \
+    comment "Cortex Home coordinator"
+fi
+
+systemctl daemon-reload
+systemctl enable cortex-home.service
+systemctl restart cortex-home.service
+systemctl is-active --quiet cortex-home.service
+
+echo "GH-004 coordinator installation completed."

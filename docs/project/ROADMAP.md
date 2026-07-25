@@ -1,8 +1,9 @@
 # Roadmap
 
 This roadmap stays deliberately loose. The first slices prove the old hardware
-and the system seam before Cortex Home commits to a UI stack, automation
-backbone, or repository split.
+and the system seam before Cortex Home commits to an automation backbone or
+repository split. The frontend stack is accepted while its long-term channel
+architecture remains open.
 
 ## Planpoints
 
@@ -19,6 +20,7 @@ plus measured iMac idle load, temperature, and noise.
 | Parent repository boundary | Single integration repository through Planpoint 3 | Nested repositories; submodules; sibling repositories |
 | iMac presentation path | Provisional local web client | Permanent desktop stream; direct display input |
 | Shared system interaction boundary | Small Cortex Home coordinator | Direct client integrations; agent-owned orchestration |
+| Frontend application stack | React, Vite, Tailwind CSS, and the accepted supporting tools | React framework; another component library; dependency-free client |
 
 This slice defines the minimum action and feedback shape that later interfaces
 and agents inherit. It does not choose an agent provider, speech stack, broad
@@ -125,6 +127,21 @@ slices.
   family that does not support using the panel as a general external display. A
   simple local web client is cheaper and easier to recover than continuously
   decoding a streamed desktop.
+- Status: decided
+
+### C9 - Frontend Application Stack
+
+- Decision: Which application, build, styling, package, class-composition, and
+  code-quality tools future screen work inherits.
+- Options: React with a small client build; a React framework; another component
+  library; dependency-free HTML and JavaScript.
+- Impact if wrong: Components, styling, tests, deployment artifacts, and future
+  channel work would require broad rewrites.
+- Proposed choice: Use React with Vite, Tailwind CSS, pnpm, `clsx`, CVA,
+  `tailwind-merge`, and Biome. Add no router, data framework, or component
+  library until a real flow requires one.
+- Why: The user selected this familiar frontend toolchain, and Vite supplies the
+  missing client build without prematurely choosing the channel architecture.
 - Status: decided
 
 ### H1 - iMac Operating System

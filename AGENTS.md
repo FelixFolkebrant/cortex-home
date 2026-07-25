@@ -41,6 +41,11 @@ judgment.*
 
 - Do not create rollbacks or backups. If something fails, it should fail.
 
+## Measurements
+
+- Limit any sampling or monitoring window to 60 seconds unless the user
+  explicitly confirms a longer duration first.
+
 ## Documentation
 
 - **GH-XXX-PLAN.md:** Temporary issue plan in `docs/wip/`, deleted after merge.
