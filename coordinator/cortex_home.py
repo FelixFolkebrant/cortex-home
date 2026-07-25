@@ -9,6 +9,7 @@ import secrets
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -17,8 +18,29 @@ from urllib.parse import urlparse
 
 ACTION = "endpoint.identify"
 MAX_BODY_BYTES = 4096
+MAX_COLLECTION_LENGTH = 512
+MAX_CREATORS = 16
+MAX_CREATOR_LENGTH = 256
+MAX_DURATION_MS = 86_400_000
+MAX_TITLE_LENGTH = 512
+MAX_URI_LENGTH = 96
+MAX_URL_LENGTH = 2048
 MAX_REQUESTS = 128
+PLAYBACK_ITEM_KEYS = {
+    "artworkUrl",
+    "collection",
+    "creators",
+    "durationMs",
+    "title",
+    "type",
+    "uri",
+}
+PLAYBACK_KEYS = {"item", "positionMs", "status"}
+PLAYBACK_STATUSES = {"paused", "playing", "stopped", "unavailable"}
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+SPOTIFY_URI_PATTERN = re.compile(
+    r"^spotify:(?P<type>track|episode):[A-Za-z0-9]{1,64}$"
+)
 
 
 class ApiError(Exception):
@@ -68,6 +90,12 @@ class Coordinator:
         self.endpoint = None
         self.active_request_id = None
         self.requests = OrderedDict()
+        self.playback = {
+            "status": "unavailable",
+            "item": None,
+            "positionMs": 0,
+            "observedAt": utc_timestamp(),
+        }
 
     def connect_endpoint(self):
         with self.lock:
@@ -81,6 +109,7 @@ class Coordinator:
                 previous.close()
 
             self.endpoint = EndpointConnection()
+            self.endpoint.send("music.playback", self.playback)
             return self.endpoint
 
     def disconnect_endpoint(self, token):
@@ -211,6 +240,18 @@ class Coordinator:
         with self.lock:
             return self.endpoint is not None
 
+    def report_playback(self, observation):
+        observation = validate_playback(observation)
+
+        with self.lock:
+            changed = any(
+                self.playback[key] != observation[key] for key in PLAYBACK_KEYS
+            )
+            self.playback = {**observation, "observedAt": utc_timestamp()}
+            if changed and self.endpoint:
+                self.endpoint.send("music.playback", self.playback)
+            return self.playback
+
     def _fail_active_locked(self, endpoint_token, error, http_status):
         if not self.active_request_id:
             return
@@ -307,6 +348,12 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                     body.get("action"),
                 )
                 self._send_json(status, payload)
+                return
+
+            if path == "/api/observations/music/playback":
+                body = self._read_json(PLAYBACK_KEYS)
+                payload = self.server.coordinator.report_playback(body)
+                self._send_json(HTTPStatus.OK, payload)
                 return
 
             match = re.fullmatch(r"/api/requests/([^/]+)/status", path)
@@ -408,6 +455,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
         finally:
+            self.close_connection = True
             self.server.coordinator.disconnect_endpoint(endpoint.token)
 
     def _write_event(self, event, data):
@@ -482,6 +530,119 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         pass
+
+
+def validate_playback(observation):
+    if not isinstance(observation, dict) or set(observation) != PLAYBACK_KEYS:
+        raise invalid_playback()
+
+    status = observation["status"]
+    item = observation["item"]
+    position_ms = observation["positionMs"]
+
+    if (
+        not isinstance(status, str)
+        or status not in PLAYBACK_STATUSES
+        or not bounded_integer(position_ms, 0, MAX_DURATION_MS)
+    ):
+        raise invalid_playback()
+
+    if status in {"stopped", "unavailable"}:
+        if item is not None or position_ms != 0:
+            raise invalid_playback()
+        return {"status": status, "item": None, "positionMs": 0}
+
+    if not isinstance(item, dict) or set(item) != PLAYBACK_ITEM_KEYS:
+        raise invalid_playback()
+
+    item_type = item["type"]
+    uri = item["uri"]
+    uri_match = (
+        SPOTIFY_URI_PATTERN.fullmatch(uri)
+        if bounded_string(uri, 1, MAX_URI_LENGTH)
+        else None
+    )
+    creators = item["creators"]
+    artwork_url = item["artworkUrl"]
+    parsed_artwork_url = parse_artwork_url(artwork_url)
+
+    if (
+        not isinstance(item_type, str)
+        or item_type not in {"episode", "track"}
+        or not uri_match
+        or uri_match.group("type") != item_type
+        or not bounded_string(item["title"], 1, MAX_TITLE_LENGTH)
+        or not isinstance(creators, list)
+        or not 1 <= len(creators) <= MAX_CREATORS
+        or not all(
+            bounded_string(creator, 1, MAX_CREATOR_LENGTH)
+            for creator in creators
+        )
+        or not bounded_string(item["collection"], 1, MAX_COLLECTION_LENGTH)
+        or not parsed_artwork_url
+        or parsed_artwork_url.scheme != "https"
+        or not parsed_artwork_url.hostname
+        or parsed_artwork_url.username is not None
+        or parsed_artwork_url.password is not None
+        or not bounded_integer(item["durationMs"], 1, MAX_DURATION_MS)
+        or position_ms > item["durationMs"]
+    ):
+        raise invalid_playback()
+
+    return {
+        "status": status,
+        "item": {
+            "uri": uri,
+            "type": item_type,
+            "title": item["title"],
+            "creators": list(creators),
+            "collection": item["collection"],
+            "artworkUrl": artwork_url,
+            "durationMs": item["durationMs"],
+        },
+        "positionMs": position_ms,
+    }
+
+
+def bounded_integer(value, minimum, maximum):
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and minimum <= value <= maximum
+    )
+
+
+def bounded_string(value, minimum, maximum):
+    return (
+        isinstance(value, str)
+        and value.strip() == value
+        and minimum <= len(value) <= maximum
+    )
+
+
+def parse_artwork_url(value):
+    if not bounded_string(value, 1, MAX_URL_LENGTH):
+        return None
+    try:
+        return urlparse(value)
+    except ValueError:
+        return None
+
+
+def invalid_playback():
+    return ApiError(
+        HTTPStatus.BAD_REQUEST,
+        "invalid_playback",
+        "The playback observation does not match the accepted schema.",
+    )
+
+
+def utc_timestamp():
+    return (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
 
 
 def parse_args():
