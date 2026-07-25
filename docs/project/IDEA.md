@@ -146,7 +146,7 @@ close enough to define as a useful vertical slice.
 | Device | Intended Role | Known Unknowns |
 |---|---|---|
 | Lenovo ThinkPad E495, Ubuntu 24.04 | Always-on compute, coordination, and durable state | Available physical ports and the unrelated failed OpenVPN client unit |
-| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and nearby audio/USB endpoint | Real-client load, power draw, and end-to-end Sonos playback |
+| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and nearby audio/USB endpoint | Real-client power draw and end-to-end Sonos playback |
 | Sonos Play:5 Gen 1 | Speaker through its analog line-in | Connected to the iMac headphone output; end-to-end playback remains unconfirmed |
 | Philips Hue bridge and three lamps | Local lighting control | Bridge generation and existing room/scene setup |
 | iPhone 17 | Personal controller, Spotify source, and possible casting source | None needed for the first slice |
@@ -203,11 +203,14 @@ Inventory and server-idle behavior observed on 2026-07-23:
 | Wireless recovery | Wi-Fi-only boot returns the kiosk and key-based SSH through `imac.local`; Ethernet remains a fallback and wait-online accepts either routable interface |
 | Kiosk spot check | 99% CPU idle, 3.1 GiB memory available, about 1.0 GiB endpoint RSS, 56°C CPU cores, 75°C Radeon, and approximately 700/1200/1200 RPM fans |
 | Endpoint audio | ALSA restore state selects the rear analog route; the Sonos is now physically connected and playback remains for GH-004 |
+| Real-client sample | Over fifteen minutes the live client held 98–100% CPU idle, 3.1 GiB memory available, 1.07 GiB endpoint RSS, 54–56°C CPU cores, and 75–76°C Radeon |
+| Real-client fans | Optical-drive, hard-drive, and CPU fans respectively held at 820–998, 1203–1217, and 1197–1201 RPM |
+| Live identify | One outside request completed with its original correlation ID in 1.78 seconds; the user confirmed the full-screen identify pulse |
 
-The server-only baseline and the provisioned placeholder spot check are
-qualified. Sustained load, power, and sound latency belong with GH-004's real
-client rather than the placeholder. Machine ID, boot ID, network addresses, and
-other host-specific identifiers are deliberately not recorded.
+The server-only baseline, provisioned placeholder, and real-client resource
+load are qualified. Power and physical sound confirmation remain open. Machine
+ID, boot ID, network addresses, and other host-specific identifiers are
+deliberately not recorded.
 
 ## Constraints
 
@@ -216,8 +219,9 @@ other host-specific identifiers are deliberately not recorded.
 - Constraint: Run coordination, integrations, durable state, and expensive
   processing on the ThinkPad unless direct attachment makes a tiny endpoint
   process simpler.
-- Why it matters: The iMac is old and resource-constrained. Its fans were quiet
-  during the preliminary server-only baseline, but kiosk load is not yet known.
+- Why it matters: The iMac is old and resource-constrained. The real-client
+  baseline is acceptable, but later channels should retain this thin endpoint
+  boundary rather than spending its measured headroom.
 
 ### C2 - Treat The iMac As Replaceable
 
@@ -281,8 +285,8 @@ other host-specific identifiers are deliberately not recorded.
 
 ## Open Facts
 
-- Sustained iMac load, temperature, fan behavior, and power draw with the real
-  GH-004 client.
+- iMac power draw with the real GH-004 client; no measurement method is
+  currently available.
 - End-to-end Sonos playback and sound latency through the connected line-in.
 - Available ThinkPad physical ports and whether the failed OpenVPN client unit
   should be restored or disabled.
