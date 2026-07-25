@@ -309,7 +309,8 @@ class HttpTests(unittest.TestCase):
         client_path = Path(cls.client_directory.name)
         client_path.joinpath("assets").mkdir()
         client_path.joinpath("index.html").write_text(
-            '<div id="root"></div><script src="/assets/app.js"></script>'
+            '<div id="root"></div>'
+            '<script type="module" src="/assets/app.js"></script>'
         )
         client_path.joinpath("assets", "app.js").write_text("const ready = true;")
         cls.server = CortexHomeServer(
@@ -356,6 +357,7 @@ class HttpTests(unittest.TestCase):
 
         event, ready = self.read_event(events_response)
         self.assertEqual(event, "ready")
+        self.assertEqual(ready["clientEntry"], "/assets/app.js")
         endpoint_token = ready["endpointToken"]
         event, playback = self.read_event(events_response)
         self.assertEqual(event, "music.playback")

@@ -311,6 +311,9 @@ function InteractionOverlay({ interaction }) {
 
 export function App() {
   const [room, dispatch] = useReducer(roomReducer, initialRoomState);
+  const currentClientEntry = document
+    .querySelector('script[type="module"][src]')
+    ?.getAttribute("src");
   const endpointToken = useRef(null);
   const activeRequestId = useRef(null);
   const actionGeneration = useRef(0);
@@ -406,6 +409,16 @@ export function App() {
         return;
       }
 
+      if (
+        currentClientEntry &&
+        message.clientEntry &&
+        message.clientEntry !== currentClientEntry
+      ) {
+        events.close();
+        window.location.reload();
+        return;
+      }
+
       endpointToken.current = message.endpointToken;
       actionGeneration.current += 1;
       activeRequestId.current = null;
@@ -453,7 +466,7 @@ export function App() {
       clearInteractionTimer();
       events.close();
     };
-  }, []);
+  }, [currentClientEntry]);
 
   const hasLoadedItem = Boolean(room.playback?.item);
 
