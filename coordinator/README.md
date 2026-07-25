@@ -33,6 +33,7 @@ Run the automated checks with:
 python3 -m unittest discover -s coordinator/tests
 python3 -m unittest discover -s endpoint/imac/tests
 pnpm --dir coordinator/client check
+pnpm --dir coordinator/client test
 pnpm --dir coordinator/client build
 ```
 
@@ -62,3 +63,14 @@ rejects unknown or out-of-range values, adds the UTC `observedAt` timestamp,
 keeps only the latest snapshot in memory, and publishes changed snapshots as
 `music.playback` server-sent events. Every new endpoint connection receives the
 current snapshot immediately after its `ready` event.
+
+The full-screen client keeps playback, coordinator connection, and temporary
+identify feedback as independent state. Loaded tracks and episodes render as
+the Music view, playing progress is projected locally from `positionMs` and
+`observedAt`, and terminal snapshots remove the prior item. The browser loads
+only the snapshot's HTTPS artwork; an unavailable image falls back to the local
+Cortex Home record mark.
+
+Each event-stream connection also receives the hashed production client entry.
+If Chromium is still running a replaced bundle after coordinator deployment,
+the client reloads the page and reconnects with the current build.

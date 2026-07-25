@@ -38,6 +38,7 @@ PLAYBACK_ITEM_KEYS = {
 PLAYBACK_KEYS = {"item", "positionMs", "status"}
 PLAYBACK_STATUSES = {"paused", "playing", "stopped", "unavailable"}
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+CLIENT_ENTRY_PATTERN = re.compile(r'<script\b[^>]*\bsrc="(?P<src>/assets/[^"]+)"')
 SPOTIFY_URI_PATTERN = re.compile(
     r"^spotify:(?P<type>track|episode):[A-Za-z0-9]{1,64}$"
 )
@@ -307,6 +308,7 @@ class CortexHomeServer(ThreadingHTTPServer):
     def __init__(self, server_address, coordinator, client_directory):
         self.coordinator = coordinator
         self.client_directory = Path(client_directory).resolve()
+        self.client_entry = find_client_entry(self.client_directory)
         super().__init__(server_address, CortexHomeHandler)
 
 
@@ -416,7 +418,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                 "Content-Security-Policy",
                 "default-src 'self'; "
                 "connect-src 'self'; "
-                "img-src 'self' data:; "
+                "img-src 'self' data: https:; "
                 "media-src blob:; "
                 "script-src 'self'; "
                 "style-src 'self'",
@@ -438,7 +440,10 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
         try:
-            self._write_event("ready", {"endpointToken": endpoint.token})
+            ready = {"endpointToken": endpoint.token}
+            if self.server.client_entry:
+                ready["clientEntry"] = self.server.client_entry
+            self._write_event("ready", ready)
             while True:
                 try:
                     item = endpoint.events.get(timeout=2)
@@ -627,6 +632,16 @@ def parse_artwork_url(value):
         return urlparse(value)
     except ValueError:
         return None
+
+
+def find_client_entry(client_directory):
+    try:
+        index = client_directory.joinpath("index.html").read_text()
+    except (OSError, UnicodeError):
+        return None
+
+    match = CLIENT_ENTRY_PATTERN.search(index)
+    return match.group("src") if match else None
 
 
 def invalid_playback():
