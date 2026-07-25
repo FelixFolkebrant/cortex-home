@@ -31,6 +31,7 @@ Run the automated checks with:
 
 ```sh
 python3 -m unittest discover -s coordinator/tests
+python3 -m unittest discover -s endpoint/imac/tests
 pnpm --dir coordinator/client check
 pnpm --dir coordinator/client build
 ```
@@ -49,3 +50,15 @@ curl \
 The request remains open until the endpoint reports completion or failure. The
 JSON response carries the same request ID. Use a new request ID for every
 invocation while the coordinator process remains running.
+
+The iMac playback adapter posts a complete normalized observation to:
+
+```text
+POST /api/observations/music/playback
+```
+
+The body has exact `status`, `item`, and `positionMs` fields. The coordinator
+rejects unknown or out-of-range values, adds the UTC `observedAt` timestamp,
+keeps only the latest snapshot in memory, and publishes changed snapshots as
+`music.playback` server-sent events. Every new endpoint connection receives the
+current snapshot immediately after its `ready` event.

@@ -1,5 +1,6 @@
 import http.client
 import json
+import queue
 import threading
 import tempfile
 import unittest
@@ -15,10 +16,27 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 from cortex_home import ACTION, ApiError, Coordinator, CortexHomeServer
 
 
+PLAYING_OBSERVATION = {
+    "status": "playing",
+    "item": {
+        "uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
+        "type": "track",
+        "title": "Never Gonna Give You Up",
+        "creators": ["Rick Astley"],
+        "collection": "Whenever You Need Somebody",
+        "artworkUrl": "https://i.scdn.co/image/first",
+        "durationMs": 213573,
+    },
+    "positionMs": 1200,
+}
+
+
 class CoordinatorTests(unittest.TestCase):
     def setUp(self):
         self.coordinator = Coordinator(action_timeout=0.1)
         self.endpoint = self.coordinator.connect_endpoint()
+        event, _payload = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "music.playback")
 
     def submit_in_background(self, request_id="request-1"):
         executor = ThreadPoolExecutor(max_workers=1)
@@ -183,6 +201,106 @@ class CoordinatorTests(unittest.TestCase):
         self.coordinator.disconnect_endpoint(self.endpoint.token)
         future.result(timeout=1)
 
+    def test_sends_the_current_playback_snapshot_on_connection(self):
+        coordinator = Coordinator()
+        endpoint = coordinator.connect_endpoint()
+
+        event, snapshot = endpoint.events.get(timeout=1)
+
+        self.assertEqual(event, "music.playback")
+        self.assertEqual(snapshot["status"], "unavailable")
+        self.assertIsNone(snapshot["item"])
+        self.assertEqual(snapshot["positionMs"], 0)
+        self.assertRegex(
+            snapshot["observedAt"],
+            r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$",
+        )
+
+        coordinator.disconnect_endpoint(endpoint.token)
+        coordinator.report_playback(PLAYING_OBSERVATION)
+        endpoint = coordinator.connect_endpoint()
+        event, snapshot = endpoint.events.get(timeout=1)
+        self.assertEqual(event, "music.playback")
+        self.assertEqual(snapshot["status"], "playing")
+        self.assertEqual(snapshot["item"]["title"], "Never Gonna Give You Up")
+
+    def test_replaces_and_publishes_only_changed_playback(self):
+        snapshot = self.coordinator.report_playback(PLAYING_OBSERVATION)
+
+        self.assertEqual(snapshot["status"], "playing")
+        self.assertEqual(snapshot["item"]["type"], "track")
+        self.assertIn("observedAt", snapshot)
+        event, published = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "music.playback")
+        self.assertEqual(published, snapshot)
+
+        latest = self.coordinator.report_playback(PLAYING_OBSERVATION)
+        self.assertEqual(self.coordinator.playback, latest)
+        with self.assertRaises(queue.Empty):
+            self.endpoint.events.get_nowait()
+
+        stopped = self.coordinator.report_playback(
+            {"status": "stopped", "item": None, "positionMs": 0}
+        )
+        self.assertEqual(stopped["status"], "stopped")
+        self.assertIsNone(stopped["item"])
+        event, published = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "music.playback")
+        self.assertEqual(published, stopped)
+
+    def test_rejects_malformed_playback_without_replacing_current_state(self):
+        accepted = self.coordinator.report_playback(PLAYING_OBSERVATION)
+        self.endpoint.events.get(timeout=1)
+        invalid_observations = [
+            {},
+            {**PLAYING_OBSERVATION, "extra": True},
+            {**PLAYING_OBSERVATION, "status": "buffering"},
+            {**PLAYING_OBSERVATION, "status": []},
+            {**PLAYING_OBSERVATION, "positionMs": -1},
+            {**PLAYING_OBSERVATION, "positionMs": True},
+            {**PLAYING_OBSERVATION, "positionMs": 213574},
+            {
+                **PLAYING_OBSERVATION,
+                "item": {**PLAYING_OBSERVATION["item"], "unknown": True},
+            },
+            {
+                **PLAYING_OBSERVATION,
+                "item": {
+                    **PLAYING_OBSERVATION["item"],
+                    "uri": "spotify:episode:4uLU6hMCjMI75M1A2tKUQC",
+                },
+            },
+            {
+                **PLAYING_OBSERVATION,
+                "item": {
+                    **PLAYING_OBSERVATION["item"],
+                    "artworkUrl": "http://example.com/artwork",
+                },
+            },
+            {
+                **PLAYING_OBSERVATION,
+                "item": {
+                    **PLAYING_OBSERVATION["item"],
+                    "artworkUrl": "https://[invalid",
+                },
+            },
+            {
+                **PLAYING_OBSERVATION,
+                "item": {
+                    **PLAYING_OBSERVATION["item"],
+                    "type": {},
+                },
+            },
+            {"status": "stopped", "item": None, "positionMs": 1},
+        ]
+
+        for observation in invalid_observations:
+            with self.subTest(observation=observation):
+                with self.assertRaises(ApiError) as raised:
+                    self.coordinator.report_playback(observation)
+                self.assertEqual(raised.exception.code, "invalid_playback")
+                self.assertEqual(self.coordinator.playback, accepted)
+
 
 class HttpTests(unittest.TestCase):
     @classmethod
@@ -239,6 +357,9 @@ class HttpTests(unittest.TestCase):
         event, ready = self.read_event(events_response)
         self.assertEqual(event, "ready")
         endpoint_token = ready["endpointToken"]
+        event, playback = self.read_event(events_response)
+        self.assertEqual(event, "music.playback")
+        self.assertIn(playback["status"], {"playing", "unavailable"})
 
         def submit_action():
             connection = http.client.HTTPConnection(
@@ -379,6 +500,46 @@ class HttpTests(unittest.TestCase):
         )
         self.assertEqual(status, HTTPStatus.UNAUTHORIZED)
         self.assertEqual(payload["code"], "missing_endpoint_token")
+
+    def test_accepts_and_publishes_a_playback_observation(self):
+        events_connection = http.client.HTTPConnection(
+            "127.0.0.1",
+            self.port,
+            timeout=1,
+        )
+        self.addCleanup(events_connection.close)
+        events_connection.request("GET", "/api/events")
+        events_response = events_connection.getresponse()
+        self.assertEqual(events_response.status, HTTPStatus.OK)
+        self.read_event(events_response)
+        self.read_event(events_response)
+
+        status, snapshot = self.request(
+            "POST",
+            "/api/observations/music/playback",
+            body=json.dumps(PLAYING_OBSERVATION),
+            headers={"Content-Type": "application/json"},
+        )
+
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(snapshot["status"], "playing")
+        self.assertIn("observedAt", snapshot)
+        event, published = self.read_event(events_response)
+        self.assertEqual(event, "music.playback")
+        self.assertEqual(published, snapshot)
+
+    def test_rejects_invalid_playback_over_http(self):
+        status, payload = self.request(
+            "POST",
+            "/api/observations/music/playback",
+            body=json.dumps(
+                {"status": "playing", "item": None, "positionMs": 0}
+            ),
+            headers={"Content-Type": "application/json"},
+        )
+
+        self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+        self.assertEqual(payload["code"], "invalid_playback")
 
 
 if __name__ == "__main__":
