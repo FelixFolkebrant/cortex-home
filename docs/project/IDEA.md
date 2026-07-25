@@ -136,7 +136,7 @@ close enough to define as a useful vertical slice.
 | Device | Intended Role | Known Unknowns |
 |---|---|---|
 | 2020 Lenovo ThinkPad, Ubuntu Server | Always-on compute, coordination, and durable state | Exact model, ports, CPU, RAM, and current services |
-| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and likely nearby audio/USB endpoint | Kiosk load, thermals, power draw, persistent audio routing, and Wi-Fi after firmware installation |
+| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and likely nearby audio/USB endpoint | Real-client load, power draw, and end-to-end Sonos playback |
 | Sonos Play:5 Gen 1 | Speaker through its analog line-in | Currently near the iMac; a direct ThinkPad cable would require changing the physical layout |
 | Philips Hue bridge and three lamps | Local lighting control | Bridge generation and existing room/scene setup |
 | iPhone 17 | Personal controller, Spotify source, and possible casting source | None needed for the first slice |
@@ -160,7 +160,7 @@ Inventory and server-idle behavior observed on 2026-07-23:
 | Graphics | AMD/ATI RV630/M76 Mobility Radeon HD 2600 XT/2700 using the `radeon` kernel driver |
 | Audio | Intel HDA with ALC889A analog and digital playback devices using `snd_hda_intel` |
 | Ethernet | Marvell 88E8058 using `sky2`; link up at 1 Gbit/s full duplex |
-| Wi-Fi | Broadcom BCM4321 detected through `b43`; no wireless interface because `b43/ucode11.fw` is missing; Ubuntu provides `firmware-b43-installer` |
+| Wi-Fi | Broadcom BCM4321 `14e4:4328` using Ubuntu's `wl` driver from `bcmwl-kernel-source`; `b43` rejects this dual-core revision |
 | USB | Intel ICH8 UHCI/EHCI USB 1.1/2.0 controllers; built-in Bluetooth, iSight, and infrared; Apple keyboard; wireless input receiver; no USB device required by Planpoint 1 |
 | System health | No failed systemd services or currently indexed package upgrades |
 | Fifteen-minute idle load | 97–100% CPU idle; 3.4 GiB memory available; no swap use |
@@ -169,12 +169,16 @@ Inventory and server-idle behavior observed on 2026-07-23:
 | Noise | The user confirmed that idle fan noise is acceptable for the room and not a current priority |
 | Audio test | Separate internal-speaker and rear analog ALSA streams succeeded after temporarily unmuting `Master`; the user heard the internal speakers; Sonos playback awaits physical connection |
 | Boot and recovery | A controlled reboot returned to SSH without local intervention; Ethernet was up and no services had failed at 38 seconds uptime |
-| Unattended device access | After reboot with no local login, `imac` lacks `audio`, `video`, and `render` device access; GH-003 must provide an intentional endpoint session or service permission |
+| Endpoint session | LightDM starts the locked `cortex-endpoint` account into Openbox and Chromium at the native 1920 × 1200 resolution |
+| Unattended device access | `cortex-endpoint` has explicit `audio`, `video`, and `render` group access without administrative or SSH access |
+| Wireless recovery | Wi-Fi-only boot returns the kiosk and key-based SSH through `imac.local`; Ethernet remains a fallback and wait-online accepts either routable interface |
+| Kiosk spot check | 99% CPU idle, 3.1 GiB memory available, about 1.0 GiB endpoint RSS, 56°C CPU cores, 75°C Radeon, and approximately 700/1200/1200 RPM fans |
+| Endpoint audio | ALSA restore state selects the rear analog route; physical playback through the Sonos remains for GH-004 |
 
-The server-only resource baseline is qualified. Measure power draw and repeat
-the resource, temperature, fan, and noise observations with the full-screen
-client running in GH-003. Machine ID, boot ID, network addresses, and other
-host-specific identifiers are deliberately not recorded.
+The server-only baseline and the provisioned placeholder spot check are
+qualified. Sustained load, power, and sound latency belong with GH-004's real
+client rather than the placeholder. Machine ID, boot ID, network addresses, and
+other host-specific identifiers are deliberately not recorded.
 
 ## Constraints
 
@@ -248,12 +252,9 @@ host-specific identifiers are deliberately not recorded.
 
 ## Open Facts
 
-- iMac idle power draw, plus temperature, fan behavior, and power draw under
-  kiosk load.
-- Unattended audio and graphics device permissions, persistent mixer
-  configuration, and end-to-end Sonos playback after the iMac moves into place.
-- Wi-Fi operation after GH-003 installs the required Broadcom firmware and
-  configures the home network.
+- Sustained iMac load, temperature, fan behavior, and power draw with the real
+  GH-004 client.
+- End-to-end Sonos playback and sound latency after the iMac moves into place.
 - Exact ThinkPad model, available ports, and current services.
 - Whether Spotify Premium is available; headless Spotify Connect receivers
   require it.

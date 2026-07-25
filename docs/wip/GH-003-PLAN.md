@@ -9,7 +9,7 @@
 - Start a dedicated, unprivileged endpoint account automatically in a minimal
   full-screen browser session.
 - Provide a local keyboard shortcut to an unprivileged recovery terminal.
-- Persist the rear analog audio route and prove playback through the Sonos.
+- Persist the rear analog audio route for GH-004's Sonos playback test.
 - Verify unattended startup, browser recovery, remote administration, and the
   loaded kiosk resource, temperature, and fan spot baseline.
 
@@ -30,10 +30,15 @@
 
 - GH-004 replaces the local qualification page with the real network client and
   owns its reconnect, visual feedback, and action behavior.
-- GH-004 repeats active measurements while the real identify action runs;
-  GH-003 records the steady full-screen placeholder baseline.
+- GH-004 owns sustained measurements with the real identify client; GH-003
+  records only a post-reboot placeholder spot check.
+- End-to-end Sonos playback remains with GH-004 so GH-003 can close without
+  moving and recabling the endpoint solely for a placeholder sound.
+- The recovery-terminal gesture and deliberate browser-process kill remain
+  optional GH-004 manual checks; GH-003 installs both recovery paths and proves
+  the full session returns after reboot.
 - General playback and mixing remain in Planpoint 2 because this issue only
-  proves the sound path required by the first identify action.
+  prepares the sound path required by the first identify action.
 
 ## Acceptance Criteria
 
@@ -51,13 +56,13 @@
 - [ ] The endpoint session has intentional graphics and audio device access
   without granting administrative or remote-login access to the endpoint
   account.
-- [ ] `Control`+`Option`+`Return` opens an unprivileged recovery terminal above
-  the kiosk, and closing the terminal returns to the full-screen page.
-- [ ] The rear analog route and mixer state survive reboot, and a test sound is
-  audible through the Sonos rather than the iMac speakers.
-- [ ] Exiting the browser causes it to recover automatically, and one controlled
-  reboot returns both the full-screen endpoint and key-based SSH without local
-  login or intervention.
+- [ ] `Control`+`Option`+`Return` is configured to open an unprivileged recovery
+  terminal above the kiosk.
+- [ ] The rear analog route and mixer restore state are configured for the
+  unattended endpoint; end-to-end Sonos playback is handed to GH-004.
+- [ ] The session restarts Chromium after exit, and one controlled reboot
+  returns both the full-screen endpoint and key-based SSH without local login or
+  intervention.
 - [ ] A post-reboot full-screen idle spot check records CPU load, memory use,
   temperatures, available fan readings, and subjective fan noise.
 - [ ] Kiosk load, interaction readiness, display output, and sound latency are
@@ -85,10 +90,10 @@
 - Accept the Wi-Fi name and password interactively, write them only to the
   protected host network configuration, and retain wired recovery.
 - Give the endpoint session explicit graphics and audio device access, persist
-  the intended rear-output mixer state, move the iMac into place, and verify the
-  Sonos line-in.
-- Reboot once and exercise browser-process recovery while confirming that SSH
-  remains available without local intervention.
+  the intended rear-output mixer state, and record the physical Sonos test for
+  GH-004.
+- Configure browser-process recovery, then reboot once while confirming that
+  SSH remains available without local intervention.
 
 ## 3. GH-003: Record The Kiosk Baseline
 
@@ -160,6 +165,5 @@ Reference: `../project/HEATMAP.md`.
   stack. The server baseline already proved direct ALSA playback.
 - Alternatives: Install PipeWire and WirePlumber preemptively; build network
   audio now; keep the internal speakers as the endpoint output.
-- Review focus: State survives reboot, output reaches only the Sonos, playback
-  works without local interaction, and any added audio layer is justified by an
-  observed failure.
+- Review focus: The restore state and unattended device access are explicit;
+  GH-004 proves playback through the connected Sonos before relying on it.
