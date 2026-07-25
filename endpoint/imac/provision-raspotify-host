@@ -36,6 +36,9 @@ fi
 install --owner=root --group=root --mode=755 \
   "$source_dir/files/cortex-raspotify" \
   /usr/local/bin/cortex-raspotify
+install --owner=root --group=root --mode=755 \
+  "$source_dir/files/cortex_playback_event.py" \
+  /usr/local/bin/cortex-playback-event
 install -D --owner=root --group=root --mode=600 \
   "$source_dir/files/raspotify.conf" \
   /etc/raspotify/conf

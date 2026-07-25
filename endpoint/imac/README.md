@@ -40,6 +40,16 @@ endpoint user and shares that user's PulseAudio session with Chromium so both
 Spotify and endpoint feedback use the qualified Sonos route. Raspotify remains
 an unofficial, Premium-only Spotify client intended for personal use.
 
+The receiver invokes `/usr/local/bin/cortex-playback-event` for supported
+librespot events. The standard-library adapter keeps only a normalized runtime
+snapshot at `/run/raspotify/cortex-playback.json` so metadata-only track events
+can be combined with later play, pause, and seek events. It sends no account,
+client, host, or raw event fields to the coordinator and logs only a generic
+failure. A reporting failure exits the adapter without stopping audio; the next
+supported receiver event retries with the current runtime state. Stopping or
+failing Raspotify reports `unavailable` through a non-blocking systemd
+`ExecStopPost` command.
+
 The endpoint advertises itself as `imac.local` on the home network. Press
 `Control`+`Option`+`Return` on the iMac keyboard to open an unprivileged
 recovery terminal above the kiosk. Run `su - imac` there when administrative
