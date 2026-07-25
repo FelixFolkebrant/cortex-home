@@ -40,46 +40,46 @@
 
 ## Acceptance Criteria
 
-- [ ] The repository contains one understandable coordinator entry point, its
+- [x] The repository contains one understandable coordinator entry point, its
   static client, focused tests, and the fixed service files needed for
   unattended ThinkPad startup.
-- [ ] The coordinator uses only the Python standard library, keeps state in
+- [x] The coordinator uses only the Python standard library, keeps state in
   memory, and serves the built React client and local-network API without a
   backend framework or database.
-- [ ] The client uses React, Vite, Tailwind CSS, pnpm, `clsx`, CVA,
+- [x] The client uses React, Vite, Tailwind CSS, pnpm, `clsx`, CVA,
   `tailwind-merge`, and Biome without adding a router, data framework, component
   library, or server-side rendering.
-- [ ] `endpoint.identify` is the only accepted action; malformed JSON, oversized
+- [x] `endpoint.identify` is the only accepted action; malformed JSON, oversized
   bodies, missing or duplicate request IDs, unknown actions, and invalid
   endpoint callbacks fail explicitly.
-- [ ] One caller request is acknowledged, delivered to the connected endpoint,
+- [x] One caller request is acknowledged, delivered to the connected endpoint,
   and resolved with a correlated completion or failure carrying the original
   request ID.
-- [ ] A missing endpoint, dropped endpoint, playback failure, and action timeout
+- [x] A missing endpoint, dropped endpoint, playback failure, and action timeout
   produce explicit correlated failures rather than false success.
 - [ ] The 1920 x 1200 client makes connecting, ready, identifying, completed,
   failed, and disconnected states obvious from across the room.
-- [ ] The client reports completion only after its visual response and identify
+- [x] The client reports completion only after its visual response and identify
   sound finish, and end-to-end playback is confirmed through the Sonos rather
   than the iMac speakers.
 - [ ] Restarting Chromium or the coordinator visibly disconnects and reconnects
   the client without local login; a controlled reboot restores both the
   coordinator and full-screen endpoint.
-- [ ] The recovery-terminal shortcut opens above the real client, and closing
+- [x] The recovery-terminal shortcut opens above the real client, and closing
   the terminal returns to the full-screen endpoint.
-- [ ] Automated tests cover request validation, correlation, success, endpoint
+- [x] Automated tests cover request validation, correlation, success, endpoint
   failure, disconnection, duplicate IDs, and timeout without requiring the
   physical hosts.
-- [ ] The pnpm build and Biome checks pass, and the coordinator serves only the
+- [x] The pnpm build and Biome checks pass, and the coordinator serves only the
   generated production client rather than source files or a development server.
-- [ ] When UFW is active, installation exposes the coordinator port only to the
+- [x] When UFW is active, installation exposes the coordinator port only to the
   host's directly connected LAN.
 - [ ] A sustained real-client sample records CPU, memory, temperatures, fan
   readings, subjective noise, identify latency, and power draw when a measuring
   method is available.
-- [ ] Hostnames, addresses, machine identifiers, credentials, and raw host logs
+- [x] Hostnames, addresses, machine identifiers, credentials, and raw host logs
   remain outside Git and committed evidence.
-- [ ] `docs/project/IDEA.md` records the completed identify baseline and leaves
+- [x] `docs/project/IDEA.md` records the completed identify baseline and leaves
   only genuinely unresolved facts under Open Facts.
 - [ ] `docs/wip/GH-004.md` records implementation decisions, summarized results,
   automated checks, and explicit manual confirmations for every user-facing

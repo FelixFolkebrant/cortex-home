@@ -146,8 +146,8 @@ close enough to define as a useful vertical slice.
 | Device | Intended Role | Known Unknowns |
 |---|---|---|
 | Lenovo ThinkPad E495, Ubuntu 24.04 | Always-on compute, coordination, and durable state | Available physical ports and the unrelated failed OpenVPN client unit |
-| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and nearby audio/USB endpoint | Real-client power draw and end-to-end Sonos playback |
-| Sonos Play:5 Gen 1 | Speaker through its analog line-in | Connected to the iMac headphone output; end-to-end playback remains unconfirmed |
+| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and nearby audio/USB endpoint | Real-client power draw |
+| Sonos Play:5 Gen 1 | Speaker through its analog line-in | General music playback remains for Planpoint 2 |
 | Philips Hue bridge and three lamps | Local lighting control | Bridge generation and existing room/scene setup |
 | iPhone 17 | Personal controller, Spotify source, and possible casting source | None needed for the first slice |
 | Google Fitbit | Possible later sensor/input | Exact model and accessible data |
@@ -196,21 +196,21 @@ Inventory and server-idle behavior observed on 2026-07-23:
 | Fifteen-minute temperature | CPU cores 54–58°C; Radeon 75–77°C |
 | Fifteen-minute fan speed | Optical drive 985–997 RPM; hard drive 1207–1211 RPM; CPU 1197–1201 RPM |
 | Noise | The user confirmed that idle fan noise is acceptable for the room and not a current priority |
-| Audio test | Separate internal-speaker and rear analog ALSA streams succeeded after temporarily unmuting `Master`; the user heard the internal speakers; the Sonos is now connected and playback awaits GH-004 |
+| Audio test | ALSA and PulseAudio calibration tones reached the Sonos through the rear analog route |
 | Boot and recovery | A controlled reboot returned to SSH without local intervention; Ethernet was up and no services had failed at 38 seconds uptime |
 | Endpoint session | LightDM starts the locked `cortex-endpoint` account into Openbox and Chromium at the native 1920 × 1200 resolution |
 | Unattended device access | `cortex-endpoint` has explicit `audio`, `video`, and `render` group access without administrative or SSH access |
 | Wireless recovery | Wi-Fi-only boot returns the kiosk and key-based SSH through `imac.local`; Ethernet remains a fallback and wait-online accepts either routable interface |
 | Kiosk spot check | 99% CPU idle, 3.1 GiB memory available, about 1.0 GiB endpoint RSS, 56°C CPU cores, 75°C Radeon, and approximately 700/1200/1200 RPM fans |
-| Endpoint audio | ALSA restore state selects the rear analog route; the Sonos is now physically connected and playback remains for GH-004 |
+| Endpoint audio | The kiosk starts a per-user PulseAudio bridge; Chromium media reaches the restored rear analog route and the connected Sonos |
 | Real-client sample | Over fifteen minutes the live client held 98–100% CPU idle, 3.1 GiB memory available, 1.07 GiB endpoint RSS, 54–56°C CPU cores, and 75–76°C Radeon |
 | Real-client fans | Optical-drive, hard-drive, and CPU fans respectively held at 820–998, 1203–1217, and 1197–1201 RPM |
-| Live identify | One outside request completed with its original correlation ID in 1.78 seconds; the user confirmed the full-screen identify pulse |
+| Live identify | A request completed with its original correlation ID only after the 2.72-second signal ended; the user confirmed the full-screen pulse and all three rising Sonos notes |
 
-The server-only baseline, provisioned placeholder, and real-client resource
-load are qualified. Power and physical sound confirmation remain open. Machine
-ID, boot ID, network addresses, and other host-specific identifiers are
-deliberately not recorded.
+The server-only baseline, provisioned placeholder, real-client resource load,
+and physical identify sound are qualified. Power remains open. Machine ID, boot
+ID, network addresses, and other host-specific identifiers are deliberately not
+recorded.
 
 ## Constraints
 
@@ -287,7 +287,6 @@ deliberately not recorded.
 
 - iMac power draw with the real GH-004 client; no measurement method is
   currently available.
-- End-to-end Sonos playback and sound latency through the connected line-in.
 - Available ThinkPad physical ports and whether the failed OpenVPN client unit
   should be restored or disabled.
 - Whether Spotify Premium is available; headless Spotify Connect receivers
