@@ -19,6 +19,16 @@ roadmap. Candidate child projects are recorded here, but they are not split into
 separate repositories until an independent deployment or maintenance boundary
 has been demonstrated.
 
+## Stack Preferences
+
+- Build the full-screen web client with React and Vite.
+- Use Tailwind CSS for styling and pnpm for JavaScript package management.
+- Use `clsx` for conditional classes, CVA for named component variants, and
+  `tailwind-merge` only where composed Tailwind classes may conflict.
+- Use Biome for JavaScript and JSX formatting and linting.
+- Do not add routing, client data, or component frameworks until a user flow
+  requires them.
+
 ## Product Character
 
 ### Fun And Convenient

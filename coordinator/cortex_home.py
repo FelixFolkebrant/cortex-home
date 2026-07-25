@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import mimetypes
 import queue
 import re
 import secrets
@@ -262,9 +263,9 @@ class Coordinator:
 class CortexHomeServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, server_address, coordinator, client_file):
+    def __init__(self, server_address, coordinator, client_directory):
         self.coordinator = coordinator
-        self.client_file = Path(client_file)
+        self.client_directory = Path(client_directory).resolve()
         super().__init__(server_address, CortexHomeHandler)
 
 
@@ -274,7 +275,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path in {"/", "/index.html"}:
-            self._serve_client()
+            self._serve_static("index.html")
         elif path == "/api/health":
             self._send_json(
                 HTTPStatus.OK,
@@ -289,6 +290,8 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
             )
         elif path == "/api/events":
             self._serve_events()
+        elif path.startswith("/assets/"):
+            self._serve_static(path.removeprefix("/"))
         else:
             self._send_error(
                 ApiError(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
@@ -329,9 +332,19 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
         except ApiError as error:
             self._send_error(error)
 
-    def _serve_client(self):
+    def _serve_static(self, relative_path):
+        file_path = (self.server.client_directory / relative_path).resolve()
+        if (
+            not file_path.is_relative_to(self.server.client_directory)
+            or not file_path.is_file()
+        ):
+            self._send_error(
+                ApiError(HTTPStatus.NOT_FOUND, "not_found", "Asset not found.")
+            )
+            return
+
         try:
-            body = self.server.client_file.read_bytes()
+            body = file_path.read_bytes()
         except OSError:
             self._send_error(
                 ApiError(
@@ -342,18 +355,29 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
             )
             return
 
+        content_type, _ = mimetypes.guess_type(file_path)
         self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
         self.send_header(
-            "Content-Security-Policy",
-            "default-src 'self'; "
-            "connect-src 'self'; "
-            "img-src 'self' data:; "
-            "script-src 'unsafe-inline'; "
-            "style-src 'unsafe-inline'",
+            "Content-Type",
+            content_type or "application/octet-stream",
         )
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        if file_path.name == "index.html":
+            self.send_header("Cache-Control", "no-store")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; "
+                "connect-src 'self'; "
+                "img-src 'self' data:; "
+                "script-src 'self'; "
+                "style-src 'self'",
+            )
+        else:
+            self.send_header(
+                "Cache-Control",
+                "public, max-age=31536000, immutable",
+            )
         self.end_headers()
         self.wfile.write(body)
 
@@ -466,7 +490,7 @@ def parse_args():
     parser.add_argument(
         "--client",
         type=Path,
-        default=Path(__file__).with_name("client").joinpath("index.html"),
+        default=Path(__file__).with_name("client"),
     )
     parser.add_argument("--action-timeout", type=float, default=10)
     return parser.parse_args()

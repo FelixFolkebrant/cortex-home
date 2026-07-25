@@ -1,6 +1,7 @@
 import http.client
 import json
 import threading
+import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
@@ -186,11 +187,17 @@ class CoordinatorTests(unittest.TestCase):
 class HttpTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        client_file = Path(__file__).parents[1] / "client" / "index.html"
+        cls.client_directory = tempfile.TemporaryDirectory()
+        client_path = Path(cls.client_directory.name)
+        client_path.joinpath("assets").mkdir()
+        client_path.joinpath("index.html").write_text(
+            '<div id="root"></div><script src="/assets/app.js"></script>'
+        )
+        client_path.joinpath("assets", "app.js").write_text("const ready = true;")
         cls.server = CortexHomeServer(
             ("127.0.0.1", 0),
             Coordinator(action_timeout=0.05),
-            client_file,
+            client_path,
         )
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -201,6 +208,7 @@ class HttpTests(unittest.TestCase):
         cls.server.shutdown()
         cls.server.server_close()
         cls.thread.join(timeout=1)
+        cls.client_directory.cleanup()
 
     def request(self, method, path, body=None, headers=None):
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=1)
@@ -294,8 +302,17 @@ class HttpTests(unittest.TestCase):
         response = connection.getresponse()
         body = response.read().decode()
         self.assertEqual(response.status, HTTPStatus.OK)
-        self.assertIn("Room endpoint ready.", body)
+        self.assertIn('<div id="root"></div>', body)
         self.assertEqual(response.getheader("Cache-Control"), "no-store")
+
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=1)
+        self.addCleanup(connection.close)
+        connection.request("GET", "/assets/app.js")
+        response = connection.getresponse()
+        self.assertEqual(response.status, HTTPStatus.OK)
+        self.assertEqual(response.getheader("Content-Type"), "text/javascript")
+        self.assertIn("immutable", response.getheader("Cache-Control"))
+        self.assertEqual(response.read(), b"const ready = true;")
 
         status, payload = self.request("GET", "/api/health")
         self.assertEqual(status, HTTPStatus.OK)

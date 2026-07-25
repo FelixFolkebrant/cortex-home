@@ -19,6 +19,11 @@ fi
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
+if [ ! -f "$script_dir/dist/index.html" ]; then
+  echo "The built Cortex Home client is missing." >&2
+  exit 1
+fi
+
 if ! id cortex-home >/dev/null 2>&1; then
   useradd \
     --system \
@@ -29,12 +34,12 @@ if ! id cortex-home >/dev/null 2>&1; then
 fi
 
 install -d --owner=root --group=root --mode=755 /opt/cortex-home/client
+find /opt/cortex-home/client -mindepth 1 -delete
+cp -R "$script_dir/dist/." /opt/cortex-home/client/
+chown -R root:root /opt/cortex-home/client
 install --owner=root --group=root --mode=755 \
   "$script_dir/cortex_home.py" \
   /opt/cortex-home/cortex_home.py
-install --owner=root --group=root --mode=644 \
-  "$script_dir/client/index.html" \
-  /opt/cortex-home/client/index.html
 install --owner=root --group=root --mode=644 \
   "$script_dir/files/cortex-home.service" \
   /etc/systemd/system/cortex-home.service

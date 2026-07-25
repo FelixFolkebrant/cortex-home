@@ -9,6 +9,15 @@ fi
 
 server_host=$1
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "Cortex Home client builds require pnpm." >&2
+  exit 1
+fi
+
+pnpm --dir "$script_dir/client" install --frozen-lockfile
+pnpm --dir "$script_dir/client" build
+
 remote_dir=$(ssh "$server_host" mktemp -d)
 
 case "$remote_dir" in
@@ -27,7 +36,7 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
 scp -q -r \
-  "$script_dir/client" \
+  "$script_dir/client/dist" \
   "$script_dir/files" \
   "$script_dir/cortex_home.py" \
   "$script_dir/install-host" \

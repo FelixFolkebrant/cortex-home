@@ -6,6 +6,8 @@
   `endpoint.identify` action.
 - Serve the real full-screen iMac client from the coordinator and connect it
   through a live event stream.
+- Build the client with the accepted React, Vite, Tailwind CSS, pnpm, class
+  composition, and Biome toolchain.
 - Correlate caller requests, endpoint feedback, completion, failure, and timeout
   with one caller-provided request ID.
 - Replace the local qualification page with the network client while preserving
@@ -23,7 +25,8 @@
   outside the home network.
 - A database, durable action history, message broker, plugin system, generic
   action schema, or multiple room endpoints.
-- A permanent frontend or backend framework decision.
+- A backend framework, frontend router, data framework, component library, or
+  permanent channel architecture.
 
 ## Deferred
 
@@ -41,8 +44,11 @@
   static client, focused tests, and the fixed service files needed for
   unattended ThinkPad startup.
 - [ ] The coordinator uses only the Python standard library, keeps state in
-  memory, and serves the client and local-network API without a framework,
-  database, or build step.
+  memory, and serves the built React client and local-network API without a
+  backend framework or database.
+- [ ] The client uses React, Vite, Tailwind CSS, pnpm, `clsx`, CVA,
+  `tailwind-merge`, and Biome without adding a router, data framework, component
+  library, or server-side rendering.
 - [ ] `endpoint.identify` is the only accepted action; malformed JSON, oversized
   bodies, missing or duplicate request IDs, unknown actions, and invalid
   endpoint callbacks fail explicitly.
@@ -64,6 +70,8 @@
 - [ ] Automated tests cover request validation, correlation, success, endpoint
   failure, disconnection, duplicate IDs, and timeout without requiring the
   physical hosts.
+- [ ] The pnpm build and Biome checks pass, and the coordinator serves only the
+  generated production client rather than source files or a development server.
 - [ ] A sustained real-client sample records CPU, memory, temperatures, fan
   readings, subjective noise, identify latency, and power draw when a measuring
   method is available.
@@ -88,6 +96,9 @@
 
 ## 2. GH-004: Connect The Live Room Endpoint
 
+- Replace the dependency-free prototype with the accepted React and Tailwind
+  client, using CVA for its named room states and the smaller class helpers only
+  where their behavior is needed.
 - Replace the qualification page with the full-screen network client and keep
   its coordinator URL in endpoint-local configuration rather than Git.
 - Render connection and action phases over a server-sent event stream, play the
@@ -121,8 +132,8 @@ Reference: `../project/HEATMAP.md`.
   open until the endpoint reports a terminal result or the coordinator times
   out.
 - Why: The first slice needs one server-to-endpoint event and one correlated
-  result. This uses browser and Python platform features without dependencies,
-  a build step, or a general messaging layer.
+  result. This keeps the backend dependency-free without introducing a general
+  messaging layer.
 - Alternatives: A WebSocket framework; short polling; a message broker; separate
   submit and status-polling endpoints.
 - Review focus: Clear connection ownership, bounded waits, cleanup after
@@ -143,13 +154,13 @@ Reference: `../project/HEATMAP.md`.
 - Review focus: Correlation, terminal-state ownership, timeout behavior, and
   whether every rejection or failure is visible to both caller and endpoint.
 
-### H3 - Let The Browser Own Identify Feedback
+### H3 - Let The React Client Own Identify Feedback
 
 - Decision: Where the synchronized visual and audible identify behavior runs.
-- Proposed approach: Have the full-screen client change its visible state, play
-  a short Web Audio signal, wait for both to finish, and then report completion.
-  Add an audio service only if the real Chromium session cannot use the
-  qualified rear analog device.
+- Proposed approach: Have the full-screen React client change its CVA state,
+  play a short Web Audio signal, wait for both to finish, and then report
+  completion. Add an audio service only if the real Chromium session cannot use
+  the qualified rear analog device.
 - Why: One browser-owned interaction keeps visual timing, sound timing, and
   completion in the component that directly observes them.
 - Alternatives: A separate endpoint daemon using ALSA; coordinator-triggered
