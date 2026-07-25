@@ -8,7 +8,8 @@ architecture remains open.
 ## Planpoints
 
 Planpoint 1 is complete. Planpoint 2 is accepted and active. Its iMac-hosted
-Raspotify receiver is qualified; publishing local playback state is next.
+Raspotify receiver and local playback state path are qualified; presenting the
+Music channel is next.
 
 ### [1 COMPLETE - Connected Room Endpoint](../planpoints/PP-1.md)
 

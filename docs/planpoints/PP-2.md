@@ -105,12 +105,12 @@ supports Premium and that using it may be prohibited by Spotify.
 1. **GH-005 COMPLETE - Provision The Spotify Receiver**: installed a pinned
    Raspotify receiver on the iMac, routed it through the existing Sonos output,
    and qualified discovery, playback, service health, and endpoint load.
-2. **GH-006 NEXT - Publish Spotify Playback State**: normalize receiver events
-   into `music.playback` snapshots and carry availability, metadata, progress,
-   and failures through the coordinator.
-3. **GH-007 - Present The Music Channel**: replace the provisional idle view
-   with a useful now-playing display while preserving identify and connection
-   feedback.
+2. **GH-006 COMPLETE - Publish Spotify Playback State**: normalized receiver
+   events into `music.playback` snapshots and carried availability, metadata,
+   progress, and failures through the coordinator.
+3. **GH-007 NEXT - Present The Music Channel**: replace the provisional idle
+   view with a useful now-playing display while preserving identify and
+   connection feedback.
 
 ## Conceptual Heatmap
 
