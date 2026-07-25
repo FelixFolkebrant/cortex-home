@@ -203,6 +203,8 @@ Inventory and server-idle behavior observed on 2026-07-23:
 | Wireless recovery | Wi-Fi-only boot returns the kiosk and key-based SSH through `imac.local`; Ethernet remains a fallback and wait-online accepts either routable interface |
 | Kiosk spot check | 99% CPU idle, 3.1 GiB memory available, about 1.0 GiB endpoint RSS, 56°C CPU cores, 75°C Radeon, and approximately 700/1200/1200 RPM fans |
 | Endpoint audio | The kiosk starts a per-user PulseAudio bridge; Chromium media reaches the restored rear analog route and the connected Sonos |
+| Spotify receiver | Raspotify 0.48.2 with librespot 0.8.0 advertises `Cortex Home`, runs as the endpoint user through the existing PulseAudio route, and plays an iPhone-selected Spotify track through the Sonos |
+| Spotify playback load | During the first bounded playback window Raspotify used 25.6–28.0 MiB RSS with 2.9–3.0 GiB available memory; a follow-up steady interval remained 91% CPU idle with no swap use |
 | Real-client sample | Over fifteen minutes the live client held 98–100% CPU idle, 3.1 GiB memory available, 1.07 GiB endpoint RSS, 54–56°C CPU cores, and 75–76°C Radeon |
 | Real-client fans | Optical-drive, hard-drive, and CPU fans respectively held at 820–998, 1203–1217, and 1197–1201 RPM |
 | Live identify | A request completed with its original correlation ID only after the 2.72-second signal ended; the user confirmed the full-screen pulse and all three rising Sonos notes |
@@ -289,6 +291,4 @@ recorded.
   currently available.
 - Available ThinkPad physical ports and whether the failed OpenVPN client unit
   should be restored or disabled.
-- Whether Spotify Premium is available; headless Spotify Connect receivers
-  require it.
 - Which interaction should switch channels in the first usable version.
