@@ -63,6 +63,7 @@ apt-get install --yes --no-install-recommends \
   avahi-daemon \
   bcmwl-kernel-source \
   chromium-browser \
+  curl \
   dbus-x11 \
   lightdm \
   openbox \
@@ -86,6 +87,8 @@ fi
 
 passwd --lock cortex-endpoint
 usermod --append --groups audio,render,video cortex-endpoint
+
+"$source_dir/provision-raspotify-host"
 
 install -D --mode=644 \
   "$source_dir/files/cortex-endpoint.desktop" \
@@ -207,4 +210,4 @@ systemctl daemon-reload
 systemctl restart systemd-networkd-wait-online.service
 systemctl restart lightdm.service
 
-echo "GH-003 endpoint provisioning completed."
+echo "Cortex Home endpoint provisioning completed."
