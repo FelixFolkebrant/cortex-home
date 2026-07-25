@@ -85,15 +85,16 @@ supports Premium and that using it may be prohibited by Spotify.
   actually feeds the Sonos. Spotify's Web API would add OAuth, cloud polling,
   rate limits, and device filtering without improving this slice's source of
   truth.
-- Status: open
+- Status: decided
 
 ## Plumbing
 
-- Threaded now: a `music.playback` snapshot carries `status`, `item`, and
-  `positionMs` from the iMac receiver adapter through the coordinator to the
-  full-screen client. `item` is absent when nothing is loaded and otherwise
-  contains the Spotify URI, item type, title, creators, collection, artwork URL,
-  and duration.
+- Threaded now: a `music.playback` snapshot carries `status`, `item`,
+  `positionMs`, and `observedAt` from the iMac receiver adapter through the
+  coordinator to the full-screen client. `item` is `null` when nothing is
+  loaded and otherwise contains the Spotify URI, item type, title, creators,
+  collection, artwork URL, and duration. `observedAt` lets a client project
+  progress between sparse receiver events without polling Spotify.
 - Pattern set: An endpoint or service adapter reports observed state to the
   coordinator; the coordinator retains the latest snapshot and publishes it to
   subscribed interfaces. Provider events and credentials do not become the
@@ -101,12 +102,12 @@ supports Premium and that using it may be prohibited by Spotify.
 
 ## Issues
 
-1. **GH-005 - Provision The Spotify Receiver**: install a pinned Raspotify
-   receiver on the iMac, route it through the existing Sonos output, and qualify
-   discovery, unattended startup, recovery, and endpoint load.
-2. **GH-006 - Publish Spotify Playback State**: normalize receiver events into
-   `music.playback` snapshots and carry availability, metadata, progress, and
-   failures through the coordinator.
+1. **GH-005 COMPLETE - Provision The Spotify Receiver**: installed a pinned
+   Raspotify receiver on the iMac, routed it through the existing Sonos output,
+   and qualified discovery, playback, service health, and endpoint load.
+2. **GH-006 NEXT - Publish Spotify Playback State**: normalize receiver events
+   into `music.playback` snapshots and carry availability, metadata, progress,
+   and failures through the coordinator.
 3. **GH-007 - Present The Music Channel**: replace the provisional idle view
    with a useful now-playing display while preserving identify and connection
    feedback.
