@@ -528,6 +528,33 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(event, "music.playback")
         self.assertEqual(published, snapshot)
 
+    def test_closes_a_replaced_event_stream_for_reconnection(self):
+        first_connection = http.client.HTTPConnection(
+            "127.0.0.1",
+            self.port,
+            timeout=1,
+        )
+        self.addCleanup(first_connection.close)
+        first_connection.request("GET", "/api/events")
+        first_response = first_connection.getresponse()
+        self.assertEqual(first_response.status, HTTPStatus.OK)
+        self.read_event(first_response)
+        self.read_event(first_response)
+
+        second_connection = http.client.HTTPConnection(
+            "127.0.0.1",
+            self.port,
+            timeout=1,
+        )
+        self.addCleanup(second_connection.close)
+        second_connection.request("GET", "/api/events")
+        second_response = second_connection.getresponse()
+        self.assertEqual(second_response.status, HTTPStatus.OK)
+        self.read_event(second_response)
+        self.read_event(second_response)
+
+        self.assertEqual(first_response.readline(), b"")
+
     def test_rejects_invalid_playback_over_http(self):
         status, payload = self.request(
             "POST",

@@ -455,6 +455,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
         finally:
+            self.close_connection = True
             self.server.coordinator.disconnect_endpoint(endpoint.token)
 
     def _write_event(self, event, data):
