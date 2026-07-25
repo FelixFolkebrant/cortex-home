@@ -1,0 +1,47 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Run this installer as root." >&2
+  exit 1
+fi
+
+if [ ! -x /usr/bin/python3 ]; then
+  echo "Cortex Home requires Python 3 at /usr/bin/python3." >&2
+  exit 1
+fi
+
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "Cortex Home requires systemd." >&2
+  exit 1
+fi
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+if ! id cortex-home >/dev/null 2>&1; then
+  useradd \
+    --system \
+    --home-dir /nonexistent \
+    --no-create-home \
+    --shell /usr/sbin/nologin \
+    cortex-home
+fi
+
+install -d --owner=root --group=root --mode=755 /opt/cortex-home/client
+install --owner=root --group=root --mode=755 \
+  "$script_dir/cortex_home.py" \
+  /opt/cortex-home/cortex_home.py
+install --owner=root --group=root --mode=644 \
+  "$script_dir/client/index.html" \
+  /opt/cortex-home/client/index.html
+install --owner=root --group=root --mode=644 \
+  "$script_dir/files/cortex-home.service" \
+  /etc/systemd/system/cortex-home.service
+
+systemctl daemon-reload
+systemctl enable cortex-home.service
+systemctl restart cortex-home.service
+systemctl is-active --quiet cortex-home.service
+
+echo "GH-004 coordinator installation completed."

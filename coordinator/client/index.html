@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cortex Home room endpoint</title>
+    <style>
+      :root {
+        color: #f8f0dc;
+        background: #11100d;
+        font-family: "DejaVu Sans", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 50% 35%, #343026 0, transparent 38%),
+          #11100d;
+        transition: background 300ms ease;
+      }
+
+      main {
+        min-height: 100vh;
+        display: grid;
+        place-content: center;
+        padding: 8vw;
+        text-align: center;
+      }
+
+      .eyebrow {
+        margin: 0 0 1.5rem;
+        color: #c8bda4;
+        font-size: clamp(1rem, 1.8vw, 1.75rem);
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 14ch;
+        margin: 0 auto;
+        font-size: clamp(5rem, 10vw, 11rem);
+        line-height: 0.9;
+        letter-spacing: -0.07em;
+      }
+
+      .detail {
+        min-height: 1.5em;
+        margin: 2rem 0 0;
+        color: #d5c9af;
+        font-size: clamp(1.25rem, 2.2vw, 2.25rem);
+      }
+
+      .signal {
+        width: clamp(8rem, 14vw, 14rem);
+        aspect-ratio: 1;
+        margin: 4rem auto 0;
+        border: 2px solid #c89542;
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 1rem rgb(200 149 66 / 8%),
+          0 0 5rem rgb(200 149 66 / 18%);
+        transition:
+          border-color 300ms ease,
+          box-shadow 300ms ease,
+          transform 300ms ease;
+      }
+
+      body[data-state="connecting"] .signal,
+      body[data-state="disconnected"] .signal {
+        border-color: #706a5d;
+        box-shadow: 0 0 0 1rem rgb(112 106 93 / 8%);
+      }
+
+      body[data-state="identifying"] {
+        background:
+          radial-gradient(circle at 50% 42%, #6f451d 0, transparent 44%),
+          #17110b;
+      }
+
+      body[data-state="identifying"] .signal {
+        border-color: #ffd27d;
+        box-shadow:
+          0 0 0 2rem rgb(255 210 125 / 16%),
+          0 0 9rem rgb(255 177 63 / 70%);
+        animation: identify 550ms ease-in-out infinite alternate;
+      }
+
+      body[data-state="completed"] .signal {
+        border-color: #92d6a1;
+        box-shadow:
+          0 0 0 1.5rem rgb(146 214 161 / 14%),
+          0 0 7rem rgb(146 214 161 / 45%);
+        transform: scale(1.08);
+      }
+
+      body[data-state="failed"] .signal {
+        border-color: #e67d6f;
+        box-shadow:
+          0 0 0 1.5rem rgb(230 125 111 / 12%),
+          0 0 6rem rgb(230 125 111 / 38%);
+      }
+
+      @keyframes identify {
+        from {
+          transform: scale(0.92);
+        }
+        to {
+          transform: scale(1.12);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 1ms !important;
+          transition-duration: 1ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body data-state="connecting">
+    <main aria-live="polite">
+      <p class="eyebrow">Cortex Home</p>
+      <h1 id="status">Finding the room.</h1>
+      <p class="detail" id="detail">Connecting to the coordinator.</p>
+      <div class="signal" aria-hidden="true"></div>
+    </main>
+    <script>
+      const status = document.querySelector("#status");
+      const detail = document.querySelector("#detail");
+
+      let endpointToken = null;
+      let activeRequestId = null;
+      let actionGeneration = 0;
+
+      const states = {
+        connecting: ["Finding the room.", "Connecting to the coordinator."],
+        ready: ["Room endpoint ready.", "Waiting for an identify request."],
+        identifying: ["Here I am.", "Playing the room signal."],
+        completed: ["Identified.", "The room confirmed the request."],
+        failed: ["Couldn’t identify.", "The request failed."],
+        disconnected: ["Coordinator offline.", "Reconnecting automatically."],
+      };
+
+      function showState(state, message) {
+        const [heading, defaultMessage] = states[state];
+        document.body.dataset.state = state;
+        status.textContent = heading;
+        detail.textContent = message || defaultMessage;
+      }
+
+      async function postStatus(requestId, state, error) {
+        const response = await fetch(
+          `/api/requests/${encodeURIComponent(requestId)}/status`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Endpoint-Token": endpointToken,
+            },
+            body: JSON.stringify({
+              status: state,
+              ...(error ? { error } : {}),
+            }),
+          },
+        );
+
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(result.error || `Coordinator returned ${response.status}.`);
+        }
+      }
+
+      async function playIdentifySound() {
+        const context = new AudioContext();
+        if (context.state === "suspended") {
+          await context.resume();
+        }
+        if (context.state !== "running") {
+          await context.close();
+          throw new Error("Browser audio did not start.");
+        }
+
+        const startedAt = context.currentTime + 0.05;
+
+        for (const [frequency, offset] of [[440, 0], [660, 0.42], [880, 0.84]]) {
+          const oscillator = new OscillatorNode(context, { frequency });
+          const gain = new GainNode(context, { gain: 0.14 });
+          oscillator.connect(gain).connect(context.destination);
+          oscillator.start(startedAt + offset);
+          oscillator.stop(startedAt + offset + 0.28);
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await context.close();
+      }
+
+      async function identify(requestId) {
+        const generation = ++actionGeneration;
+        activeRequestId = requestId;
+        showState("identifying");
+
+        try {
+          await postStatus(requestId, "identifying");
+          await playIdentifySound();
+
+          if (generation !== actionGeneration) {
+            return;
+          }
+
+          await postStatus(requestId, "completed");
+          activeRequestId = null;
+          showState("completed");
+          setTimeout(() => {
+            if (generation === actionGeneration) {
+              showState("ready");
+            }
+          }, 2500);
+        } catch (error) {
+          if (generation !== actionGeneration) {
+            return;
+          }
+
+          const message = error instanceof Error ? error.message : "Unknown failure.";
+          try {
+            await postStatus(requestId, "failed", message);
+          } catch {
+            // The visible failure remains useful when the coordinator is offline.
+          }
+          activeRequestId = null;
+          showState("failed", message);
+        }
+      }
+
+      const events = new EventSource("/api/events");
+
+      events.addEventListener("ready", (event) => {
+        const message = JSON.parse(event.data);
+        endpointToken = message.endpointToken;
+        actionGeneration += 1;
+        activeRequestId = null;
+        showState("ready");
+      });
+
+      events.addEventListener("identify", (event) => {
+        const message = JSON.parse(event.data);
+        if (!activeRequestId) {
+          identify(message.requestId);
+        }
+      });
+
+      events.addEventListener("result", (event) => {
+        const message = JSON.parse(event.data);
+        if (message.requestId === activeRequestId && message.status === "failed") {
+          actionGeneration += 1;
+          activeRequestId = null;
+          showState("failed", message.error);
+        }
+      });
+
+      events.onerror = () => {
+        endpointToken = null;
+        actionGeneration += 1;
+        activeRequestId = null;
+        showState("disconnected");
+      };
+    </script>
+  </body>
+</html>

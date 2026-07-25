@@ -1,0 +1,492 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import queue
+import re
+import secrets
+import threading
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse
+
+
+ACTION = "endpoint.identify"
+MAX_BODY_BYTES = 4096
+MAX_REQUESTS = 128
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+
+
+class ApiError(Exception):
+    def __init__(self, status, code, message):
+        super().__init__(message)
+        self.status = status
+        self.code = code
+        self.message = message
+
+
+@dataclass
+class PendingRequest:
+    request_id: str
+    endpoint_token: str
+    state: str = "accepted"
+    error: str | None = None
+    http_status: int = HTTPStatus.OK
+    finished: threading.Event = field(default_factory=threading.Event)
+
+    def payload(self):
+        payload = {
+            "requestId": self.request_id,
+            "action": ACTION,
+            "status": self.state,
+        }
+        if self.error:
+            payload["error"] = self.error
+        return payload
+
+
+@dataclass
+class EndpointConnection:
+    token: str = field(default_factory=lambda: secrets.token_urlsafe(24))
+    events: queue.Queue = field(default_factory=queue.Queue)
+
+    def send(self, event, data):
+        self.events.put((event, data))
+
+    def close(self):
+        self.events.put(None)
+
+
+class Coordinator:
+    def __init__(self, action_timeout=10):
+        self.action_timeout = action_timeout
+        self.lock = threading.RLock()
+        self.endpoint = None
+        self.active_request_id = None
+        self.requests = OrderedDict()
+
+    def connect_endpoint(self):
+        with self.lock:
+            previous = self.endpoint
+            if previous:
+                self._fail_active_locked(
+                    previous.token,
+                    "endpoint connection was replaced",
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
+                previous.close()
+
+            self.endpoint = EndpointConnection()
+            return self.endpoint
+
+    def disconnect_endpoint(self, token):
+        with self.lock:
+            if not self.endpoint or self.endpoint.token != token:
+                return
+
+            self.endpoint = None
+            self._fail_active_locked(
+                token,
+                "endpoint disconnected",
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+
+    def submit(self, request_id, action):
+        self._validate_request_id(request_id)
+        if action != ACTION:
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "unknown_action",
+                f"Only {ACTION} is allowed.",
+            )
+
+        with self.lock:
+            if request_id in self.requests:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "duplicate_request_id",
+                    "The request ID has already been used.",
+                )
+            if not self.endpoint:
+                raise ApiError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "endpoint_unavailable",
+                    "The room endpoint is not connected.",
+                )
+            if self.active_request_id:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "endpoint_busy",
+                    "The room endpoint is already identifying.",
+                )
+
+            pending = PendingRequest(request_id, self.endpoint.token)
+            self.requests[request_id] = pending
+            self.active_request_id = request_id
+            self._trim_requests_locked()
+            self.endpoint.send(
+                "identify",
+                {"requestId": request_id, "action": ACTION},
+            )
+
+        if not pending.finished.wait(self.action_timeout):
+            with self.lock:
+                if not pending.finished.is_set():
+                    self._finish_locked(
+                        pending,
+                        "failed",
+                        "action timed out",
+                        HTTPStatus.GATEWAY_TIMEOUT,
+                        notify_endpoint=True,
+                    )
+
+        return pending.http_status, pending.payload()
+
+    def update(self, endpoint_token, request_id, status, error=None):
+        if not endpoint_token:
+            raise ApiError(
+                HTTPStatus.UNAUTHORIZED,
+                "missing_endpoint_token",
+                "The endpoint token is required.",
+            )
+
+        with self.lock:
+            if not self.endpoint or self.endpoint.token != endpoint_token:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "stale_endpoint",
+                    "The endpoint connection is no longer active.",
+                )
+
+            pending = self.requests.get(request_id)
+            if not pending or pending.endpoint_token != endpoint_token:
+                raise ApiError(
+                    HTTPStatus.NOT_FOUND,
+                    "unknown_request",
+                    "No active request matches this endpoint and request ID.",
+                )
+            if pending.finished.is_set():
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "request_finished",
+                    "The request already reached a terminal state.",
+                )
+
+            if status == "identifying" and pending.state == "accepted":
+                pending.state = status
+            elif status == "completed" and pending.state == "identifying":
+                self._finish_locked(
+                    pending,
+                    status,
+                    None,
+                    HTTPStatus.OK,
+                )
+            elif status == "failed" and pending.state in {"accepted", "identifying"}:
+                if not isinstance(error, str) or not error.strip():
+                    raise ApiError(
+                        HTTPStatus.BAD_REQUEST,
+                        "missing_error",
+                        "A failed endpoint status requires an error.",
+                    )
+                self._finish_locked(
+                    pending,
+                    status,
+                    error.strip()[:160],
+                    HTTPStatus.BAD_GATEWAY,
+                )
+            else:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "invalid_transition",
+                    f"Cannot change {pending.state} to {status}.",
+                )
+
+            return pending.payload()
+
+    def is_endpoint_connected(self):
+        with self.lock:
+            return self.endpoint is not None
+
+    def _fail_active_locked(self, endpoint_token, error, http_status):
+        if not self.active_request_id:
+            return
+
+        pending = self.requests[self.active_request_id]
+        if pending.endpoint_token == endpoint_token and not pending.finished.is_set():
+            self._finish_locked(pending, "failed", error, http_status)
+
+    def _finish_locked(
+        self,
+        pending,
+        state,
+        error,
+        http_status,
+        notify_endpoint=False,
+    ):
+        pending.state = state
+        pending.error = error
+        pending.http_status = http_status
+        if self.active_request_id == pending.request_id:
+            self.active_request_id = None
+        pending.finished.set()
+
+        if (
+            notify_endpoint
+            and self.endpoint
+            and self.endpoint.token == pending.endpoint_token
+        ):
+            self.endpoint.send("result", pending.payload())
+
+    def _trim_requests_locked(self):
+        while len(self.requests) > MAX_REQUESTS:
+            oldest_id, oldest = next(iter(self.requests.items()))
+            if not oldest.finished.is_set():
+                break
+            del self.requests[oldest_id]
+
+    @staticmethod
+    def _validate_request_id(request_id):
+        if not isinstance(request_id, str) or not REQUEST_ID_PATTERN.fullmatch(
+            request_id
+        ):
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_request_id",
+                "requestId must be 1-64 URL-safe characters.",
+            )
+
+
+class CortexHomeServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, server_address, coordinator, client_file):
+        self.coordinator = coordinator
+        self.client_file = Path(client_file)
+        super().__init__(server_address, CortexHomeHandler)
+
+
+class CortexHomeHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def do_GET(self):
+        path = urlparse(self.path).path
+        if path in {"/", "/index.html"}:
+            self._serve_client()
+        elif path == "/api/health":
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "status": "ok",
+                    "endpoint": (
+                        "connected"
+                        if self.server.coordinator.is_endpoint_connected()
+                        else "disconnected"
+                    ),
+                },
+            )
+        elif path == "/api/events":
+            self._serve_events()
+        else:
+            self._send_error(
+                ApiError(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
+            )
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+        try:
+            if path == "/api/actions":
+                body = self._read_json({"requestId", "action"})
+                status, payload = self.server.coordinator.submit(
+                    body.get("requestId"),
+                    body.get("action"),
+                )
+                self._send_json(status, payload)
+                return
+
+            match = re.fullmatch(r"/api/requests/([^/]+)/status", path)
+            if match:
+                body = self._read_json({"status", "error"})
+                request_id = match.group(1)
+                if not REQUEST_ID_PATTERN.fullmatch(request_id):
+                    raise ApiError(
+                        HTTPStatus.BAD_REQUEST,
+                        "invalid_request_id",
+                        "The request path contains an invalid request ID.",
+                    )
+                payload = self.server.coordinator.update(
+                    self.headers.get("X-Endpoint-Token"),
+                    request_id,
+                    body.get("status"),
+                    body.get("error"),
+                )
+                self._send_json(HTTPStatus.OK, payload)
+                return
+
+            raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
+        except ApiError as error:
+            self._send_error(error)
+
+    def _serve_client(self):
+        try:
+            body = self.server.client_file.read_bytes()
+        except OSError:
+            self._send_error(
+                ApiError(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    "client_unavailable",
+                    "The endpoint client could not be loaded.",
+                )
+            )
+            return
+
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "connect-src 'self'; "
+            "img-src 'self' data:; "
+            "script-src 'unsafe-inline'; "
+            "style-src 'unsafe-inline'",
+        )
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_events(self):
+        endpoint = self.server.coordinator.connect_endpoint()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+
+        try:
+            self._write_event("ready", {"endpointToken": endpoint.token})
+            while True:
+                try:
+                    item = endpoint.events.get(timeout=2)
+                except queue.Empty:
+                    self.wfile.write(b": heartbeat\n\n")
+                    self.wfile.flush()
+                    continue
+
+                if item is None:
+                    return
+
+                event, data = item
+                self._write_event(event, data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            self.server.coordinator.disconnect_endpoint(endpoint.token)
+
+    def _write_event(self, event, data):
+        encoded = json.dumps(data, separators=(",", ":"))
+        self.wfile.write(f"event: {event}\ndata: {encoded}\n\n".encode())
+        self.wfile.flush()
+
+    def _read_json(self, allowed_keys):
+        content_type = self.headers.get_content_type()
+        if content_type != "application/json":
+            raise ApiError(
+                HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+                "invalid_content_type",
+                "Content-Type must be application/json.",
+            )
+
+        content_length = self.headers.get("Content-Length")
+        try:
+            length = int(content_length)
+        except (TypeError, ValueError):
+            raise ApiError(
+                HTTPStatus.LENGTH_REQUIRED,
+                "missing_content_length",
+                "A valid Content-Length is required.",
+            )
+        if length < 1 or length > MAX_BODY_BYTES:
+            raise ApiError(
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                "invalid_body_size",
+                f"JSON bodies must be 1-{MAX_BODY_BYTES} bytes.",
+            )
+
+        try:
+            body = json.loads(self.rfile.read(length))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_json",
+                "The request body must contain valid UTF-8 JSON.",
+            )
+
+        if not isinstance(body, dict):
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_json_shape",
+                "The JSON body must be an object.",
+            )
+
+        unknown_keys = set(body) - allowed_keys
+        if unknown_keys:
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "unknown_fields",
+                "The JSON body contains unknown fields.",
+            )
+        return body
+
+    def _send_error(self, error):
+        self._send_json(
+            error.status,
+            {"status": "error", "code": error.code, "error": error.message},
+        )
+
+    def _send_json(self, status, payload):
+        body = json.dumps(payload, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):
+        pass
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument(
+        "--client",
+        type=Path,
+        default=Path(__file__).with_name("client").joinpath("index.html"),
+    )
+    parser.add_argument("--action-timeout", type=float, default=10)
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    coordinator = Coordinator(action_timeout=args.action_timeout)
+    server = CortexHomeServer(
+        (args.host, args.port),
+        coordinator,
+        args.client,
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()
