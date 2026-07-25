@@ -145,13 +145,32 @@ close enough to define as a useful vertical slice.
 
 | Device | Intended Role | Known Unknowns |
 |---|---|---|
-| 2020 Lenovo ThinkPad, Ubuntu Server | Always-on compute, coordination, and durable state | Exact model, ports, CPU, RAM, and current services |
-| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and likely nearby audio/USB endpoint | Real-client load, power draw, and end-to-end Sonos playback |
-| Sonos Play:5 Gen 1 | Speaker through its analog line-in | Currently near the iMac; a direct ThinkPad cable would require changing the physical layout |
+| Lenovo ThinkPad E495, Ubuntu 24.04 | Always-on compute, coordination, and durable state | Available physical ports and the unrelated failed OpenVPN client unit |
+| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and nearby audio/USB endpoint | Real-client load, power draw, and end-to-end Sonos playback |
+| Sonos Play:5 Gen 1 | Speaker through its analog line-in | Connected to the iMac headphone output; end-to-end playback remains unconfirmed |
 | Philips Hue bridge and three lamps | Local lighting control | Bridge generation and existing room/scene setup |
 | iPhone 17 | Personal controller, Spotify source, and possible casting source | None needed for the first slice |
 | Google Fitbit | Possible later sensor/input | Exact model and accessible data |
 | Anker conference microphone | Possible deliberate voice input | Exact model and preferred physical location |
+
+### ThinkPad Coordinator Baseline
+
+Inventory and service state observed on 2026-07-25:
+
+| Area | Observation |
+|---|---|
+| Identity | Lenovo ThinkPad E495, machine type `20NE000JMX` |
+| Access | Key-based SSH confirmed from the development laptop |
+| Operating system | Ubuntu 24.04, x86-64, with Linux `6.8.0-134-generic` |
+| Processor | AMD Ryzen 5 3500U with Radeon Vega Mobile Graphics; eight logical CPUs |
+| Memory | 7.4 GiB usable RAM |
+| Storage | 29.7 GiB and 238.5 GiB non-rotational disks |
+| Runtime | Python 3.12.3 and systemd 255 |
+| Relevant services | SSH and Avahi active; coordinator port 8080 unused before GH-004 |
+| System health | The unrelated `openvpn-client@client.service` unit is failed |
+
+Network addresses, hostnames, machine identifiers, and raw host logs are
+deliberately not recorded.
 
 ### iMac Qualification Baseline
 
@@ -177,13 +196,13 @@ Inventory and server-idle behavior observed on 2026-07-23:
 | Fifteen-minute temperature | CPU cores 54–58°C; Radeon 75–77°C |
 | Fifteen-minute fan speed | Optical drive 985–997 RPM; hard drive 1207–1211 RPM; CPU 1197–1201 RPM |
 | Noise | The user confirmed that idle fan noise is acceptable for the room and not a current priority |
-| Audio test | Separate internal-speaker and rear analog ALSA streams succeeded after temporarily unmuting `Master`; the user heard the internal speakers; Sonos playback awaits physical connection |
+| Audio test | Separate internal-speaker and rear analog ALSA streams succeeded after temporarily unmuting `Master`; the user heard the internal speakers; the Sonos is now connected and playback awaits GH-004 |
 | Boot and recovery | A controlled reboot returned to SSH without local intervention; Ethernet was up and no services had failed at 38 seconds uptime |
 | Endpoint session | LightDM starts the locked `cortex-endpoint` account into Openbox and Chromium at the native 1920 × 1200 resolution |
 | Unattended device access | `cortex-endpoint` has explicit `audio`, `video`, and `render` group access without administrative or SSH access |
 | Wireless recovery | Wi-Fi-only boot returns the kiosk and key-based SSH through `imac.local`; Ethernet remains a fallback and wait-online accepts either routable interface |
 | Kiosk spot check | 99% CPU idle, 3.1 GiB memory available, about 1.0 GiB endpoint RSS, 56°C CPU cores, 75°C Radeon, and approximately 700/1200/1200 RPM fans |
-| Endpoint audio | ALSA restore state selects the rear analog route; physical playback through the Sonos remains for GH-004 |
+| Endpoint audio | ALSA restore state selects the rear analog route; the Sonos is now physically connected and playback remains for GH-004 |
 
 The server-only baseline and the provisioned placeholder spot check are
 qualified. Sustained load, power, and sound latency belong with GH-004's real
@@ -264,8 +283,9 @@ other host-specific identifiers are deliberately not recorded.
 
 - Sustained iMac load, temperature, fan behavior, and power draw with the real
   GH-004 client.
-- End-to-end Sonos playback and sound latency after the iMac moves into place.
-- Exact ThinkPad model, available ports, and current services.
+- End-to-end Sonos playback and sound latency through the connected line-in.
+- Available ThinkPad physical ports and whether the failed OpenVPN client unit
+  should be restored or disabled.
 - Whether Spotify Premium is available; headless Spotify Connect receivers
   require it.
 - Which interaction should switch channels in the first usable version.
