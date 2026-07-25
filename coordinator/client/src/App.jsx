@@ -53,31 +53,79 @@ function Signal({ state, className }) {
   return <div aria-hidden="true" className={cn(signal({ state }), className)} />;
 }
 
+function writeWavLabel(view, offset, label) {
+  for (const [index, character] of [...label].entries()) {
+    view.setUint8(offset + index, character.charCodeAt(0));
+  }
+}
+
+function createIdentifySound() {
+  const sampleRate = 44100;
+  const channelCount = 2;
+  const bytesPerSample = 2;
+  const frameSize = channelCount * bytesPerSample;
+  const toneDuration = 0.8;
+  const toneGap = 0.16;
+  const frequencies = [440, 660, 880];
+  const signalDuration =
+    frequencies.length * toneDuration + (frequencies.length - 1) * toneGap;
+  const sampleCount = Math.ceil(signalDuration * sampleRate);
+  const dataSize = sampleCount * frameSize;
+  const wav = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(wav);
+
+  writeWavLabel(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeWavLabel(view, 8, "WAVE");
+  writeWavLabel(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channelCount, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * frameSize, true);
+  view.setUint16(32, frameSize, true);
+  view.setUint16(34, bytesPerSample * 8, true);
+  writeWavLabel(view, 36, "data");
+  view.setUint32(40, dataSize, true);
+
+  for (const [toneIndex, frequency] of frequencies.entries()) {
+    const toneStart = toneIndex * (toneDuration + toneGap);
+    const startSample = Math.floor(toneStart * sampleRate);
+    const toneSamples = Math.floor(toneDuration * sampleRate);
+
+    for (let sampleIndex = 0; sampleIndex < toneSamples; sampleIndex += 1) {
+      const elapsed = sampleIndex / sampleRate;
+      const envelope = Math.sin((Math.PI * sampleIndex) / toneSamples);
+      const sample = Math.sin(2 * Math.PI * frequency * elapsed) * envelope * 0.8;
+      const frameOffset = 44 + (startSample + sampleIndex) * frameSize;
+
+      for (let channel = 0; channel < channelCount; channel += 1) {
+        view.setInt16(frameOffset + channel * bytesPerSample, sample * 32767, true);
+      }
+    }
+  }
+
+  return new Blob([wav], { type: "audio/wav" });
+}
+
 async function playIdentifySound() {
-  const context = new AudioContext();
-  if (context.state === "suspended") {
-    await context.resume();
-  }
-  if (context.state !== "running") {
-    await context.close();
-    throw new Error("Browser audio did not start.");
-  }
+  const soundUrl = URL.createObjectURL(createIdentifySound());
+  const audio = new Audio(soundUrl);
 
-  const startedAt = context.currentTime + 0.05;
-  for (const [frequency, offset] of [
-    [440, 0],
-    [660, 0.42],
-    [880, 0.84],
-  ]) {
-    const oscillator = new OscillatorNode(context, { frequency });
-    const gain = new GainNode(context, { gain: 0.14 });
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start(startedAt + offset);
-    oscillator.stop(startedAt + offset + 0.28);
+  try {
+    await new Promise((resolve, reject) => {
+      audio.addEventListener("ended", resolve, { once: true });
+      audio.addEventListener(
+        "error",
+        () => reject(new Error("Browser audio playback failed.")),
+        { once: true },
+      );
+      audio.play().catch(reject);
+    });
+  } finally {
+    audio.pause();
+    URL.revokeObjectURL(soundUrl);
   }
-
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  await context.close();
 }
 
 export function App() {

@@ -304,6 +304,10 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(response.status, HTTPStatus.OK)
         self.assertIn('<div id="root"></div>', body)
         self.assertEqual(response.getheader("Cache-Control"), "no-store")
+        self.assertIn(
+            "media-src blob:",
+            response.getheader("Content-Security-Policy"),
+        )
 
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=1)
         self.addCleanup(connection.close)

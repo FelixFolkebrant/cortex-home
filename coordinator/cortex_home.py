@@ -370,6 +370,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                 "default-src 'self'; "
                 "connect-src 'self'; "
                 "img-src 'self' data:; "
+                "media-src blob:; "
                 "script-src 'self'; "
                 "style-src 'self'",
             )
