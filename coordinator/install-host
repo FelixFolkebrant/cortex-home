@@ -44,6 +44,31 @@ install --owner=root --group=root --mode=644 \
   "$script_dir/files/cortex-home.service" \
   /etc/systemd/system/cortex-home.service
 
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "^Status: active"; then
+  default_interface=$(
+    ip -4 route show default |
+      awk 'NR == 1 { for (field = 1; field <= NF; field++) if ($field == "dev") { print $(field + 1); exit } }'
+  )
+
+  if [ -z "$default_interface" ]; then
+    echo "Could not identify the coordinator's default network interface." >&2
+    exit 1
+  fi
+
+  lan_cidr=$(
+    ip -4 route show dev "$default_interface" proto kernel scope link |
+      awk '$1 ~ /^[0-9]+\./ && $1 ~ /\// { print $1; exit }'
+  )
+
+  if [ -z "$lan_cidr" ]; then
+    echo "Could not identify the coordinator LAN for its firewall rule." >&2
+    exit 1
+  fi
+
+  ufw allow from "$lan_cidr" to any port 8080 proto tcp \
+    comment "Cortex Home coordinator"
+fi
+
 systemctl daemon-reload
 systemctl enable cortex-home.service
 systemctl restart cortex-home.service

@@ -72,6 +72,8 @@
   physical hosts.
 - [ ] The pnpm build and Biome checks pass, and the coordinator serves only the
   generated production client rather than source files or a development server.
+- [ ] When UFW is active, installation exposes the coordinator port only to the
+  host's directly connected LAN.
 - [ ] A sustained real-client sample records CPU, memory, temperatures, fan
   readings, subjective noise, identify latency, and power draw when a measuring
   method is available.
