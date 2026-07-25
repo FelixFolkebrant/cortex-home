@@ -31,16 +31,28 @@ fi
 read -r -p "Wi-Fi SSID: " wifi_ssid
 read -r -s -p "Wi-Fi password: " wifi_password
 echo
+read -r -p "Coordinator URL: " coordinator_url
 
-if [[ -z $wifi_ssid || -z $wifi_password ]]; then
-  echo "Wi-Fi SSID and password are required." >&2
+if [[ -z $wifi_ssid || -z $wifi_password || -z $coordinator_url ]]; then
+  echo "Wi-Fi SSID, password, and coordinator URL are required." >&2
   exit 1
 fi
 
-if [[ $wifi_ssid == *$'\n'* || $wifi_password == *$'\n'* ]]; then
-  echo "Wi-Fi values cannot contain newlines." >&2
+if [[
+  $wifi_ssid == *$'\n'* ||
+  $wifi_password == *$'\n'* ||
+  $coordinator_url == *$'\n'*
+ ]]; then
+  echo "Provisioning values cannot contain newlines." >&2
   exit 1
 fi
+
+if [[ ! $coordinator_url =~ ^http://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$ ]]; then
+  echo "Coordinator URL must be a local HTTP origin without a path." >&2
+  exit 1
+fi
+
+coordinator_url=${coordinator_url%/}
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -89,16 +101,17 @@ install -D --mode=644 \
 install -D --mode=644 \
   "$source_dir/files/broadcom.conf" \
   /etc/modprobe.d/50-cortex-broadcom.conf
+install -D --mode=644 \
+  /dev/null \
+  /etc/cortex-endpoint/coordinator-url
+printf '%s\n' "$coordinator_url" > /etc/cortex-endpoint/coordinator-url
 install -D \
   --owner=cortex-endpoint \
   --group=cortex-endpoint \
   --mode=644 \
   "$source_dir/files/openbox-rc.xml" \
   /home/cortex-endpoint/.config/openbox/rc.xml
-install -D --mode=644 \
-  "$source_dir/files/qualification.html" \
-  /home/cortex-endpoint/qualification.html
-chown root:root /home/cortex-endpoint/qualification.html
+rm -f /home/cortex-endpoint/qualification.html
 
 update-initramfs -u
 
@@ -146,7 +159,12 @@ network:
           password: '$escaped_password'
 EOF
 
-unset wifi_ssid wifi_password escaped_ssid escaped_password
+unset \
+  coordinator_url \
+  wifi_ssid \
+  wifi_password \
+  escaped_ssid \
+  escaped_password
 
 netplan generate
 netplan apply
