@@ -7,7 +7,10 @@ architecture remains open.
 
 ## Planpoints
 
-### [1 CURRENT - Connected Room Endpoint](../planpoints/PP-1.md)
+Planpoint 1 is complete. Planpoint 2 is the next planning target; its open
+Crossroads remain undecided.
+
+### [1 COMPLETE - Connected Room Endpoint](../planpoints/PP-1.md)
 
 The ThinkPad produces one simple full-screen status view, the iMac presents it
 reliably, and a test sound reaches the Sonos. An outside caller invokes one
@@ -26,7 +29,7 @@ This slice defines the minimum action and feedback shape that later interfaces
 and agents inherit. It does not choose an agent provider, speech stack, broad
 automation model, or child-repository layout.
 
-### 2 - Spotify Music Channel
+### 2 NEXT - Spotify Music Channel
 
 Spotify on the iPhone can select one Cortex Home receiver, audio plays through the
 Sonos line-in, and the iMac shows useful now-playing feedback.
