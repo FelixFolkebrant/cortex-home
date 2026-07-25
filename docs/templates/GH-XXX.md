@@ -17,6 +17,23 @@ This is the durable issue record. Keep it current during issue work in `docs/wip
 - Any meaningful difference from `GH-XXX-PLAN.md`.
 - Write `None` if the implementation followed the plan.
 
+# Implementation Walkthrough
+
+- Explain what was done in the order needed to understand or reconstruct it.
+- Name the repository-owned scripts and configuration paths.
+- Include exact setup, deployment, migration, or recovery commands when useful.
+- Prefer stable entry points over copied shell transcripts. Exclude credentials,
+  host identity, and generated or temporary values.
+
+# Problems Encountered
+
+## 1. <Problem>
+
+- Symptom:
+- Diagnosis:
+- Resolution:
+- Remaining caveat:
+
 # Confirmation
 
 ## Automated Checks

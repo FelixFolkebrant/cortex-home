@@ -30,9 +30,16 @@ Roadmaps set direction. Planpoints decide only the hard-to-reverse choices neede
 1. Create `docs/wip/GH-<n>-PLAN.md` from the template.
 2. Check out `<name>/GH-<n>/<revision>`.
 3. Implement the accepted plan with atomic commits.
-4. Keep `docs/wip/GH-<n>.md` updated with what changed, plan diffs, decisions, and verification.
+4. Keep `docs/wip/GH-<n>.md` updated with what changed, an implementation
+   walkthrough, problems and their resolutions, plan diffs, decisions, and
+   verification.
 
 Issue plans contain issue-level Hot decisions. Crossroads belong in the roadmap or Planpoint unless discovered late.
+
+The durable issue record should be sufficient to reconstruct the feature from
+the repository without reproducing the original conversation. Include exact
+entry-point commands and configuration paths, but exclude credentials, host
+identity, raw logs, and long shell transcripts.
 
 ## Review Loop
 

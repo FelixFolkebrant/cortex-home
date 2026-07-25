@@ -148,3 +148,10 @@ Records review findings by severity and heat. Findings are marked as fixed, defe
 ## `docs/wip/GH-<n>.md` And `docs/issues/GH-<n>.md`
 
 The final issue record. It is the only issue-level artifact that persists after merge, so it should summarize what changed, what was confirmed, and which decisions matter later.
+
+It should also make the project reconstructable from durable issue history.
+Each record explains the implementation in a useful order, points to the
+repository-owned scripts and configuration, includes essential operator
+commands, and records problems as symptom, diagnosis, resolution, and remaining
+caveat. It preserves useful reasoning rather than raw terminal or conversation
+transcripts, secrets, or machine-specific identity.

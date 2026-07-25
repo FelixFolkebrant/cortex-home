@@ -78,7 +78,14 @@ judgment.*
 ### Completing Issue Work
 
 1. Ensure the issue recap at `docs/wip/GH-XXX.md` contains current **What**,
-   **Acceptance Criteria**, **Confirmation**, and **Notes** sections.
+   **Acceptance Criteria**, **Implementation Walkthrough**, **Problems
+   Encountered**, **Confirmation**, and **Notes** sections.
+   - The implementation walkthrough must explain the completed work in a useful
+     order and include the repository scripts, configuration paths, and exact
+     operator commands needed to reconstruct or redeploy it.
+   - Problems encountered must record the symptom, diagnosis or root cause,
+     resolution, and any remaining caveat. Keep useful failed approaches, but
+     omit raw transcripts, credentials, and host-specific identifiers.
    - Confirmation must separate automated checks from manual testing.
    - Manual testing must tell the reviewer how to start the feature, what
      changed from the previous behavior or appearance, which actions to
