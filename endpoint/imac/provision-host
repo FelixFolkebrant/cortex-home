@@ -66,6 +66,7 @@ apt-get install --yes --no-install-recommends \
   dbus-x11 \
   lightdm \
   openbox \
+  pulseaudio \
   unclutter \
   wpasupplicant \
   x11-xserver-utils \
@@ -105,7 +106,17 @@ install -D --mode=644 \
   /dev/null \
   /etc/cortex-endpoint/coordinator-url
 printf '%s\n' "$coordinator_url" > /etc/cortex-endpoint/coordinator-url
-install -D \
+install -d \
+  --owner=cortex-endpoint \
+  --group=cortex-endpoint \
+  --mode=700 \
+  /home/cortex-endpoint/.config
+install -d \
+  --owner=cortex-endpoint \
+  --group=cortex-endpoint \
+  --mode=755 \
+  /home/cortex-endpoint/.config/openbox
+install \
   --owner=cortex-endpoint \
   --group=cortex-endpoint \
   --mode=644 \

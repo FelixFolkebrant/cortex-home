@@ -2,6 +2,8 @@
 
 set -eu
 
+pulseaudio --start --exit-idle-time=-1
+
 xset -dpms
 xset s off
 xset s noblank
