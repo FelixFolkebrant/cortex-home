@@ -4,7 +4,8 @@ import {
   artworkSource,
   formatTime,
   initialRoomState,
-  keyboardChannel,
+  keyboardAction,
+  nextScene,
   projectPosition,
   roomReducer,
 } from "./music.js";
@@ -67,6 +68,7 @@ test("lighting and scene interaction events remain independent", () => {
     state: "working",
     action: "room.scene.activate",
     message: null,
+    scene: null,
   });
 });
 
@@ -169,10 +171,62 @@ test("only fixed Ctrl+Alt channel shortcuts are accepted", () => {
     shiftKey: false,
   };
 
-  assert.equal(keyboardChannel(keyboardEvent), "today");
-  assert.equal(keyboardChannel({ ...keyboardEvent, code: "Digit2" }), "music");
-  assert.equal(keyboardChannel({ ...keyboardEvent, code: "Digit3" }), null);
-  assert.equal(keyboardChannel({ ...keyboardEvent, repeat: true }), null);
-  assert.equal(keyboardChannel({ ...keyboardEvent, shiftKey: true }), null);
-  assert.equal(keyboardChannel({ ...keyboardEvent, metaKey: true }), null);
+  assert.deepEqual(keyboardAction(keyboardEvent), {
+    action: "channel.select",
+    channel: "today",
+  });
+  assert.deepEqual(keyboardAction({ ...keyboardEvent, code: "Digit2" }), {
+    action: "channel.select",
+    channel: "music",
+  });
+  assert.equal(keyboardAction({ ...keyboardEvent, code: "Digit3" }), null);
+  assert.equal(keyboardAction({ ...keyboardEvent, repeat: true }), null);
+  assert.equal(keyboardAction({ ...keyboardEvent, shiftKey: true }), null);
+  assert.equal(keyboardAction({ ...keyboardEvent, metaKey: true }), null);
+});
+
+test("scene cycling follows the catalog and wraps", () => {
+  const lighting = {
+    status: "available",
+    scenes: ["Bright", "Relax", "Warm"],
+    activeScenes: ["Relax"],
+  };
+
+  assert.equal(nextScene(lighting), "Warm");
+  assert.equal(nextScene({ ...lighting, activeScenes: ["Warm"] }), "Bright");
+  assert.equal(nextScene({ ...lighting, activeScenes: [] }), "Bright");
+  assert.equal(nextScene({ ...lighting, activeScenes: ["Bright", "Relax"] }), "Bright");
+  assert.equal(nextScene({ status: "unavailable", scenes: [] }), null);
+});
+
+test("only fixed Ctrl+Alt scene cycling is accepted when scenes are available", () => {
+  const keyboardEvent = {
+    altKey: true,
+    code: "KeyS",
+    ctrlKey: true,
+    metaKey: false,
+    repeat: false,
+    shiftKey: false,
+  };
+  const lighting = {
+    status: "available",
+    scenes: ["Bright", "Relax"],
+    activeScenes: ["Bright"],
+  };
+
+  assert.deepEqual(keyboardAction(keyboardEvent, lighting), {
+    action: "room.scene.activate",
+    scene: "Relax",
+  });
+  assert.equal(
+    keyboardAction(keyboardEvent, {
+      status: "unavailable",
+      scenes: [],
+      activeScenes: [],
+    }),
+    null,
+  );
+  assert.equal(keyboardAction({ ...keyboardEvent, repeat: true }, lighting), null);
+  assert.equal(keyboardAction({ ...keyboardEvent, shiftKey: true }, lighting), null);
+  assert.equal(keyboardAction({ ...keyboardEvent, metaKey: true }, lighting), null);
 });
