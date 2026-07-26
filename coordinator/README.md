@@ -88,6 +88,14 @@ until a later Hue event reports `Warm` active, the 10-second action bound
 expires, or the adapter reports an unavailable or rejected command. Every
 request needs a new request ID.
 
+For a focused deployed check, use the repository-owned verifier. It checks safe
+health, generates a unique request ID, activates `Warm`, and requires observed
+completion while the operator watches the lamps and room display:
+
+```sh
+./coordinator/verify_warm_scene.py <server-host>
+```
+
 The iMac playback adapter posts a complete normalized observation to:
 
 ```text
