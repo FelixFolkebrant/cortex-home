@@ -8,7 +8,7 @@ import {
   nextScene,
   projectPosition,
   roomReducer,
-} from "./music.js";
+} from "./room-state.js";
 
 const item = {
   artworkUrl: "https://example.test/cover.jpg",
