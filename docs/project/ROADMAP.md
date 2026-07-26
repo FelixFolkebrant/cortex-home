@@ -69,10 +69,10 @@ working, success, and failure feedback.
 
 | Crossroad | Decision | Alternatives Rejected |
 |---|---|---|
-| Agent runtime or framework | Small Python adapter using OpenAI Responses and GPT-5.6 Terra | Agents SDK; Home Assistant; LangChain; Realtime speech-to-speech; local model |
-| Speech processing boundary | Press-bounded Chromium capture with local `whisper.cpp` and Piper on the ThinkPad | Hosted speech; iMac inference; another endpoint daemon |
+| Agent runtime or framework | Pi Agent Core in a coordinator-supervised Node child, using `pi-ai` with one pinned OpenRouter text model | Bespoke Python loop; Agents SDK; Home Assistant; LangChain; Realtime speech-to-speech |
+| Speech processing boundary | Press-bounded English capture with measured local Vosk/Whisper recognition and Piper/Pocket synthesis backends on the ThinkPad | Hosted speech; iMac inference; hard-coded speech engines |
 | Assistant action permissions | Zero or one exact Hue scene request through the coordinator | Broad tools; direct Hue; shell or browser control |
-| Voice privacy and retention | LAN-only audio, hosted text reasoning, no Cortex Home persistence, explicit provider-retention caveat | Hosted raw audio; hidden sensing; application conversation history |
+| Voice privacy and retention | LAN-only audio, ZDR OpenRouter text route, no Cortex Home persistence, explicit routed-provider policy | Hosted raw audio; hidden sensing; application conversation history |
 | Concurrent development | One issue worktree per branch with independent docs and serialized deployment | Shared docs checkout; long-lived feature branches; repository split |
 
 Wake words, continuous listening, camera input, and general agent autonomy
@@ -284,21 +284,22 @@ Planpoint 1 should thread only one small shape through this path:
 5. The web app updates immediately; an audio acknowledgement may use the same
    event.
 
-The live web connection uses server-sent events. The Planpoint 4 agent adapter
-translates one exact scene action into the provider's strict function format;
+The live web connection uses server-sent events. The Planpoint 4 Pi harness
+translates one exact scene action into the selected provider's function format;
 that format remains an adapter rather than the source of truth.
 
 ## Remaining Deferred Agent Decisions
 
-Planpoint 4 accepts a small Python Responses adapter, hosted text reasoning,
-local `whisper.cpp` transcription, local Piper synthesis, and one exact scene
-tool. These broader choices remain deferred:
+Planpoint 4 accepts Pi Agent Core in a local Node child, hosted text reasoning
+through OpenRouter, measured replaceable local speech backends, and one exact
+scene tool. These broader choices remain deferred:
 
-- A fully local language model or a model provider beyond the first OpenAI
-  adapter.
-- Home Assistant LLM tools, MCP, a general tool registry, or an agent
-  framework.
-- Conversation memory and persistence.
+- A fully local language model or a model route beyond the first qualified
+  OpenRouter deployment.
+- Home Assistant LLM tools, MCP, or a general tool registry beyond Pi's bounded
+  repository-owned definitions.
+- Conversation memory, persistence, mid-speech barge-in, and reconciliation of
+  the exact spoken prefix after an interrupted answer.
 - Wake word, proactive initiation, and camera context.
 - Agent understanding of Headlines and future channel state.
 - Reusable channel infrastructure beyond the explicit modules required by

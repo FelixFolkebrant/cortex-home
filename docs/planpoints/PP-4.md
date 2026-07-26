@@ -11,9 +11,10 @@ callers.
   never sampled while the shortcut is not held.
 - The iMac captures one bounded utterance and shows listening, transcribing,
   thinking, acting, speaking, success, and failure state.
-- The ThinkPad transcribes and synthesizes speech locally.
-- One small repository-owned agent adapter sends only text and normalized room
-  context to a hosted reasoning model.
+- The ThinkPad transcribes English speech and synthesizes speech locally behind
+  two small replaceable backend boundaries.
+- A local Node process runs Pi Agent Core and sends only text and normalized
+  room context through `pi-ai` to one pinned OpenRouter text model.
 - The model may answer or request one exact named-scene action. The coordinator
   remains responsible for validation, execution, observed completion, and
   failure.
@@ -34,8 +35,8 @@ without creating an ambient or general-purpose assistant.
   discovery, MCP, computer use, or administrative tools.
 - Multiple tool calls, parallel tools, action planning, autonomous retries, or
   actions that were not explicitly requested in the current utterance.
-- Streaming speech-to-speech, interruption while speaking, overlapping voice
-  sessions, or multi-room audio.
+- Streaming speech-to-speech, automatic voice activity detection, mid-speech
+  barge-in, overlapping voice sessions, or multi-room audio.
 - Making channel implementations depend on the selected model provider.
 - Guaranteeing that concurrent Planpoint 5 channels are agent-aware before a
   later integration issue explicitly adds their context.
@@ -52,6 +53,10 @@ without creating an ambient or general-purpose assistant.
 - A local language model remains replaceable behind the adapter and should be
   reconsidered only after measured hosted latency, cost, and privacy tradeoffs
   exist.
+- Mid-speech interruption remains deferred until the first spoken turn is
+  qualified. Every interaction is still identified and cancellable so a later
+  press can stop playback, abort unfinished work, reject stale output, and
+  record that the assistant response was interrupted rather than heard in full.
 - Agent understanding of Headlines and future channels remains explicit
   follow-up work so channel delivery does not block this slice.
 
@@ -59,24 +64,27 @@ without creating an ambient or general-purpose assistant.
 
 ### C1 - Agent Runtime And Reasoning Boundary
 
-- Decision: Whether the first agent uses a framework, a general automation
+- Decision: Whether the first agent uses a harness, a general automation
   runtime, a local model, a realtime speech model, or one small adapter around a
   text reasoning API.
 - Options: OpenAI Agents SDK; Home Assistant conversation agent; LangChain or a
-  similar framework; OpenAI Realtime speech-to-speech; a repository-owned
-  Python adapter using the Responses API; a fully local model.
+  similar framework; Pi Agent Core; hosted realtime speech-to-speech; a
+  repository-owned Python model loop; a fully local model.
 - Impact if wrong: The choice controls action authority, context ownership,
   provider coupling, conversation state, observability, and how later models
   are replaced.
-- Proposed choice: Add one repository-owned Python adapter inside the
-  coordinator service and use the OpenAI Responses API with GPT-5.6 Terra at
-  low reasoning effort for this bounded interaction. Keep prompts in reviewed
-  code, disable response storage, and add no agent framework.
-- Why: The existing coordinator is Python and already owns normalized context,
-  serialized actions, and observed results. One answer and at most one function
-  call do not justify an orchestration framework or realtime audio service.
-  GPT-5.6 Terra is the current balanced intelligence-and-cost model and supports
-  Responses function calling.
+- Proposed choice: Run `@earendil-works/pi-agent-core` with `pi-ai` in one
+  repository-owned Node child process supervised by the Python coordinator.
+  Route text reasoning through OpenRouter, pin one qualified lightweight model
+  per deployment, and begin model qualification with Gemini Flash Lite. Keep
+  prompts and tool definitions in reviewed repository code.
+- Why: Pi provides explicit conversation state, streaming events, cancellation,
+  tool validation hooks, and a provider-neutral model boundary that later
+  integrations can reuse. OpenRouter keeps model selection independent from
+  the harness. Accepting a Node runtime is preferable to replacing those
+  lifecycle boundaries later, while a coordinator-owned child process avoids a
+  second LAN service or public context endpoint. Realtime audio is unnecessary
+  for the accepted press-bounded speech cascade.
 - Status: decided
 
 ### C2 - Speech Processing And Capture Boundary
@@ -88,14 +96,21 @@ without creating an ambient or general-purpose assistant.
 - Impact if wrong: Raw room audio could leave the home, the iMac could inherit
   unacceptable compute, or the system could require a second endpoint protocol.
 - Proposed choice: Capture one press-bounded PCM utterance in Chromium from the
-  Anker microphone, send it only to the ThinkPad, transcribe it with pinned
-  `whisper.cpp`, and synthesize the reply with pinned Piper. Return one WAV
-  response through the existing client and Sonos audio route.
+  Anker microphone and send it only to the ThinkPad. Qualify English Vosk
+  against quantized `whisper.cpp`, and Piper against Pocket TTS, on the actual
+  Ryzen 5 host and microphone path. Put each role behind one small backend
+  contract, pin the measured winners, and return bounded audio through the
+  existing client and Sonos audio route. Piper is the initial TTS baseline;
+  Pocket TTS must earn selection through latency, resource, and listening
+  checks. Qualify playback stop latency while the audio path is active so later
+  interruption does not depend on an unmeasured Sonos buffer.
 - Why: The browser already owns deliberate keyboard input, visible feedback,
   and qualified Sonos playback. The ThinkPad has more compute and is the
-  accepted processing host. Local speech keeps raw audio off the internet
-  without introducing another endpoint daemon before browser capture is
-  qualified.
+  accepted processing host. Vosk may favor constrained low-cost recognition,
+  while Whisper may favor open conversational accuracy; the host and room
+  decide that tradeoff. Local replaceable speech backends keep raw audio off
+  the internet without committing the product to one engine before it is
+  measured.
 - Status: decided
 
 ### C3 - Assistant Action Permission
@@ -108,9 +123,10 @@ without creating an ambient or general-purpose assistant.
   authoritative, bypass coordinator validation, or cause surprising room
   changes.
 - Proposed choice: Expose only one strict `activate_scene` function with one
-  scene-name argument, disable parallel tool calls, allow at most one call, and
-  route it through `room.scene.activate`. Treat model output as an untrusted
-  request and report only the coordinator's observed result.
+  scene-name argument, configure Pi for sequential execution, disable parallel
+  tool calls at the provider boundary, allow at most one call, and route it
+  through `room.scene.activate`. Use Pi's preflight hook to treat model output
+  as an untrusted request and report only the coordinator's observed result.
 - Why: Exact scene names are already the shared human-facing boundary. One
   existing action proves the trust seam without inventing agent-specific
   permissions or exposing Hue identifiers.
@@ -127,14 +143,16 @@ without creating an ambient or general-purpose assistant.
   capture or unclear provider retention would be difficult to trust.
 - Proposed choice: Keep raw audio and synthesized audio on the LAN. Send only
   the current transcript, a minimal normalized context snapshot, and the one
-  tool schema to OpenAI with `store: false`. Persist no application transcript,
-  response, recording, or conversation history and never log their contents.
-  Show every sensing and processing phase on screen.
+  tool schema through OpenRouter. Disable prompt logging, deny data collection,
+  require Zero Data Retention routing, and pin an allowed provider route.
+  Persist no application transcript, response, recording, or conversation
+  history and never log their contents. Show every sensing and processing phase
+  on screen.
 - Why: This keeps the most sensitive input local while allowing a capable
-  replaceable reasoning model. OpenAI API inputs and outputs are not used for
-  training by default, but ordinary API abuse-monitoring data may still be
-  retained for up to 30 days unless the account has Zero Data Retention; the
-  product must state that boundary accurately.
+  replaceable reasoning model. OpenRouter adds another processor between the
+  home and the selected model provider, so the deployed route and its effective
+  retention controls must be explicit rather than inferred from the model
+  name.
 - Status: decided
 
 ### C5 - Concurrent Channel Development
@@ -166,13 +184,25 @@ without creating an ambient or general-purpose assistant.
 - Interaction boundary: `agent.interaction` publishes one request ID and exact
   `listening`, `transcribing`, `thinking`, `acting`, `speaking`, `completed`, or
   `failed` phase without persisting content.
-- Reasoning boundary: the adapter sends one transcript plus one context snapshot
-  to Responses, permits zero or one strict tool call, and obtains one short text
-  answer.
+- Speech boundary: one recognizer backend converts bounded PCM to English text
+  and one synthesizer backend converts the final answer to bounded audio. The
+  selected engines remain configuration, not coordinator behavior.
+- Harness boundary: the coordinator supervises one local Node child and
+  exchanges request-ID-keyed messages over private standard streams. Pi Agent
+  Core owns the ephemeral model turn; it does not receive coordinator internals
+  or credentials for device integrations.
+- Reasoning boundary: `pi-ai` sends one transcript plus one context snapshot to
+  one pinned OpenRouter model, permits zero or one strict tool call, and obtains
+  one short text answer.
 - Action boundary: an exact requested scene goes through
   `room.scene.activate`; completion remains a later Hue observation.
-- Output boundary: Piper produces one ephemeral WAV response that Chromium
-  plays through the existing PulseAudio and Sonos route.
+- Output boundary: the selected synthesizer produces ephemeral audio that
+  Chromium plays through the existing PulseAudio and Sonos route.
+- Cancellation seam: every capture, Pi turn, synthesis result, and playback is
+  tied to the interaction request ID. Cancellation stops local playback and
+  aborts unfinished work where supported; every later result for that ID is
+  ignored. Exact spoken-prefix history reconciliation remains deferred with
+  multi-turn conversation.
 - Pattern set: agents consume normalized coordinator context and request
   allow-listed coordinator actions; they do not own observed state or device
   integrations.
@@ -183,11 +213,14 @@ without creating an ambient or general-purpose assistant.
    provider-free context projection for Today, Music, and lighting without
    adding a model, microphone, public endpoint, or frontend change.
 2. **GH-014 - Qualify Deliberate Local Speech**: qualify the Anker microphone,
-   press-bounded Chromium capture, `whisper.cpp`, Piper, endpoint permissions,
-   and bounded latency before agent behavior depends on them.
-3. **GH-016 - Answer One Contextual Follow-Up**: add the small Responses
-   adapter, protected API credential, ephemeral interaction lifecycle, and one
-   spoken answer about Today or Music without tools.
+   press-bounded Chromium capture, English Vosk and quantized `whisper.cpp`,
+   Piper and Pocket TTS, the two small backend contracts, endpoint permissions,
+   bounded start and playback-stop latency, and resource use before agent
+   behavior depends on them.
+3. **GH-016 - Answer One Contextual Follow-Up**: add the supervised Node
+   process, Pi Agent Core with `pi-ai`, protected OpenRouter credential, pinned
+   qualified text model, request-ID cancellation seam, ephemeral interaction
+   lifecycle, and one spoken answer about Today or Music without tools.
 4. **GH-018 - Activate One Scene By Voice**: expose only exact scene activation,
    execute at most one strict tool call through the coordinator, and speak the
    observed result.
@@ -235,11 +268,13 @@ Reference: `../project/HEATMAP.md`.
 
 ## References
 
-- OpenAI model guidance:
-  `https://developers.openai.com/api/docs/guides/latest-model`
-- OpenAI function calling:
-  `https://developers.openai.com/api/docs/guides/function-calling`
-- OpenAI API data controls:
-  `https://platform.openai.com/docs/models/default-usage-policies-by-endpoint`
+- Pi Agent Core:
+  `https://github.com/earendil-works/pi/tree/main/packages/agent`
+- OpenRouter tool calling:
+  `https://openrouter.ai/docs/guides/features/tool-calling`
+- OpenRouter Zero Data Retention:
+  `https://openrouter.ai/docs/guides/features/zdr`
+- Vosk: `https://alphacephei.com/vosk/`
 - `whisper.cpp`: `https://github.com/ggml-org/whisper.cpp`
 - Piper: `https://github.com/OHF-Voice/piper1-gpl`
+- Pocket TTS: `https://github.com/kyutai-labs/pocket-tts`

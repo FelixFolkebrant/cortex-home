@@ -12,8 +12,8 @@
 
 ## Out Of Scope
 
-- OpenAI SDK or API calls, prompts, tools, model selection, API credentials, or
-  conversation state.
+- Pi, Node, OpenRouter or other model calls, prompts, tools, model selection,
+  API credentials, process IPC, or conversation state.
 - Audio capture, transcription, speech synthesis, playback, or agent feedback.
 - Headlines or future channel context.
 - New HTTP or SSE endpoints.
@@ -23,7 +23,8 @@
 ## Deferred
 
 - GH-014 qualifies local speech independently from this pure state boundary.
-- GH-016 passes this context to the model and adds ephemeral agent interaction.
+- GH-016 passes this context through the coordinator-owned bridge to the local
+  Pi process and adds ephemeral agent interaction.
 - GH-018 adds the exact scene tool after the answer-only path is qualified.
 - Headlines context waits until the new channel is concrete and both Planpoints
   are integrated.
@@ -100,8 +101,9 @@ Reference: `../project/HEATMAP.md`.
 ### H2 - Keep Context Internal Until A Consumer Exists
 
 - Decision: Add a coordinator method but no context HTTP or SSE endpoint.
-- Proposed approach: The future in-process agent adapter calls the locked
-  method immediately before one model request.
+- Proposed approach: The future coordinator-owned agent bridge calls the locked
+  method immediately before passing the reduced value to its supervised local
+  Pi process for one model request.
 - Why: No current LAN caller needs this state, and a new public read boundary
   would create privacy and compatibility obligations before the agent exists.
 - Alternatives: Add `/api/context`; reuse endpoint SSE; run the agent as an
