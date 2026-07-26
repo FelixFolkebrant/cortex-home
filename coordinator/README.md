@@ -10,9 +10,30 @@ SSH:
 The SSH destination is supplied at runtime so the server hostname or address
 does not enter Git. The installer uses pnpm to build the React client, copies
 only the production artifacts and coordinator to `/opt/cortex-home`, installs
-`cortex-home.service`, and starts the coordinator on port 8080. Node.js and pnpm
-are build-time dependencies only; the server runtime still requires only
-Python.
+`aiohue==4.8.1` in `/opt/cortex-home/venv`, installs `cortex-home.service`, and
+starts the coordinator on port 8080. Node.js and pnpm are build-time
+dependencies only. The server requires Python 3.11 or later with `venv`
+support.
+
+After the first deployment, pair the coordinator with the Hue bridge from a
+machine that can reach the server over SSH:
+
+```sh
+./coordinator/pair-hue <server-ssh-host> <bridge-host>
+```
+
+The command validates the supplied local bridge host, asks for a deliberate
+link-button press, and stores the application credential at
+`/etc/cortex-home/hue.json` on the server. It prints only room, scene, remote
+model, and advertised remote-event details, then observes sanitized remote
+presses for 60 seconds. It never prints the bridge identity or application key.
+The fixed credential file is owned by `root:cortex-home` with mode `0640` and
+survives ordinary coordinator deployments.
+
+`GET /api/health` reports Hue as `unconfigured`, `connecting`, `connected`,
+`unreachable`, `unauthorized`, `event_interrupted`, or
+`invalid_configuration`. These states do not change Music behavior or the
+coordinator HTTP status.
 
 For local development, start the coordinator:
 

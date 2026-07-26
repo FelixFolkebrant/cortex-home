@@ -2,15 +2,15 @@
 
 This roadmap stays deliberately loose. The first slices prove the old hardware
 and the system seam before Cortex Home commits to an automation backbone or
-repository split. The frontend stack is accepted while its long-term channel
-architecture remains open.
+repository split. The frontend stack and one full-screen web shell are accepted
+while device control stays narrow to the existing Hue bridge.
 
 ## Planpoints
 
 Planpoints 1 and 2 are complete. The iMac now presents a useful Music channel
 from its qualified Spotify receiver and coordinator-owned playback state.
-Planpoint 3 is next; its device authority, channel architecture, and first room
-input must be accepted before issue work starts.
+Planpoint 3 is accepted and active. Connecting the existing Hue bridge through
+the coordinator is next.
 
 ### [1 COMPLETE - Connected Room Endpoint](../planpoints/PP-1.md)
 
@@ -44,7 +44,7 @@ Sonos line-in, and the iMac shows useful now-playing feedback.
 General system audio, synchronized multi-room audio, and a local music library
 remain deferred.
 
-### [3 NEXT - Today And Room Control]
+### [3 ACTIVE - Today And Room Control](../planpoints/PP-3.md)
 
 The iMac provides a useful Today channel and one room-level Hue action with
 immediate state feedback. The same action can be called by the UI and one
@@ -52,12 +52,13 @@ non-screen input.
 
 | Crossroad | Decision | Alternatives Rejected |
 |---|---|---|
-| Device and action authority | ? | ? |
-| Channel presentation architecture | ? | ? |
-| First room input | ? | ? |
+| Device and action authority | Hue bridge through a narrow coordinator adapter | Home Assistant; custom raw Hue protocol |
+| Channel presentation architecture | One full-screen React shell with coordinator-owned channel state | Desktop compositor; isolated desktops or VMs |
+| First room input | Existing Hue remote through the bridge adapter | Dedicated USB/HID control; custom radio or microcontroller |
 
-This is the earliest point at which Home Assistant versus a custom control
-service and a web shell versus a desktop compositor need acceptance.
+Evidence from the first two slices supports the accepted direct Hue adapter and
+web shell boundaries. The existing Hue remote supplies the first tactile input
+without another endpoint daemon or hardware purchase.
 
 ### 4 - Deliberate Voice Agent Interaction
 
@@ -188,20 +189,21 @@ slices.
 
 ### C5 - Device And Action Authority
 
-- Decision: Whether an established home-automation system or Cortex Home's own
-  service owns device state and actions.
-- Options: Home Assistant as the authority with a custom Cortex Home interface; a
-  custom service talking directly to each device; independent per-channel
-  integrations.
+- Decision: Whether the existing Hue bridge or a general home-automation system
+  owns device state while Cortex Home owns semantic actions.
+- Options: The Hue bridge through a maintained client library; Home Assistant
+  behind the Cortex Home coordinator; a custom raw Hue implementation.
 - Impact if wrong: Device identity, automation, history, permissions, and future
   AI actions would be expensive to migrate.
-- Proposed choice: Evaluate Home Assistant as the authority in Planpoint 3,
-  while keeping Cortex Home's visual experience separate. Do not build direct Hue
-  plumbing before that comparison.
-- Why: Existing local integrations and explicit action APIs may provide the
-  modular control seam without forcing the Home Assistant dashboard to become
-  the product UI.
-- Status: open
+- Proposed choice: Keep the Hue bridge as the device authority and use pinned
+  `aiohue` behind one narrow coordinator adapter. Keep its resource IDs,
+  application key, and raw events out of product actions and clients.
+- Why: Home Assistant's Hue integration uses the same client library. Direct
+  use satisfies this slice without adding a container, dashboard, configuration
+  store, API token, and general automation lifecycle. The normalized
+  coordinator boundary preserves a later migration path if more device families
+  justify Home Assistant.
+- Status: decided
 
 ### C6 - Channel Presentation Architecture
 
@@ -210,13 +212,13 @@ slices.
   session launching mixed applications; isolated desktops or VMs; a hybrid.
 - Impact if wrong: Every channel inherits the runtime, navigation, deployment,
   and hardware-access model.
-- Proposed choice: Prove a small web shell in Planpoint 1, but accept the
-  long-term choice only in Planpoint 3. Hardware access belongs behind server
-  actions, so it does not require browser hardware APIs. Add a native or streamed
-  escape hatch only when a real channel cannot fit.
+- Proposed choice: Use one full-screen React shell with coordinator-owned
+  channel state. Hardware access belongs behind server actions, so it does not
+  require browser hardware APIs. Add a native or streamed escape hatch only
+  when a real channel cannot fit.
 - Why: Hyprland, multiple native apps, and VMs solve flexibility that the first
   channels do not yet require.
-- Status: open
+- Status: decided
 
 ### C7 - Later Agent Trust Boundary
 
@@ -237,9 +239,9 @@ slices.
 
 - Decision: How the web app, physical inputs, audio interaction, and future
   agents observe and control Cortex Home without creating separate behavior paths.
-- Options: Each client talks directly to Home Assistant and media services; use
-  Home Assistant as the entire application contract; place a small Cortex Home
-  coordinator in front of device, media, and display adapters.
+- Options: Each client talks directly to device and media services; use a
+  general automation platform as the entire application contract; place a small
+  Cortex Home coordinator in front of device, media, and display adapters.
 - Impact if wrong: UI state, device results, agent permissions, and audio
   feedback could diverge, forcing every feature to be rewritten when a new
   control surface is added.
@@ -247,10 +249,10 @@ slices.
   active channel, interaction phase, allow-listed action catalog, and feedback
   stream. It delegates through narrow adapters to the accepted device authority,
   media service, and web client.
-- Why: Home Assistant is a good device authority but channels and multimodal
-  interaction are product state. One narrow boundary lets a web app, physical
-  control, or agent call the same action and observe the same result without
-  making the AI model the orchestrator.
+- Why: Device bridges and media services can own their observed state while
+  channels and multimodal interaction remain product state. One narrow boundary
+  lets a web app, physical control, or agent call the same action and observe
+  the same result without making the AI model the orchestrator.
 - Status: decided
 
 ## Proposed Interaction Plumbing

@@ -15,6 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+from hue import HueAdapter
+
 
 ACTION = "endpoint.identify"
 MAX_BODY_BYTES = 4096
@@ -97,6 +99,7 @@ class Coordinator:
             "positionMs": 0,
             "observedAt": utc_timestamp(),
         }
+        self.hue_status = "unconfigured"
 
     def connect_endpoint(self):
         with self.lock:
@@ -241,6 +244,20 @@ class Coordinator:
         with self.lock:
             return self.endpoint is not None
 
+    def set_hue_status(self, status):
+        with self.lock:
+            self.hue_status = status
+
+    def health(self):
+        with self.lock:
+            return {
+                "status": "ok",
+                "endpoint": (
+                    "connected" if self.endpoint is not None else "disconnected"
+                ),
+                "hue": self.hue_status,
+            }
+
     def report_playback(self, observation):
         observation = validate_playback(observation)
 
@@ -322,14 +339,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
         elif path == "/api/health":
             self._send_json(
                 HTTPStatus.OK,
-                {
-                    "status": "ok",
-                    "endpoint": (
-                        "connected"
-                        if self.server.coordinator.is_endpoint_connected()
-                        else "disconnected"
-                    ),
-                },
+                self.server.coordinator.health(),
             )
         elif path == "/api/events":
             self._serve_events()
@@ -670,23 +680,31 @@ def parse_args():
         default=Path(__file__).with_name("client"),
     )
     parser.add_argument("--action-timeout", type=float, default=10)
+    parser.add_argument(
+        "--hue-config",
+        type=Path,
+        default=Path("/etc/cortex-home/hue.json"),
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     coordinator = Coordinator(action_timeout=args.action_timeout)
+    hue = HueAdapter(args.hue_config, coordinator.set_hue_status)
     server = CortexHomeServer(
         (args.host, args.port),
         coordinator,
         args.client,
     )
+    hue.start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+        hue.stop()
 
 
 if __name__ == "__main__":

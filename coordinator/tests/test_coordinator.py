@@ -452,6 +452,7 @@ class HttpTests(unittest.TestCase):
         status, payload = self.request("GET", "/api/health")
         self.assertEqual(status, HTTPStatus.OK)
         self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["hue"], "unconfigured")
 
     def test_rejects_malformed_json(self):
         status, payload = self.request(
