@@ -69,6 +69,7 @@ class PendingRequest:
     request_id: str
     action: str
     endpoint_token: str | None = None
+    scene: str | None = None
     state: str = "accepted"
     error: str | None = None
     code: str | None = None
@@ -85,6 +86,8 @@ class PendingRequest:
             payload["code"] = self.code
         if self.error:
             payload["error"] = self.error
+        if self.scene:
+            payload["scene"] = self.scene
         return payload
 
 
@@ -118,8 +121,9 @@ class Coordinator:
         self.today = {**unavailable_summary(), "observedAt": utc_timestamp()}
         self.hue_status = "unconfigured"
         self.lighting = {
-            "scene": "Warm",
             "status": "unavailable",
+            "scenes": [],
+            "activeScenes": [],
             "observedAt": utc_timestamp(),
         }
 
@@ -153,7 +157,7 @@ class Coordinator:
                 HTTPStatus.SERVICE_UNAVAILABLE,
             )
 
-    def submit(self, request_id, action, channel=None):
+    def submit(self, request_id, action, channel=None, scene=None):
         self._validate_request_id(request_id)
         if action not in ALLOWED_ACTIONS:
             raise ApiError(
@@ -173,8 +177,29 @@ class Coordinator:
                 "invalid_action_arguments",
                 "The action does not accept a channel.",
             )
+        if action == SCENE_ACTION and not isinstance(scene, str):
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_scene",
+                "scene must be an available room scene.",
+            )
+        if action != SCENE_ACTION and scene is not None:
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_action_arguments",
+                "The action does not accept a scene.",
+            )
 
         with self.lock:
+            if action == SCENE_ACTION and (
+                self.lighting["status"] != "available"
+                or scene not in self.lighting["scenes"]
+            ):
+                raise ApiError(
+                    HTTPStatus.BAD_REQUEST,
+                    "invalid_scene",
+                    "scene must be an available room scene.",
+                )
             if request_id in self.requests:
                 raise ApiError(
                     HTTPStatus.CONFLICT,
@@ -195,7 +220,12 @@ class Coordinator:
                 )
 
             endpoint_token = self.endpoint.token if action == ACTION else None
-            pending = PendingRequest(request_id, action, endpoint_token)
+            pending = PendingRequest(
+                request_id,
+                action,
+                endpoint_token,
+                scene=scene,
+            )
             self.requests[request_id] = pending
             self.active_request_id = request_id
             self._trim_requests_locked()
@@ -301,16 +331,42 @@ class Coordinator:
     def set_scene_activator(self, activator):
         self.scene_activator = activator
 
-    def report_lighting(self, status):
-        if status not in {"active", "inactive", "unavailable"}:
-            raise ValueError(f"Unknown room lighting status: {status}")
+    def report_lighting(self, lighting):
+        scenes = lighting.get("scenes") if isinstance(lighting, dict) else None
+        active_scenes = (
+            lighting.get("activeScenes") if isinstance(lighting, dict) else None
+        )
+        if (
+            not isinstance(lighting, dict)
+            or set(lighting) != {"status", "scenes", "activeScenes"}
+            or lighting["status"] not in {"available", "unavailable"}
+            or not isinstance(scenes, list)
+            or not all(isinstance(scene, str) and scene for scene in scenes)
+            or scenes != sorted(scenes, key=str.casefold)
+            or len({scene.casefold() for scene in scenes}) != len(scenes)
+            or not isinstance(active_scenes, list)
+            or not all(isinstance(scene, str) for scene in active_scenes)
+            or active_scenes
+            != [scene for scene in scenes if scene in active_scenes]
+            or (
+                lighting["status"] == "unavailable"
+                and (scenes or active_scenes)
+            )
+            or (lighting["status"] == "available" and not scenes)
+        ):
+            raise ValueError("Invalid room lighting snapshot")
 
         with self.lock:
-            if status == self.lighting["status"]:
+            changed = any(
+                self.lighting.get(key) != lighting[key]
+                for key in ("status", "scenes", "activeScenes")
+            )
+            if not changed:
                 return self.lighting
             self.lighting = {
-                "scene": "Warm",
-                "status": status,
+                "status": lighting["status"],
+                "scenes": list(lighting["scenes"]),
+                "activeScenes": list(lighting["activeScenes"]),
                 "observedAt": utc_timestamp(),
             }
             if self.endpoint:
@@ -375,23 +431,23 @@ class Coordinator:
         try:
             if self.scene_activator is None:
                 raise HueSceneUnavailable
-            self.scene_activator(self.action_timeout)
+            self.scene_activator(pending.scene, self.action_timeout)
         except HueSceneUnavailable:
             result = (
                 "scene_unavailable",
-                "The Warm scene is unavailable.",
+                f"The {pending.scene} scene is unavailable.",
                 HTTPStatus.SERVICE_UNAVAILABLE,
             )
         except HueSceneTimeout:
             result = (
                 "scene_timeout",
-                "The Warm scene did not report completion in time.",
+                f"The {pending.scene} scene did not report completion in time.",
                 HTTPStatus.GATEWAY_TIMEOUT,
             )
         except HueSceneError:
             result = (
                 "scene_failed",
-                "The Hue bridge rejected the Warm scene action.",
+                f"The Hue bridge rejected the {pending.scene} scene action.",
                 HTTPStatus.BAD_GATEWAY,
             )
         else:
@@ -490,11 +546,14 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             if path == "/api/actions":
-                body = self._read_json({"requestId", "action", "channel"})
+                body = self._read_json(
+                    {"requestId", "action", "channel", "scene"}
+                )
                 status, payload = self.server.coordinator.submit(
                     body.get("requestId"),
                     body.get("action"),
                     body.get("channel"),
+                    body.get("scene"),
                 )
                 self._send_json(status, payload)
                 return

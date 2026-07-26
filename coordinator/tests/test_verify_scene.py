@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from verify_warm_scene import VerificationError, verify
+from verify_scene import VerificationError, verify
 
 
 class FakeCoordinator:
@@ -55,7 +55,7 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-class VerifyWarmSceneTests(unittest.TestCase):
+class VerifySceneTests(unittest.TestCase):
     def setUp(self):
         self.state = FakeCoordinator()
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -73,27 +73,38 @@ class VerifyWarmSceneTests(unittest.TestCase):
     def test_verifies_health_and_observed_scene_completion(self):
         output = []
 
-        verify(self.base_url, request_id="warm-test-1", output=output.append)
+        verify(
+            self.base_url,
+            "Relax",
+            request_id="scene-test-1",
+            output=output.append,
+        )
 
         self.assertEqual(
             self.state.requests,
             [
                 {
-                    "requestId": "warm-test-1",
+                    "requestId": "scene-test-1",
                     "action": "room.scene.activate",
+                    "scene": "Relax",
                 }
             ],
         )
         self.assertIn("endpoint connected", output[0])
         self.assertEqual(
             output[-1],
-            "PASS: Hue reported Warm active after the scene request.",
+            "PASS: Hue reported Relax active after the scene request.",
         )
 
     def test_accepts_a_disconnected_endpoint(self):
         self.state.health["endpoint"] = "disconnected"
 
-        verify(self.base_url, request_id="warm-test-2", output=lambda _line: None)
+        verify(
+            self.base_url,
+            "Bright",
+            request_id="scene-test-2",
+            output=lambda _line: None,
+        )
 
         self.assertEqual(len(self.state.requests), 1)
 
@@ -101,7 +112,7 @@ class VerifyWarmSceneTests(unittest.TestCase):
         self.state.health["hue"] = "unreachable"
 
         with self.assertRaisesRegex(VerificationError, "health is not connected"):
-            verify(self.base_url, request_id="warm-test-3")
+            verify(self.base_url, "Relax", request_id="scene-test-3")
 
         self.assertEqual(self.state.requests, [])
 
@@ -110,7 +121,7 @@ class VerifyWarmSceneTests(unittest.TestCase):
         self.state.action_result = {
             "status": "failed",
             "code": "scene_timeout",
-            "error": "The Warm scene did not report completion in time.",
+            "error": "The Relax scene did not report completion in time.",
         }
 
         with self.assertRaisesRegex(
@@ -119,7 +130,8 @@ class VerifyWarmSceneTests(unittest.TestCase):
         ):
             verify(
                 self.base_url,
-                request_id="warm-test-4",
+                "Relax",
+                request_id="scene-test-4",
                 output=lambda _line: None,
             )
 
