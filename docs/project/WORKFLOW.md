@@ -87,6 +87,28 @@ git worktree add ../cortex-home-GH-013 -b felixf/GH-013/0 main
 GH-012 owns coordinator context code and tests. GH-013 owns frontend module
 separation. Their accepted scopes deliberately do not overlap.
 
+Continue parallel work as two sequential lanes:
+
+| Wave | Voice lane | Channel lane |
+|---|---|---|
+| 1 | GH-012 agent-safe room context | GH-013 channel shell separation |
+| 2 | GH-014 local speech qualification | GH-015 Today and Music polish |
+| 3 | GH-016 Pi and OpenRouter answer path | GH-017 BBC World Headlines |
+| 4 | GH-018 exact scene tool | Next accepted channel issue, if one exists |
+
+Merge and remove each wave's worktrees before creating the next worktrees from
+the updated `main`. Keep each lane sequential: voice issues build on the prior
+voice boundary, while channel issues share the explicit shell switch, room
+state, and presentation structure. Before each later wave, accept both issue
+plans and state exact file ownership so voice feedback and channel presentation
+do not silently edit the same shell module.
+
+GH-015 is one coordinated visual pass over the explicit Today and Music
+components; it does not require permanent worktrees for those channels.
+GH-017 adds the first new view after that pass. Reserve a separate issue for
+each later view only after its source, user flow, and failure states are
+accepted on `main`.
+
 ## Finish
 
 1. Push the branch and create the PR.
