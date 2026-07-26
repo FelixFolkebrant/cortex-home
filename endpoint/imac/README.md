@@ -35,6 +35,51 @@ configures its automatic full-screen session, points Chromium at the network
 client, and persists the rear analog mixer route. The command can be rerun to
 restore the committed configuration.
 
+The same command renders
+`/var/snap/chromium/current/policies/managed/cortex-home-media.json` from the
+configured coordinator origin. The managed policy treats that one HTTP origin
+as a secure context and grants it unattended audio capture. It does not contain
+a wildcard, video permission, or a committed deployment hostname. Chromium
+must restart before the secure-context override takes effect.
+
+On an already provisioned endpoint, install only that policy and restart the
+kiosk with:
+
+```sh
+./endpoint/imac/provision-media
+```
+
+The focused command reads the endpoint's existing coordinator URL and asks only
+for the existing `imac` account's sudo password. It does not change packages,
+Wi-Fi or unrelated endpoint configuration. It restores the qualified room
+mixer baseline—Master 80% and unmuted, built-in Speaker muted, rear Headphone
+60% and unmuted—and pins room output to the single built-in PCI analog
+PulseAudio sink used by the Sonos line-in. It applies the ALSA baseline after
+the kiosk and Raspotify sessions restart; the Pulse route selects and unmutes
+the sink but never changes its volume. Microphone sources are neither selected
+nor disabled. Kiosk startup, Raspotify, and speech qualification all apply that
+same output route so a USB microphone with its own speaker cannot become the
+room output. The command also installs argument-free speech qualification
+helpers and command-specific sudo rules. The capture helper emits a fixed
+15-second, 16 kHz mono PCM WAV from the Anker to standard output. The
+playback helper reads WAV from standard input and targets the existing
+`cortex-endpoint` PulseAudio session instead of the SSH account's null sink.
+Neither stores audio or starts a service.
+
+After provisioning, confirm the rendered policy without printing other endpoint
+configuration:
+
+```sh
+ssh -t imac \
+  'sudo python3 -m json.tool /var/snap/chromium/current/policies/managed/cortex-home-media.json'
+```
+
+The two values must be the configured coordinator origin with one trailing
+slash under `AudioCaptureAllowedUrls` and
+`OverrideSecurityRestrictionsOnInsecureOrigin`. The focused command restarts
+the kiosk; inspect `chrome://policy` from the recovery terminal if Chromium
+does not grant the microphone unattended.
+
 Raspotify advertises one `Högtalaren` Spotify Connect receiver. It runs as the
 endpoint user and shares that user's PulseAudio session with Chromium so both
 Spotify and endpoint feedback use the qualified Sonos route. Raspotify remains
@@ -54,6 +99,13 @@ The endpoint advertises itself as `imac.local` on the home network. Press
 `Control`+`Option`+`Return` on the iMac keyboard to open an unprivileged
 recovery terminal above the kiosk. Run `su - imac` there when administrative
 access is required, and close the terminal to return to the full-screen page.
+
+`Control`+`Option`+`Up` raises the rear Headphone control by 5 percentage
+points, and `Control`+`Option`+`Down` lowers it by the same amount. Openbox owns
+these endpoint-global bindings. The helper adjusts the explicitly selected
+built-in analog PulseAudio sink rather than writing beneath PulseAudio through
+ALSA, so increases and decreases apply coherently to both Raspotify and speech
+playback without selecting the Anker output or changing microphone input.
 
 ## Playback Diagnostics
 

@@ -1,0 +1,35 @@
+#!/bin/sh
+
+set -eu
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+remote_dir=$(ssh imac mktemp -d)
+
+case "$remote_dir" in
+  /tmp/tmp.*) ;;
+  *)
+    echo "Unexpected remote temporary directory: $remote_dir" >&2
+    exit 1
+    ;;
+esac
+
+cleanup() {
+  ssh imac "rm -rf -- '$remote_dir'" || true
+}
+
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+scp -q \
+  "$script_dir/files/cortex-endpoint-audio-route" \
+  "$script_dir/files/cortex-endpoint-headphone-volume" \
+  "$script_dir/files/cortex-endpoint-session" \
+  "$script_dir/files/cortex-raspotify" \
+  "$script_dir/files/cortex-speech-qualification-capture" \
+  "$script_dir/files/cortex-speech-qualification-playback" \
+  "$script_dir/files/cortex-speech-qualification-playback.sudoers" \
+  "$script_dir/files/openbox-rc.xml" \
+  "$script_dir/provision-media-host" \
+  "imac:$remote_dir/"
+
+ssh -tt imac "sudo '$remote_dir/provision-media-host'"

@@ -67,6 +67,129 @@ pnpm --dir coordinator/client test
 pnpm --dir coordinator/client build
 ```
 
+## Speech Qualification
+
+`Ctrl`+`Alt`+`Space` is the deliberate microphone boundary. The first exact
+keydown opens a mono microphone stream, Chromium resamples it to 16 kHz, and
+releasing Space, Control, or Alt closes every track. Repeat keydowns and
+combinations containing Shift or Meta do nothing. Capture also stops on focus
+loss, error, coordinator reconnection, or client cleanup, and it fails after a
+15-second maximum.
+
+The resulting in-memory value is a WAV container containing one channel of
+signed 16-bit little-endian PCM at 16 kHz. GH-014 discards the value after
+validating the capture boundary; GH-016 will connect it to the selected
+recognizer within one interaction request. No recording, transcript, or
+synthesized answer is stored or logged by the application.
+
+Install the pinned qualification candidates on the ThinkPad with:
+
+```sh
+./coordinator/install-speech <server-ssh-host>
+```
+
+This installs Vosk `0.3.45` with `vosk-model-small-en-us-0.15`,
+`whisper.cpp` `1.9.1` with `ggml-base.en-q5_1.bin`, Piper `1.5.0` with
+`en_US-lessac-medium`, and Pocket TTS `2.1.0` with the English `alba` voice
+under `/opt/cortex-speech`. The Vosk, Whisper, and Piper downloads are verified
+against pinned model checksums. Candidate dependencies stay in the isolated
+`/opt/cortex-speech/qualification-venv`; they do not change the running
+coordinator environment.
+
+Create a private JSON manifest outside the repository. Recognition cases need
+an exact expected value and a path to a bounded capture; synthesis cases are
+the short answer texts both candidates must speak:
+
+```json
+{
+  "recognition": [
+    {
+      "audio": "/tmp/cortex-speech/case-1.wav",
+      "expected": "<private expected words>"
+    }
+  ],
+  "synthesis": [
+    "<private short answer>"
+  ]
+}
+```
+
+For real-room recognition qualification, stream the fixed 15-second Anker
+capture into a private RAM-backed directory on the ThinkPad:
+
+```sh
+install -d --mode=700 /dev/shm/cortex-speech
+ssh imac@imac.local \
+  sudo -n -u cortex-endpoint \
+  /usr/local/bin/cortex-speech-qualification-capture \
+  > /dev/shm/cortex-speech/case-1.wav
+```
+
+Use that path in the private manifest, run both recognizers, then remove the
+RAM-backed directory immediately. The helper accepts no arguments and emits
+only the fixed Anker PCM shape; it never creates an endpoint file.
+
+Run each candidate in a fresh process so its CPU and peak-memory summary remains
+comparable. Run the commands on the ThinkPad from a session that forwards the
+operator's existing SSH agent, then verify the one endpoint hop before playback:
+
+```sh
+ssh -A <server-ssh-host>
+ssh -o StrictHostKeyChecking=accept-new imac@imac.local true
+```
+
+Do not copy an operator private key onto the ThinkPad.
+Endpoint qualification invokes only the two root-owned capture and playback
+helpers through their command-specific sudo rules. Both reject arguments. The
+playback helper reads one WAV from standard input and targets the existing
+`cortex-endpoint` PulseAudio socket; neither stores audio or starts a service.
+
+```sh
+/opt/cortex-speech/qualification-venv/bin/python \
+  /opt/cortex-speech/qualify_speech.py recognition \
+  --backend vosk \
+  --manifest /tmp/cortex-speech/manifest.json \
+  --model /opt/cortex-speech/models/vosk-model-small-en-us-0.15
+
+/opt/cortex-speech/qualification-venv/bin/python \
+  /opt/cortex-speech/qualify_speech.py recognition \
+  --backend whisper.cpp \
+  --manifest /tmp/cortex-speech/manifest.json \
+  --model /opt/cortex-speech/models/ggml-base.en-q5_1.bin
+
+/opt/cortex-speech/qualification-venv/bin/python \
+  /opt/cortex-speech/qualify_speech.py synthesis \
+  --backend piper \
+  --manifest /tmp/cortex-speech/manifest.json \
+  --model /opt/cortex-speech/models/en_US-lessac-medium.onnx \
+  --endpoint imac@imac.local
+
+/opt/cortex-speech/qualification-venv/bin/python \
+  /opt/cortex-speech/qualify_speech.py synthesis \
+  --backend pocket-tts \
+  --manifest /tmp/cortex-speech/manifest.json \
+  --model /opt/cortex-speech/pocket-cache \
+  --voice alba \
+  --endpoint imac@imac.local
+```
+
+The recognition summary contains only aggregate word error rate, latency, CPU,
+memory, and model size. The synthesis summary contains only aggregate
+generation latency, output duration, endpoint use, CPU, memory, and model size.
+Neither summary contains qualification text, file paths, or host identity.
+Remove the private manifest and bounded inputs as soon as both recognition runs
+finish. Listening quality, first audible output, and prompt playback stop remain
+reviewer observations because software completion is not evidence of what
+reached the Sonos.
+
+The selected product roles are Vosk recognition and Pocket TTS
+synthesis. They implement the `Recognizer` and `Synthesizer` protocols in
+`coordinator/speech.py`; coordinator behavior sees only `WaveAudio`, text, and
+explicit `SpeechError` failures rather than engine objects. whisper.cpp and
+Piper remain pinned qualification candidates so GH-016 can revise either
+single selection if the complete agent turn exposes different evidence; they
+are not runtime switches.
+
 With the endpoint connected, an outside caller can invoke its identify action:
 
 ```sh

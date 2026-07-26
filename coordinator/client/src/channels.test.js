@@ -259,3 +259,49 @@ test("Music fullscreen retains the previous track for a sharp 400ms left swipe",
   assert.match(styles, /music-track-exit 400ms cubic-bezier\(0\.7, 0, 0\.3, 1\)/);
   assert.match(styles, /background-color 400ms cubic-bezier\(0\.7, 0, 0\.3, 1\)/);
 });
+
+test("room feedback makes deliberate microphone capture visible", () => {
+  const markup = renderToStaticMarkup(
+    createElement(RoomFeedback, {
+      connection: "connected",
+      lighting: { activeScenes: [], status: "available" },
+      interaction: {
+        action: "speech.capture",
+        level: 0.5,
+        message: null,
+        scene: null,
+        state: "listening",
+      },
+    }),
+  );
+
+  assert.match(markup, /Cortex Home \/ Microphone/);
+  assert.match(markup, /Listening\./);
+  assert.match(markup, /Keep holding Control, Alt, and Space\./);
+  assert.match(markup, /width:55%/);
+});
+
+test("Music fullscreen keeps microphone feedback without room chrome", () => {
+  const markup = renderToStaticMarkup(
+    createElement(RoomFeedback, {
+      connection: "disconnected",
+      interaction: {
+        action: "speech.capture",
+        level: 0.5,
+        message: null,
+        scene: null,
+        state: "listening",
+      },
+      lighting: {
+        activeScenes: ["Warm"],
+        status: "available",
+      },
+      showLightingStatus: true,
+      voiceOnly: true,
+    }),
+  );
+
+  assert.match(markup, /Cortex Home \/ Microphone/);
+  assert.doesNotMatch(markup, /Coordinator offline · Reconnecting/);
+  assert.doesNotMatch(markup, /Warm active/);
+});

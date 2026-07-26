@@ -11,6 +11,7 @@ export const initialRoomState = {
   interaction: {
     state: "idle",
     action: null,
+    level: 0,
     message: null,
     scene: null,
   },
@@ -49,8 +50,17 @@ export function roomReducer(state, event) {
         interaction: {
           state: event.state,
           action: event.action ?? null,
+          level: event.level ?? 0,
           message: event.message ?? null,
           scene: event.scene ?? null,
+        },
+      };
+    case "interaction.level":
+      return {
+        ...state,
+        interaction: {
+          ...state.interaction,
+          level: Math.max(0, Math.min(1, event.level)),
         },
       };
     default:

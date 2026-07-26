@@ -11,6 +11,11 @@ import {
   SCENE_ACTION,
 } from "./room-state";
 import { TodayChannel } from "./TodayChannel";
+import {
+  VOICE_CAPTURE_ACTION,
+  VoiceCapture,
+  voiceCaptureTransition,
+} from "./voice-capture";
 
 function writeWavLabel(view, offset, label) {
   for (const [index, character] of [...label].entries()) {
@@ -99,6 +104,7 @@ export function App() {
   const actionGeneration = useRef(0);
   const interactionTimer = useRef(null);
   const activeChannel = useRef("today");
+  const voiceRequestId = useRef(null);
 
   useEffect(() => {
     function clearInteractionTimer() {
@@ -118,6 +124,46 @@ export function App() {
           interactionTimer.current = null;
         }, duration);
       }
+    }
+
+    const voiceCapture = new VoiceCapture({
+      audioContext: window.AudioContext || window.webkitAudioContext,
+      mediaDevices: navigator.mediaDevices,
+      onCaptured: (requestId) => {
+        if (voiceRequestId.current !== requestId) {
+          return;
+        }
+        voiceRequestId.current = null;
+        activeRequestId.current = null;
+        showInteraction(VOICE_CAPTURE_ACTION, "captured", null, 2500);
+      },
+      onError: (requestId, error) => {
+        if (voiceRequestId.current !== requestId) {
+          return;
+        }
+        voiceRequestId.current = null;
+        activeRequestId.current = null;
+        showInteraction(VOICE_CAPTURE_ACTION, "failed", error.message, 5000);
+      },
+      onLevel: (requestId, level) => {
+        if (voiceRequestId.current === requestId) {
+          dispatch({ type: "interaction.level", level });
+        }
+      },
+      onStarted: (requestId) => {
+        if (voiceRequestId.current === requestId) {
+          showInteraction(VOICE_CAPTURE_ACTION, "listening");
+        }
+      },
+    });
+
+    function cancelVoice(message) {
+      const cancelled = voiceCapture.cancel(message);
+      if (cancelled) {
+        voiceRequestId.current = null;
+        activeRequestId.current = null;
+      }
+      return cancelled;
     }
 
     async function postStatus(requestId, status, error) {
@@ -268,10 +314,15 @@ export function App() {
 
       endpointToken.current = message.endpointToken;
       actionGeneration.current += 1;
+      const cancelled = cancelVoice(
+        "Microphone capture was cancelled by reconnection.",
+      );
       activeRequestId.current = null;
-      clearInteractionTimer();
       dispatch({ type: "connection", state: "connected" });
-      dispatch({ type: "interaction", state: "idle" });
+      if (!cancelled) {
+        clearInteractionTimer();
+        dispatch({ type: "interaction", state: "idle" });
+      }
     });
 
     events.addEventListener("music.playback", (event) => {
@@ -314,6 +365,7 @@ export function App() {
       }
 
       if (message.status === "accepted") {
+        cancelVoice("Microphone capture was cancelled by another room action.");
         activeRequestId.current = message.requestId;
         showInteraction(message.action, "working", null, null, message.scene);
       } else if (
@@ -353,16 +405,36 @@ export function App() {
     events.onerror = () => {
       endpointToken.current = null;
       actionGeneration.current += 1;
+      const cancelled = cancelVoice(
+        "Microphone capture was cancelled while reconnecting.",
+      );
       activeRequestId.current = null;
-      clearInteractionTimer();
       dispatch({ type: "connection", state: "disconnected" });
-      dispatch({ type: "interaction", state: "idle" });
+      if (!cancelled) {
+        clearInteractionTimer();
+        dispatch({ type: "interaction", state: "idle" });
+      }
     };
 
     function onKeyDown(event) {
       if (isMusicFullscreenShortcut(event, activeChannel.current)) {
         event.preventDefault();
         setMusicFullscreen((current) => !current);
+        return;
+      }
+
+      if (voiceCaptureTransition(event) === "start") {
+        if (activeRequestId.current) {
+          return;
+        }
+        event.preventDefault();
+        const requestId = `voice-${Date.now().toString(36)}-${Math.random()
+          .toString(36)
+          .slice(2, 10)}`;
+        voiceRequestId.current = requestId;
+        activeRequestId.current = requestId;
+        showInteraction(VOICE_CAPTURE_ACTION, "requesting");
+        voiceCapture.start(requestId);
         return;
       }
 
@@ -378,12 +450,28 @@ export function App() {
       }
     }
 
+    function onKeyUp(event) {
+      if (voiceCaptureTransition(event) === "stop" && voiceRequestId.current) {
+        event.preventDefault();
+        voiceCapture.release(voiceRequestId.current);
+      }
+    }
+
+    function onBlur() {
+      cancelVoice("Microphone capture was cancelled when the display lost focus.");
+    }
+
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
 
     return () => {
       clearInteractionTimer();
+      voiceCapture.dispose();
       events.close();
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
     };
   }, [currentClientEntry]);
 
@@ -410,15 +498,16 @@ export function App() {
           ) : (
             <MusicChannel playback={room.playback} connection={room.connection} />
           )}
-
-          <RoomFeedback
-            connection={room.connection}
-            lighting={room.lighting}
-            interaction={room.interaction}
-            showLightingStatus={channel === "today"}
-          />
         </>
       )}
+
+      <RoomFeedback
+        connection={room.connection}
+        lighting={room.lighting}
+        interaction={room.interaction}
+        showLightingStatus={channel === "today"}
+        voiceOnly={showMusicFullscreen}
+      />
     </div>
   );
 }

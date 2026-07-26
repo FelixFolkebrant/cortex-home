@@ -1,0 +1,38 @@
+{
+  "capture": {
+    "container": "WAV",
+    "encoding": "signed 16-bit little-endian PCM",
+    "sampleRate": 16000,
+    "channels": 1,
+    "maximumSeconds": 15
+  },
+  "recognition": [
+    {
+      "engine": "vosk",
+      "version": "0.3.45",
+      "model": "vosk-model-small-en-us-0.15"
+    },
+    {
+      "engine": "whisper.cpp",
+      "version": "1.9.1",
+      "model": "ggml-base.en-q5_1.bin"
+    }
+  ],
+  "synthesis": [
+    {
+      "engine": "piper",
+      "version": "1.5.0",
+      "model": "en_US-lessac-medium"
+    },
+    {
+      "engine": "pocket-tts",
+      "version": "2.1.0",
+      "model": "english",
+      "voice": "alba"
+    }
+  ],
+  "selected": {
+    "recognizer": "vosk",
+    "synthesizer": "pocket-tts"
+  }
+}

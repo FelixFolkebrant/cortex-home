@@ -1,0 +1,18 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$#" -ne 0 ]; then
+  echo "Speech qualification capture accepts no arguments." >&2
+  exit 1
+fi
+
+exec /usr/bin/arecord \
+  --quiet \
+  --device=plughw:S330 \
+  --format=S16_LE \
+  --rate=16000 \
+  --channels=1 \
+  --duration=15 \
+  --file-type=wav \
+  -

@@ -1,0 +1,30 @@
+#!/bin/sh
+
+set -eu
+
+runtime_dir="/run/user/$(id -u)"
+pulse_socket="$runtime_dir/pulse/native"
+
+if [ ! -S "$pulse_socket" ]; then
+  echo "The endpoint PulseAudio socket is unavailable." >&2
+  exit 1
+fi
+
+export XDG_RUNTIME_DIR="$runtime_dir"
+export PULSE_SERVER="unix:$pulse_socket"
+
+sink_names=$(
+  /usr/bin/pactl list short sinks |
+    /usr/bin/awk '$2 ~ /^alsa_output\.pci-.*\.analog-stereo$/ { print $2 }'
+)
+
+set -- $sink_names
+
+if [ "$#" -ne 1 ]; then
+  echo "Expected exactly one endpoint analog output." >&2
+  exit 1
+fi
+
+/usr/bin/pactl set-default-sink "$1"
+/usr/bin/pactl set-sink-mute "$1" 0
+printf '%s\n' "$1"

@@ -6,5 +6,15 @@
         <command>xterm -fa monospace -fs 18</command>
       </action>
     </keybind>
+    <keybind key="C-A-Up">
+      <action name="Execute">
+        <command>/usr/local/bin/cortex-endpoint-headphone-volume up</command>
+      </action>
+    </keybind>
+    <keybind key="C-A-Down">
+      <action name="Execute">
+        <command>/usr/local/bin/cortex-endpoint-headphone-volume down</command>
+      </action>
+    </keybind>
   </keyboard>
 </openbox_config>
