@@ -133,21 +133,28 @@ feedback or permission paths.
 
 ## Issues
 
-1. **GH-008 - Connect The Hue Bridge**: add the pinned Hue client dependency,
-   pair one repository-owned coordinator adapter, inventory the bridge
-   generation, room, scenes, and available remotes without recording private
-   identifiers, and qualify restart and manual Hue-control recovery.
-2. **GH-009 - Control One Hue Room Scene**: expose one allow-listed coordinator
-   action, publish normalized lighting state, and prove accepted, completed,
-   unavailable, timeout, and failure feedback without direct client access to
-   the Hue bridge.
-3. **GH-010 - Compose Today And Music Channels**: add coordinator-owned channel
-   selection, render a focused Today view beside the existing Music view, and
-   preserve reconnect and interaction overlays across channel changes.
-4. **GH-011 - Discover And Cycle Room Scenes**: replace the fixed Warm snapshot
-   with the room's complete scene catalog and active scene names, accept exact
-   named-scene activation, and cycle the catalog from one fixed keyboard
-   shortcut without integrating the Hue remote.
+1. **GH-008 COMPLETE - Connect The Hue Bridge**: added the pinned Hue client
+   dependency, paired one repository-owned coordinator adapter, inventoried the
+   bridge generation, room, scenes, and available remotes without recording
+   private identifiers, and qualified restart and manual Hue-control recovery.
+2. **GH-009 COMPLETE - Control One Hue Room Scene**: exposed one allow-listed
+   coordinator action, published normalized lighting state, and proved
+   accepted, completed, unavailable, timeout, and failure feedback without
+   direct client access to the Hue bridge.
+3. **GH-010 COMPLETE - Compose Today And Music Channels**: added
+   coordinator-owned channel selection, rendered a focused Today view beside
+   the existing Music view, and preserved reconnect and interaction overlays
+   across channel changes.
+4. **GH-011 COMPLETE - Discover And Cycle Room Scenes**: replaced the fixed
+   Warm snapshot with the room's complete scene catalog and active scene names,
+   accepted exact named-scene activation, and cycled the catalog from one fixed
+   keyboard shortcut without integrating the Hue remote.
+
+## Completion
+
+Planpoint 3 was accepted as complete on 2026-07-26. The reviewer accepted the
+current deployed state and explicitly waived the remaining reviewer-owned live
+checks recorded in its issue documents.
 
 ## Conceptual Heatmap
 

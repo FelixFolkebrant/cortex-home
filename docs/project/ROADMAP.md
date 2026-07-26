@@ -7,9 +7,11 @@ while device control stays narrow to the existing Hue bridge.
 
 ## Planpoints
 
-Planpoints 1 and 2 are complete. The iMac now presents useful Today and Music
-channels backed by coordinator-owned state. Planpoint 3 is accepted and active.
-Discovering and cycling the room's existing Hue scenes is next.
+Planpoints 1 through 3 are complete. The iMac now presents useful Today and
+Music channels backed by coordinator-owned state, alongside detected Hue scene
+state and named scene control. Planpoint 4 is next; its agent runtime, speech
+boundary, permissions, privacy, and relationship to concurrent channel work
+must be accepted before issue work starts.
 
 ### [1 COMPLETE - Connected Room Endpoint](../planpoints/PP-1.md)
 
@@ -43,7 +45,7 @@ Sonos line-in, and the iMac shows useful now-playing feedback.
 General system audio, synchronized multi-room audio, and a local music library
 remain deferred.
 
-### [3 ACTIVE - Today And Room Control](../planpoints/PP-3.md)
+### [3 COMPLETE - Today And Room Control](../planpoints/PP-3.md)
 
 The iMac provides a useful Today channel and detected room-level Hue scene state
 with immediate feedback. The attached keyboard selects channels and cycles
@@ -60,7 +62,7 @@ web shell boundaries. The existing Hue remote remains exclusively under native
 Hue control; fixed keyboard shortcuts are the deliberate room input, and a
 later voice agent can inherit exact named-scene activation.
 
-### 4 - Deliberate Voice Agent Interaction
+### [4 NEXT - Deliberate Voice Agent Interaction]
 
 A hold-to-speak interaction can answer a contextual follow-up about the visible
 channel and invoke one accepted room action with unmistakable listening,
