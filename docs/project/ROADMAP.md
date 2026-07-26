@@ -7,9 +7,10 @@ architecture remains open.
 
 ## Planpoints
 
-Planpoint 1 is complete. Planpoint 2 is accepted and active. Its iMac-hosted
-Raspotify receiver and local playback state path are qualified; presenting the
-Music channel is next.
+Planpoints 1 and 2 are complete. The iMac now presents a useful Music channel
+from its qualified Spotify receiver and coordinator-owned playback state.
+Planpoint 3 is next; its device authority, channel architecture, and first room
+input must be accepted before issue work starts.
 
 ### [1 COMPLETE - Connected Room Endpoint](../planpoints/PP-1.md)
 
@@ -30,7 +31,7 @@ This slice defines the minimum action and feedback shape that later interfaces
 and agents inherit. It does not choose an agent provider, speech stack, broad
 automation model, or child-repository layout.
 
-### [2 ACTIVE - Spotify Music Channel](../planpoints/PP-2.md)
+### [2 COMPLETE - Spotify Music Channel](../planpoints/PP-2.md)
 
 Spotify on the iPhone can select the `Högtalaren` receiver, audio plays through the
 Sonos line-in, and the iMac shows useful now-playing feedback.
@@ -43,7 +44,7 @@ Sonos line-in, and the iMac shows useful now-playing feedback.
 General system audio, synchronized multi-room audio, and a local music library
 remain deferred.
 
-### 3 - Today And Room Control
+### [3 NEXT - Today And Room Control]
 
 The iMac provides a useful Today channel and one room-level Hue action with
 immediate state feedback. The same action can be called by the UI and one
