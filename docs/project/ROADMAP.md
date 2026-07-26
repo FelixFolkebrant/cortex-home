@@ -80,23 +80,26 @@ remain deferred.
 
 ### [5 ACCEPTED - Independent Channel Evolution](../planpoints/PP-5.md)
 
-Today and Music become explicit channel modules, receive one focused polish
-pass, and are joined by a read-only BBC World Headlines channel while voice
-work proceeds in separate issue worktrees.
+Today and Music become explicit channel modules, Music receives one focused
+polish pass, and a deliberate Camera channel turns the iMac's built-in front
+camera into a local full-screen mirror while voice work proceeds in separate
+issue worktrees.
 
 | Crossroad | Decision | Alternatives Rejected |
 |---|---|---|
 | Channel module boundary | Explicit channel components with one hard-coded shell switch | Monolithic `App.jsx`; router; dynamic registry; plugin API |
-| First new channel source | Exact BBC World RSS feed with attribution and no rewriting | Unmaintained SR API; scraping; accounts; AI summaries |
+| Camera capture boundary | Video-only browser capture while Camera is active, with every track stopped on exit | Endpoint camera daemon; coordinator streaming; native camera application |
+| Kiosk media permission | Exact configured origin through Chromium secure-context and capture policies | TLS migration now; interactive kiosk prompts; wildcard or global media grants |
 | Parallel documentation | Complete branch-local docs checkout with issue IDs reserved on `main` | Symlinked shared docs; per-worktree number allocation |
 
-Photos, quotes, stocks, local media, and TV remain later candidates. A candidate
+Camera frames remain local to Chromium and outside agent context. Photos,
+quotes, stocks, local media, and TV remain later candidates. A candidate
 becomes a Planpoint only when its user flow and data source are clear.
 
 ### Later Experiments
 
 - iPhone audio and screen casting.
-- Camera-assisted presence and deliberate gestures.
+- Camera-assisted presence, deliberate gestures, and agent vision.
 - Physical knobs, buttons, and clap input.
 - Fitbit-assisted input.
 - Local media and general video playback.
@@ -221,11 +224,15 @@ slices.
 - Impact if wrong: Every channel inherits the runtime, navigation, deployment,
   and hardware-access model.
 - Proposed choice: Use one full-screen React shell with coordinator-owned
-  channel state. Hardware access belongs behind server actions, so it does not
-  require browser hardware APIs. Add a native or streamed escape hatch only
-  when a real channel cannot fit.
+  channel state. Allow narrowly provisioned browser media access only for
+  deliberate endpoint-local microphone and camera flows whose lifetime remains
+  visible; keep integrations, durable state, and expensive processing behind
+  coordinator actions. Add a native or streamed escape hatch only when a real
+  channel cannot fit.
 - Why: Hyprland, multiple native apps, and VMs solve flexibility that the first
-  channels do not yet require.
+  channels do not yet require. The iMac-attached microphone and camera are
+  simplest to capture in its existing browser, while direct access remains
+  bounded to the exact configured origin and explicit interaction lifetime.
 - Status: decided
 
 ### C7 - Agent Trust Boundary
@@ -300,10 +307,10 @@ scene tool. These broader choices remain deferred:
   repository-owned definitions.
 - Conversation memory, persistence, mid-speech barge-in, and reconciliation of
   the exact spoken prefix after an interrupted answer.
-- Wake word, proactive initiation, and camera context.
-- Agent understanding of Headlines and future channel state.
+- Wake word, proactive initiation, agent access to camera frames or visual
+  context, and behavior for future channel state.
 - Reusable channel infrastructure beyond the explicit modules required by
-  Today, Music, and Headlines.
+  Today, Music, and Camera.
 
 ## Cooling Order
 

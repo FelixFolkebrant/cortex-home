@@ -87,27 +87,46 @@ git worktree add ../cortex-home-GH-013 -b felixf/GH-013/0 main
 GH-012 owns coordinator context code and tests. GH-013 owns frontend module
 separation. Their accepted scopes deliberately do not overlap.
 
-Continue parallel work as two sequential lanes:
+The first pair is complete. Remove both merged worktrees after confirming they
+are clean.
+
+Reserve and plan the next active set on `main`, then create:
+
+```sh
+git worktree add ../cortex-home-GH-014 -b felixf/GH-014/0 main
+git worktree add ../cortex-home-GH-015 -b felixf/GH-015/0 main
+git worktree add ../cortex-home-GH-017 -b felixf/GH-017/0 main
+```
+
+Continue work in the following lanes:
 
 | Wave | Voice lane | Channel lane |
 |---|---|---|
 | 1 | GH-012 agent-safe room context | GH-013 channel shell separation |
-| 2 | GH-014 local speech qualification | GH-015 Today and Music polish |
-| 3 | GH-016 Pi and OpenRouter answer path | GH-017 BBC World Headlines |
+| 2 | GH-014 local speech qualification | GH-015 Music visual polish |
+| 3 | GH-016 Pi and OpenRouter answer path | GH-017 local Camera mirror |
 | 4 | GH-018 exact scene tool | Next accepted channel issue, if one exists |
 
-Merge and remove each wave's worktrees before creating the next worktrees from
-the updated `main`. Keep each lane sequential: voice issues build on the prior
-voice boundary, while channel issues share the explicit shell switch, room
-state, and presentation structure. Before each later wave, accept both issue
-plans and state exact file ownership so voice feedback and channel presentation
-do not silently edit the same shell module.
+Keep each lane sequential: voice issues build on the prior voice boundary,
+while channel issues share the explicit shell switch, room state, and
+presentation structure. GH-014 and GH-015 may proceed independently. GH-017
+may begin its isolated component and channel-contract work in a third worktree,
+but it must fetch and rebase after GH-014 merges before adding endpoint camera
+permission or performing physical camera confirmation. This is the one accepted
+cross-lane dependency because microphone and camera capture share Chromium's
+exact-origin secure-context boundary.
 
-GH-015 is one coordinated visual pass over the explicit Today and Music
-components; it does not require permanent worktrees for those channels.
-GH-017 adds the first new view after that pass. Reserve a separate issue for
-each later view only after its source, user flow, and failure states are
-accepted on `main`.
+GH-014 owns the shared secure-context origin and audio-capture permission.
+GH-015 owns `MusicChannel.jsx`, Music-specific styles, and its focused
+presentation tests. GH-017 owns the new Camera component, the explicit channel
+switch, Camera shortcut and coordinator validation, and—after rebasing
+GH-014—the video-capture permission in the shared Chromium policy. Neither
+channel issue changes agent interaction presentation.
+
+Creating all three worktrees does not authorize simultaneous deployment.
+Deploy and manually test only one integrated branch at a time. Remove each
+worktree after its issue branch merges, and rebase any branch that depends on
+the merged result before continuing shared integration.
 
 ## Finish
 

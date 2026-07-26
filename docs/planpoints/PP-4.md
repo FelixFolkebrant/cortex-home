@@ -28,7 +28,9 @@ without creating an ambient or general-purpose assistant.
 ## Out Of Scope
 
 - Wake words, continuous listening, automatic turn detection, background
-  recording, proactive initiation, or camera input.
+  recording, proactive initiation, or camera input for the agent. Planpoint 5's
+  separately selected local Camera mirror does not provide frames or context to
+  this slice.
 - General conversation memory, user profiles, embeddings, retrieval, web
   search, files, email, calendar, or personal account data.
 - Arbitrary coordinator actions, shell access, browser control, dynamic tool
@@ -57,8 +59,8 @@ without creating an ambient or general-purpose assistant.
   qualified. Every interaction is still identified and cancellable so a later
   press can stop playback, abort unfinished work, reject stale output, and
   record that the assistant response was interrupted rather than heard in full.
-- Agent understanding of Headlines and future channels remains explicit
-  follow-up work so channel delivery does not block this slice.
+- Agent understanding of Camera and future channels remains explicit follow-up
+  work so channel delivery does not block this slice.
 
 ## Crossroads
 
@@ -187,6 +189,10 @@ without creating an ambient or general-purpose assistant.
 - Speech boundary: one recognizer backend converts bounded PCM to English text
   and one synthesizer backend converts the final answer to bounded audio. The
   selected engines remain configuration, not coordinator behavior.
+- Media permission boundary: establish the exact configured coordinator origin
+  as the shared Chromium media secure-context boundary and grant only audio
+  capture for this issue; Planpoint 5 may add exact-origin video capture after
+  rebasing this boundary.
 - Harness boundary: the coordinator supervises one local Node child and
   exchanges request-ID-keyed messages over private standard streams. Pi Agent
   Core owns the ephemeral model turn; it does not receive coordinator internals
@@ -213,10 +219,11 @@ without creating an ambient or general-purpose assistant.
    provider-free context projection for Today, Music, and lighting without
    adding a model, microphone, public endpoint, or frontend change.
 2. **GH-014 - Qualify Deliberate Local Speech**: qualify the USB-connected
-   Anker PowerConf S330, press-bounded Chromium capture, English Vosk and
-   quantized `whisper.cpp`, Piper and Pocket TTS, the two small backend
-   contracts, endpoint permissions, bounded start and playback-stop latency,
-   and resource use before agent behavior depends on them.
+   Anker PowerConf S330, press-bounded Chromium capture, the shared exact-origin
+   media security boundary, English Vosk and quantized `whisper.cpp`, Piper and
+   Pocket TTS, the two small backend contracts, endpoint permissions, bounded
+   start and playback-stop latency, and resource use before agent behavior
+   depends on them.
 3. **GH-016 - Answer One Contextual Follow-Up**: add the supervised Node
    process, Pi Agent Core with `pi-ai`, protected OpenRouter credential, pinned
    qualified text model, request-ID cancellation seam, ephemeral interaction

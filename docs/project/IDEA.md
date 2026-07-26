@@ -93,8 +93,8 @@ The exact MVP is not accepted yet. The current candidate is:
 8. A deliberate hold-to-speak interaction can answer one contextual question
    about Today or Music and activate one exact detected Hue scene with visible
    sensing, processing, action, and failure feedback.
-9. Today and Music can evolve independently while one read-only Headlines
-   channel proves the next explicit channel boundary.
+9. Music can evolve independently while a deliberate Camera channel turns the
+   iMac's built-in front camera into a full-screen local mirror.
 
 ## Candidate Later Capabilities
 
@@ -135,6 +135,16 @@ its native Hue behavior.
 3. The requested channel replaces the current channel.
 4. A failed or unavailable channel is obvious rather than silently ignored.
 
+### Use The Camera Mirror
+
+1. The user deliberately selects Camera with its fixed keyboard shortcut.
+2. The iMac shows its built-in front camera as a mirrored full-screen preview
+   with an unmistakable local-camera label.
+3. Camera-unavailable or permission failure is visible rather than leaving a
+   blank screen.
+4. Selecting another channel stops every camera media track; Cortex Home does
+   not transmit, record, retain, or expose frames to the agent.
+
 ### Control The Room
 
 1. The user invokes one detected lighting scene by its displayed name.
@@ -155,7 +165,7 @@ its native Hue behavior.
 | Device | Intended Role | Known Unknowns |
 |---|---|---|
 | Lenovo ThinkPad E495, Ubuntu 24.04 | Always-on compute, coordination, and durable state | Available physical ports and the unrelated failed OpenVPN client unit |
-| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and nearby audio/USB endpoint | Real-client power draw |
+| Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client, local camera mirror, and nearby audio/USB endpoint | Real-client power draw and built-in iSight preview quality |
 | Sonos Play:5 Gen 1 | Speaker through its analog line-in | General music playback remains for Planpoint 2 |
 | Philips Hue bridge, remote, and three lamps | Detected room scenes and local lighting control; the remote remains Hue-native | Scene creation, editing, and controls beyond scene activation |
 | iPhone 17 | Personal controller, Spotify source, and possible casting source | None needed for the first slice |
