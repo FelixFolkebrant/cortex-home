@@ -160,6 +160,43 @@ to case, or Hue unavailability publishes `status: "unavailable"` with empty
 arrays. Hue credentials, bridge identity, room and scene resource IDs, and raw
 events remain inside the adapter.
 
+The coordinator also exposes an internal `Coordinator.context()` method for
+future local agent work. It is not an HTTP or SSE endpoint. The method returns
+one fresh reduced value with exactly these top-level keys:
+
+```json
+{
+  "activeChannel": "music",
+  "channel": {
+    "type": "music",
+    "available": true,
+    "playbackState": "playing",
+    "itemType": "track",
+    "title": "Never Gonna Give You Up",
+    "creators": ["Rick Astley"],
+    "collection": "Whenever You Need Somebody",
+    "positionMs": 1200,
+    "durationMs": 213573,
+    "observedAt": "2026-07-26T12:00:01.000Z"
+  },
+  "lighting": {
+    "available": true,
+    "scenes": ["Bright", "Relax", "Warm"],
+    "activeScenes": ["Warm"],
+    "observedAt": "2026-07-26T12:00:02.000Z"
+  }
+}
+```
+
+Only the active channel appears in `channel`. A Today channel contains
+`type`, `available`, `timeZone`, `current`, `forecast`, and `observedAt`.
+Unavailable or invalid snapshots reduce to a small unavailable context instead
+of forwarding unknown fields. The projection omits provider objects,
+credentials, artwork URLs, Spotify URIs, endpoint tokens, Hue resource IDs, raw
+events, cache metadata, and coordinator-owned mutable dictionaries. A later
+agent adapter should call `Coordinator.context()` immediately before one local
+model request and pass only the returned value to the supervised local process.
+
 The full-screen client keeps playback, lighting, coordinator connection, and
 temporary action feedback as independent state. Loaded tracks and episodes
 render as the Music view, playing progress is projected locally from

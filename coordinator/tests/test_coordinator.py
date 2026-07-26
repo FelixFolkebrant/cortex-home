@@ -429,6 +429,33 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(event, "action.status")
         self.assertEqual(completed, payload)
 
+    def test_context_tracks_active_channel_and_isolates_nested_values(self):
+        self.coordinator.report_playback(PLAYING_OBSERVATION)
+        self.endpoint.events.get(timeout=1)
+        self.coordinator.report_lighting(AVAILABLE_LIGHTING)
+        self.endpoint.events.get(timeout=1)
+
+        self.coordinator.submit("today-to-music", CHANNEL_ACTION, "music")
+        for _index in range(3):
+            self.endpoint.events.get(timeout=1)
+
+        context = self.coordinator.context()
+        self.assertEqual(context["activeChannel"], "music")
+        self.assertEqual(context["channel"]["type"], "music")
+        self.assertEqual(context["channel"]["title"], "Never Gonna Give You Up")
+        self.assertNotIn("artworkUrl", context["channel"])
+
+        context["channel"]["creators"].append("Mutated")
+        context["lighting"]["scenes"].append("Mutated")
+        self.assertEqual(
+            self.coordinator.playback["item"]["creators"],
+            ["Rick Astley"],
+        )
+        self.assertEqual(
+            self.coordinator.lighting["scenes"],
+            ["Bright", "Relax", "Warm"],
+        )
+
     def test_selects_a_channel_without_an_endpoint_and_rejects_invalid_values(self):
         self.coordinator.disconnect_endpoint(self.endpoint.token)
 
