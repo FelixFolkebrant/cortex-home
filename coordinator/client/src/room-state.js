@@ -1,3 +1,7 @@
+export const IDENTIFY_ACTION = "endpoint.identify";
+export const SCENE_ACTION = "room.scene.activate";
+export const CHANNEL_ACTION = "channel.select";
+
 export const initialRoomState = {
   connection: "connecting",
   channel: null,
@@ -135,12 +139,12 @@ export function keyboardAction(event, lighting) {
     Digit2: "music",
   }[event.code];
   if (channel) {
-    return { action: "channel.select", channel };
+    return { action: CHANNEL_ACTION, channel };
   }
 
   if (event.code === "KeyS") {
     const scene = nextScene(lighting);
-    return scene ? { action: "room.scene.activate", scene } : null;
+    return scene ? { action: SCENE_ACTION, scene } : null;
   }
 
   return null;

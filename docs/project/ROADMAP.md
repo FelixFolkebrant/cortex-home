@@ -7,9 +7,10 @@ while device control stays narrow to the existing Hue bridge.
 
 ## Planpoints
 
-Planpoints 1 and 2 are complete. The iMac now presents useful Today and Music
-channels backed by coordinator-owned state. Planpoint 3 is accepted and active.
-Discovering and cycling the room's existing Hue scenes is next.
+Planpoints 1 through 3 are complete. Planpoints 4 and 5 are accepted for
+concurrent issue work. Voice begins with an agent-safe coordinator context while
+channel evolution begins with a behavior-preserving frontend separation; those
+first issues own different files and can start from the same planning baseline.
 
 ### [1 COMPLETE - Connected Room Endpoint](../planpoints/PP-1.md)
 
@@ -43,7 +44,7 @@ Sonos line-in, and the iMac shows useful now-playing feedback.
 General system audio, synchronized multi-room audio, and a local music library
 remain deferred.
 
-### [3 ACTIVE - Today And Room Control](../planpoints/PP-3.md)
+### [3 COMPLETE - Today And Room Control](../planpoints/PP-3.md)
 
 The iMac provides a useful Today channel and detected room-level Hue scene state
 with immediate feedback. The attached keyboard selects channels and cycles
@@ -60,7 +61,7 @@ web shell boundaries. The existing Hue remote remains exclusively under native
 Hue control; fixed keyboard shortcuts are the deliberate room input, and a
 later voice agent can inherit exact named-scene activation.
 
-### 4 - Deliberate Voice Agent Interaction
+### [4 ACCEPTED - Deliberate Voice Agent Interaction](../planpoints/PP-4.md)
 
 A hold-to-speak interaction can answer a contextual follow-up about the visible
 channel and invoke one accepted room action with unmistakable listening,
@@ -68,23 +69,29 @@ working, success, and failure feedback.
 
 | Crossroad | Decision | Alternatives Rejected |
 |---|---|---|
-| Agent runtime or framework | ? | ? |
-| Speech processing boundary | ? | ? |
-| Assistant action permissions | ? | ? |
-| Voice privacy and retention | ? | ? |
+| Agent runtime or framework | Pi Agent Core in a coordinator-supervised Node child, using `pi-ai` with one pinned OpenRouter text model | Bespoke Python loop; Agents SDK; Home Assistant; LangChain; Realtime speech-to-speech |
+| Speech processing boundary | Press-bounded English capture with measured local Vosk/Whisper recognition and Piper/Pocket synthesis backends on the ThinkPad | Hosted speech; iMac inference; hard-coded speech engines |
+| Assistant action permissions | Zero or one exact Hue scene request through the coordinator | Broad tools; direct Hue; shell or browser control |
+| Voice privacy and retention | LAN-only audio, ZDR OpenRouter text route, no Cortex Home persistence, explicit routed-provider policy | Hosted raw audio; hidden sensing; application conversation history |
+| Concurrent development | One issue worktree per branch with independent docs and serialized deployment | Shared docs checkout; long-lived feature branches; repository split |
 
 Wake words, continuous listening, camera input, and general agent autonomy
 remain deferred.
 
-### 5 - Channel Expansion
+### [5 ACCEPTED - Independent Channel Evolution](../planpoints/PP-5.md)
 
-Add channels one useful slice at a time. Current candidates are news, photos,
-quotes, stocks, local media, and TV. A candidate becomes a Planpoint only when
-its user flow and data source are clear.
+Today and Music become explicit channel modules, receive one focused polish
+pass, and are joined by a read-only BBC World Headlines channel while voice
+work proceeds in separate issue worktrees.
 
 | Crossroad | Decision | Alternatives Rejected |
 |---|---|---|
-| First independently deployed child project | ? | ? |
+| Channel module boundary | Explicit channel components with one hard-coded shell switch | Monolithic `App.jsx`; router; dynamic registry; plugin API |
+| First new channel source | Exact BBC World RSS feed with attribution and no rewriting | Unmaintained SR API; scraping; accounts; AI summaries |
+| Parallel documentation | Complete branch-local docs checkout with issue IDs reserved on `main` | Symlinked shared docs; per-worktree number allocation |
+
+Photos, quotes, stocks, local media, and TV remain later candidates. A candidate
+becomes a Planpoint only when its user flow and data source are clear.
 
 ### Later Experiments
 
@@ -109,11 +116,12 @@ slices.
 - Impact if wrong: Premature repositories create duplicated workflow, version
   coordination, and unclear ownership; a late split costs history and CI work
   but does not require rewriting the product.
-- Proposed choice: Make this the single Cortex Home integration repository
-  through at least Planpoint 3. Record candidate modules in the roadmap and
-  extract only a service with an independently useful deployment lifecycle. Do
-  not use nested repositories or submodules yet.
-- Why: No stable feature or deployment boundaries have been demonstrated.
+- Proposed choice: Keep this as the single Cortex Home integration repository
+  through Planpoints 4 and 5. Use one issue branch and worktree per concurrent
+  unit, and extract only a service with an independently useful deployment
+  lifecycle. Do not use nested repositories or submodules yet.
+- Why: Voice and channel work can own separate files and issue branches while
+  still sharing one coordinator, client build, deployment, and physical room.
 - Status: decided
 
 ### C2 - iMac Presentation Path
@@ -220,10 +228,10 @@ slices.
   channels do not yet require.
 - Status: decided
 
-### C7 - Later Agent Trust Boundary
+### C7 - Agent Trust Boundary
 
-- Decision: At Planpoint 4, choose when microphones and an AI agent may observe
-  or act and which capabilities the selected runtime receives.
+- Decision: Choose when microphones and an AI agent may observe or act and
+  which capabilities the selected runtime receives.
 - Options: Explicit activation and allow-listed actions; wake-word activation;
   continuous sensing; broad agent tool access.
 - Impact if wrong: Privacy and trust are difficult to restore after the system
@@ -233,7 +241,7 @@ slices.
   behavior, and camera activation only if a later user flow needs them.
 - Why: This preserves the playful interaction goal without making ambient
   surveillance a prerequisite.
-- Status: open
+- Status: decided
 
 ### C8 - Shared Control Boundary
 
@@ -276,33 +284,34 @@ Planpoint 1 should thread only one small shape through this path:
 5. The web app updates immediately; an audio acknowledgement may use the same
    event.
 
-The live web connection can use WebSockets. A later agent adapter may translate
-the same action catalog into Home Assistant LLM tools, MCP tools, or a
-provider-specific tool format. Those are adapters, not the source of truth.
+The live web connection uses server-sent events. The Planpoint 4 Pi harness
+translates one exact scene action into the selected provider's function format;
+that format remains an adapter rather than the source of truth.
 
-## Deferred Agent Decisions
+## Remaining Deferred Agent Decisions
 
-None of these choices is required for Planpoints 1–3:
+Planpoint 4 accepts Pi Agent Core in a local Node child, hosted text reasoning
+through OpenRouter, measured replaceable local speech backends, and one exact
+scene tool. These broader choices remain deferred:
 
-- Pi, OpenClaw, LangChain, a small hand-written agent loop, or another runtime.
-- Local versus hosted language model and the specific model provider.
-- Home Assistant LLM tools, MCP, or provider-specific tool calling.
-- Speech-to-text and text-to-speech engines.
-- Conversation memory and persistence.
+- A fully local language model or a model route beyond the first qualified
+  OpenRouter deployment.
+- Home Assistant LLM tools, MCP, or a general tool registry beyond Pi's bounded
+  repository-owned definitions.
+- Conversation memory, persistence, mid-speech barge-in, and reconciliation of
+  the exact spoken prefix after an interrupted answer.
 - Wake word, proactive initiation, and camera context.
-- Any reusable visual components beyond those demanded by a real channel.
+- Agent understanding of Headlines and future channel state.
+- Reusable channel infrastructure beyond the explicit modules required by
+  Today, Music, and Headlines.
 
-Deferring is safe because the runtime will receive structured context and call
-the coordinator's allowed actions through an adapter. Planpoint 4 should compare
-agent runtimes against one concrete flow instead of selecting one from feature
-lists in advance.
-
-## Proposed Cooling Order
+## Cooling Order
 
 1. Identify the hardware and physical cable constraints.
 2. Decide C1 for Planpoint 1; use PP-1 to validate C2; C8 is decided.
 3. Prove one screen, one sound, and one state/action round trip end to end.
 4. Decide Spotify-specific choices for Planpoint 2.
 5. Decide C5 and C6 using evidence from the first two slices.
-6. Revisit C1 only when a module has an independent deployment lifecycle.
-7. Decide C7 immediately before deliberate voice work.
+6. Use issue worktrees to separate Planpoints 4 and 5 without changing the
+   repository or deployment boundary.
+7. Revisit C1 only when a module has an independent deployment lifecycle.

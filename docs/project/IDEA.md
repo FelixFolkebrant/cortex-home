@@ -90,13 +90,17 @@ The exact MVP is not accepted yet. The current candidate is:
    scene can be activated through a room-level action with immediate feedback.
 7. A non-UI caller can invoke one allowed action and receive the same live
    feedback as the web interface.
+8. A deliberate hold-to-speak interaction can answer one contextual question
+   about Today or Music and activate one exact detected Hue scene with visible
+   sensing, processing, action, and failure feedback.
+9. Today and Music can evolve independently while one read-only Headlines
+   channel proves the next explicit channel boundary.
 
 ## Candidate Later Capabilities
 
-- Voice follow-up and hold-to-speak AI interaction.
 - Physical knobs, buttons, claps, or other tactile inputs.
 - General iPhone audio and screen casting.
-- News, photos, quotes, stocks, local media, and TV channels.
+- Photos, quotes, stocks, local media, and TV channels.
 - Camera-assisted presence or deliberate hand gestures.
 - Fitbit-assisted interactions.
 - A local music library.
@@ -156,7 +160,7 @@ its native Hue behavior.
 | Philips Hue bridge, remote, and three lamps | Detected room scenes and local lighting control; the remote remains Hue-native | Scene creation, editing, and controls beyond scene activation |
 | iPhone 17 | Personal controller, Spotify source, and possible casting source | None needed for the first slice |
 | Google Fitbit | Possible later sensor/input | Exact model and accessible data |
-| Anker conference microphone | Possible deliberate voice input | Exact model and preferred physical location |
+| Anker PowerConf S330 conference microphone | Possible deliberate voice input; currently connected to the iMac over USB | Preferred permanent physical location |
 
 ### ThinkPad Coordinator Baseline
 
