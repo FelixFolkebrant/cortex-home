@@ -36,7 +36,8 @@ has been demonstrated.
 - Prefer interactions that are both useful and delightful.
 - Combine visual, sound, and tactile feedback so every action has a clear
   response.
-- Avoid keyboard, mouse, and touchscreen as normal room controls.
+- Use the attached keyboard's fixed shortcuts as deliberate room controls until
+  voice can complement them. Avoid mouse and touchscreen control.
 - Do not add voice or gesture control where a phone or laptop is plainly better.
 - Let voice complement a visible interface instead of hiding the system behind
   a voice-only assistant.
@@ -44,7 +45,7 @@ has been demonstrated.
 ### Gradually Extensible
 
 - A new capability should be addable as a small, understandable module.
-- Human, tactile, and future AI controls should invoke the same explicit system
+- Human, keyboard, and future AI controls should invoke the same explicit system
   actions rather than grow separate control paths.
 - The web interface should render observed system state. It must not trust an
   agent's claim that an action succeeded.
@@ -56,8 +57,8 @@ has been demonstrated.
 ### Agent-Ready, Not Agent-Dependent
 
 - Define a small catalog of semantic actions such as changing channel,
-  activating a lighting scene, or controlling playback.
-- Let the web app, physical controls, and agents invoke the same actions through
+  activating a detected lighting scene by name, or controlling playback.
+- Let the web app, keyboard, and agents invoke the same actions through
   one policy boundary on the ThinkPad.
 - Stream interaction phase, action acknowledgement, observed state, and errors
   to the web app for live feedback.
@@ -78,14 +79,15 @@ has been demonstrated.
 The exact MVP is not accepted yet. The current candidate is:
 
 1. The iMac reliably presents a ThinkPad-controlled full-screen interface.
-2. Channels can be changed without using a keyboard, mouse, or touchscreen.
+2. Fixed keyboard shortcuts can change channels and invoke accepted room
+   actions without a mouse or touchscreen.
 3. A Today channel shows time, weather, and a small amount of genuinely useful
    daily context.
 4. A Music channel shows what is playing.
 5. Spotify on the iPhone can select the `Högtalaren` receiver and play through the
    Sonos line-in.
-6. The three Philips Hue lamps can be controlled through a small set of
-   room-level actions with immediate visible feedback.
+6. The existing Hue scenes are detected, the active scene is visible, and each
+   scene can be activated through a room-level action with immediate feedback.
 7. A non-UI caller can invoke one allowed action and receive the same live
    feedback as the web interface.
 
@@ -101,6 +103,9 @@ The exact MVP is not accepted yet. The current candidate is:
 
 These are directions, not promises. Each enters the roadmap only when it is
 close enough to define as a useful vertical slice.
+
+The existing Hue remote is not a candidate Cortex Home input. It retains only
+its native Hue behavior.
 
 ## User Flows
 
@@ -128,7 +133,7 @@ close enough to define as a useful vertical slice.
 
 ### Control The Room
 
-1. The user invokes a named room action such as a lighting scene.
+1. The user invokes one detected lighting scene by its displayed name.
 2. The Hue bridge performs the device-level change.
 3. The display or sound confirms the accepted action.
 4. The interface reflects the resulting state.
@@ -148,7 +153,7 @@ close enough to define as a useful vertical slice.
 | Lenovo ThinkPad E495, Ubuntu 24.04 | Always-on compute, coordination, and durable state | Available physical ports and the unrelated failed OpenVPN client unit |
 | Apple `iMac8,1`, Ubuntu 24.04.4 LTS | Full-screen network client and nearby audio/USB endpoint | Real-client power draw |
 | Sonos Play:5 Gen 1 | Speaker through its analog line-in | General music playback remains for Planpoint 2 |
-| Philips Hue bridge and three lamps | Local lighting control | Bridge generation and existing room/scene setup |
+| Philips Hue bridge, remote, and three lamps | Detected room scenes and local lighting control; the remote remains Hue-native | Scene creation, editing, and controls beyond scene activation |
 | iPhone 17 | Personal controller, Spotify source, and possible casting source | None needed for the first slice |
 | Google Fitbit | Possible later sensor/input | Exact model and accessible data |
 | Anker conference microphone | Possible deliberate voice input | Exact model and preferred physical location |
@@ -261,7 +266,8 @@ recorded.
 ### C7 - Preserve Manual Control
 
 - Constraint: Cortex Home must not make the Hue app, light switches, Spotify
-  app, or ordinary device controls unusable.
+  app, or ordinary device controls unusable. The Hue remote remains exclusively
+  native to Hue and is not a Cortex Home input.
 - Why it matters: The experimental system must fail without making the room
   difficult to use.
 
@@ -273,7 +279,7 @@ recorded.
 
 ### C9 - One Action Policy Boundary
 
-- Constraint: Agents, interfaces, and physical inputs invoke the same
+- Constraint: Agents and keyboard or other interfaces invoke the same
   allow-listed semantic actions through the ThinkPad coordinator.
 - Why it matters: Parallel control paths would drift in permissions, behavior,
   and feedback.
@@ -291,4 +297,3 @@ recorded.
   currently available.
 - Available ThinkPad physical ports and whether the failed OpenVPN client unit
   should be restored or disabled.
-- Which interaction should switch channels in the first usable version.

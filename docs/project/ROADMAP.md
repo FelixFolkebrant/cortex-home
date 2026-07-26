@@ -7,10 +7,9 @@ while device control stays narrow to the existing Hue bridge.
 
 ## Planpoints
 
-Planpoints 1 and 2 are complete. The iMac now presents a useful Music channel
-from its qualified Spotify receiver and coordinator-owned playback state.
-Planpoint 3 is accepted and active. Connecting the existing Hue bridge through
-the coordinator is next.
+Planpoints 1 and 2 are complete. The iMac now presents useful Today and Music
+channels backed by coordinator-owned state. Planpoint 3 is accepted and active.
+Discovering and cycling the room's existing Hue scenes is next.
 
 ### [1 COMPLETE - Connected Room Endpoint](../planpoints/PP-1.md)
 
@@ -46,19 +45,20 @@ remain deferred.
 
 ### [3 ACTIVE - Today And Room Control](../planpoints/PP-3.md)
 
-The iMac provides a useful Today channel and one room-level Hue action with
-immediate state feedback. The same action can be called by the UI and one
-non-screen input.
+The iMac provides a useful Today channel and detected room-level Hue scene state
+with immediate feedback. The attached keyboard selects channels and cycles
+through the same named scenes that a future voice agent can activate.
 
 | Crossroad | Decision | Alternatives Rejected |
 |---|---|---|
 | Device and action authority | Hue bridge through a narrow coordinator adapter | Home Assistant; custom raw Hue protocol |
 | Channel presentation architecture | One full-screen React shell with coordinator-owned channel state | Desktop compositor; isolated desktops or VMs |
-| First room input | Existing Hue remote through the bridge adapter | Dedicated USB/HID control; custom radio or microcontroller |
+| Interim room input | Fixed channel and scene-cycle shortcuts on the attached keyboard | Hue remote integration; new dedicated hardware |
 
 Evidence from the first two slices supports the accepted direct Hue adapter and
-web shell boundaries. The existing Hue remote supplies the first tactile input
-without another endpoint daemon or hardware purchase.
+web shell boundaries. The existing Hue remote remains exclusively under native
+Hue control; fixed keyboard shortcuts are the deliberate room input, and a
+later voice agent can inherit exact named-scene activation.
 
 ### 4 - Deliberate Voice Agent Interaction
 
@@ -237,7 +237,7 @@ slices.
 
 ### C8 - Shared Control Boundary
 
-- Decision: How the web app, physical inputs, audio interaction, and future
+- Decision: How the web app, keyboard, audio interaction, and future
   agents observe and control Cortex Home without creating separate behavior paths.
 - Options: Each client talks directly to device and media services; use a
   general automation platform as the entire application contract; place a small
@@ -251,19 +251,19 @@ slices.
   media service, and web client.
 - Why: Device bridges and media services can own their observed state while
   channels and multimodal interaction remain product state. One narrow boundary
-  lets a web app, physical control, or agent call the same action and observe
+  lets the web app, keyboard, or an agent call the same action and observe
   the same result without making the AI model the orchestrator.
 - Status: decided
 
 ## Proposed Interaction Plumbing
 
 ```text
-Web app ───────┐
-Physical input ├── action request ──> Cortex Home coordinator ──> adapter/service
-Agent adapter ─┘                           │                       │
-                                          └── live feedback <─────┘
-                                                   │
-                                      web UI, audio, action caller
+Web app / keyboard ─┐
+Agent adapter ──────┴── action request ──> Cortex Home coordinator ──> adapter/service
+                                                 │                       │
+                                                 └── live feedback <─────┘
+                                                          │
+                                             web UI, audio, action caller
 ```
 
 Planpoint 1 should thread only one small shape through this path:
