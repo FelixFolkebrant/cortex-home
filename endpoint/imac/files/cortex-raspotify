@@ -19,5 +19,7 @@ done
 
 export XDG_RUNTIME_DIR="$runtime_dir"
 export PULSE_SERVER="unix:$pulse_socket"
+LIBRESPOT_DEVICE=$(/usr/local/bin/cortex-endpoint-audio-route)
+export LIBRESPOT_DEVICE
 
 exec /usr/bin/librespot

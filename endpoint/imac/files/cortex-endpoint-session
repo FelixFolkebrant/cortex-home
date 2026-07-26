@@ -3,6 +3,7 @@
 set -eu
 
 pulseaudio --start --exit-idle-time=-1
+/usr/local/bin/cortex-endpoint-audio-route >/dev/null
 
 xset -dpms
 xset s off

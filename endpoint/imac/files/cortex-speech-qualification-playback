@@ -1,0 +1,26 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$#" -ne 0 ]; then
+  echo "Speech qualification playback accepts no arguments." >&2
+  exit 1
+fi
+
+runtime_dir="/run/user/$(id -u)"
+pulse_socket="$runtime_dir/pulse/native"
+
+if [ ! -S "$pulse_socket" ]; then
+  echo "The endpoint PulseAudio socket is unavailable." >&2
+  exit 1
+fi
+
+export XDG_RUNTIME_DIR="$runtime_dir"
+export PULSE_SERVER="unix:$pulse_socket"
+sink_name=$(/usr/local/bin/cortex-endpoint-audio-route)
+
+/bin/cat |
+  /usr/bin/paplay \
+    --device="$sink_name" \
+    --file-format=wav \
+    /dev/stdin

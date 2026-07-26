@@ -68,6 +68,27 @@ test("lighting and scene interaction events remain independent", () => {
   assert.deepEqual(withPlayback.interaction, {
     state: "working",
     action: "room.scene.activate",
+    level: 0,
+    message: null,
+    scene: null,
+  });
+});
+
+test("microphone level updates preserve the active interaction", () => {
+  const listening = roomReducer(initialRoomState, {
+    type: "interaction",
+    action: "speech.capture",
+    state: "listening",
+  });
+  const updated = roomReducer(listening, {
+    type: "interaction.level",
+    level: 0.65,
+  });
+
+  assert.deepEqual(updated.interaction, {
+    state: "listening",
+    action: "speech.capture",
+    level: 0.65,
     message: null,
     scene: null,
   });

@@ -1,0 +1,2 @@
+imac ALL=(cortex-endpoint) NOPASSWD: /usr/local/bin/cortex-speech-qualification-playback ""
+imac ALL=(cortex-endpoint) NOPASSWD: /usr/local/bin/cortex-speech-qualification-capture ""

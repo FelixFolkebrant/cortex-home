@@ -1,0 +1,21 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  echo "Usage: $0 <up|down>" >&2
+  exit 1
+fi
+
+case "$1" in
+  up) adjustment=+5% ;;
+  down) adjustment=-5% ;;
+  *)
+    echo "Volume direction must be up or down." >&2
+    exit 1
+    ;;
+esac
+
+sink_name=$(/usr/local/bin/cortex-endpoint-audio-route)
+
+exec /usr/bin/pactl set-sink-volume "$sink_name" "$adjustment"

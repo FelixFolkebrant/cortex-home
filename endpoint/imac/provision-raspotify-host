@@ -37,6 +37,9 @@ install --owner=root --group=root --mode=755 \
   "$source_dir/files/cortex-raspotify" \
   /usr/local/bin/cortex-raspotify
 install --owner=root --group=root --mode=755 \
+  "$source_dir/files/cortex-endpoint-audio-route" \
+  /usr/local/bin/cortex-endpoint-audio-route
+install --owner=root --group=root --mode=755 \
   "$source_dir/files/cortex_playback_event.py" \
   /usr/local/bin/cortex-playback-event
 install -D --owner=root --group=root --mode=600 \

@@ -1,6 +1,7 @@
 import { cva } from "class-variance-authority";
 import { cn } from "./classes";
 import { CHANNEL_ACTION, IDENTIFY_ACTION, SCENE_ACTION } from "./room-state";
+import { VOICE_CAPTURE_ACTION } from "./voice-capture";
 
 const interactionCopy = {
   [IDENTIFY_ACTION]: {
@@ -12,6 +13,12 @@ const interactionCopy = {
     working: ["Changing view.", "Showing the selected room view."],
     completed: ["View ready.", "The room updated its active view."],
     failed: ["Couldn’t change view.", "The channel request failed."],
+  },
+  [VOICE_CAPTURE_ACTION]: {
+    requesting: ["Opening microphone.", "Waiting for the room microphone."],
+    listening: ["Listening.", "Keep holding Control, Alt, and Space."],
+    captured: ["Captured.", "The bounded utterance was released."],
+    failed: ["Couldn’t capture.", "The microphone request failed."],
   },
 };
 
@@ -75,7 +82,11 @@ function LightingStatus({ lighting }) {
 }
 
 function InteractionOverlay({ interaction }) {
-  if (interaction.state === "idle" || interaction.action === CHANNEL_ACTION) {
+  if (
+    interaction.state === "idle" ||
+    interaction.action === CHANNEL_ACTION ||
+    interaction.action === VOICE_CAPTURE_ACTION
+  ) {
     return null;
   }
 
@@ -97,6 +108,7 @@ function InteractionOverlay({ interaction }) {
     [CHANNEL_ACTION]: "Cortex Home / Channel",
     [IDENTIFY_ACTION]: "Cortex Home / Room signal",
     [SCENE_ACTION]: "Cortex Home / Lighting",
+    [VOICE_CAPTURE_ACTION]: "Cortex Home / Microphone",
   }[interaction.action];
 
   return (
@@ -115,6 +127,62 @@ function InteractionOverlay({ interaction }) {
         {interaction.message || defaultMessage}
       </p>
       <div aria-hidden="true" className={signal({ state: interaction.state })} />
+    </div>
+  );
+}
+
+function VoiceCaptureBar({ interaction }) {
+  if (interaction.action !== VOICE_CAPTURE_ACTION || interaction.state === "idle") {
+    return null;
+  }
+
+  const copy = interactionCopy[VOICE_CAPTURE_ACTION][interaction.state];
+  if (!copy) {
+    return null;
+  }
+  const [title, defaultMessage] = copy;
+  const level = Math.max(0, Math.min(1, interaction.level || 0));
+  const width = {
+    captured: 55,
+    failed: 100,
+    listening: 10 + level * 90,
+    requesting: 18,
+  }[interaction.state];
+  const tone = {
+    captured: "bg-[#92d6a1] shadow-[0_0_1.5rem_rgb(146_214_161_/_55%)]",
+    failed: "bg-[#e67d6f] shadow-[0_0_1.5rem_rgb(230_125_111_/_55%)]",
+    listening: "bg-[#d6a954] shadow-[0_0_1.75rem_rgb(214_169_84_/_65%)]",
+    requesting:
+      "animate-pulse bg-[#d6a954] shadow-[0_0_1.5rem_rgb(214_169_84_/_55%)] motion-reduce:animate-none",
+  }[interaction.state];
+
+  return (
+    <div className="pointer-events-none absolute right-0 bottom-[clamp(1.5rem,3.5vh,3.5rem)] left-0 z-50 flex flex-col items-center px-6">
+      <div
+        className="max-w-[min(90vw,52rem)] rounded-full border border-white/10 bg-[#0d0d0f]/88 px-5 py-2 text-center shadow-2xl backdrop-blur-xl"
+        role="status"
+        aria-live="assertive"
+        aria-label="Cortex Home / Microphone"
+      >
+        <span className="text-xs font-bold tracking-[0.18em] text-[#f1d18b] uppercase">
+          {title}
+        </span>
+        <span className="ml-3 text-xs text-[#bdb5a6]">
+          {interaction.message || defaultMessage}
+        </span>
+      </div>
+      <div
+        className="mt-3 flex h-2 w-[min(76vw,88rem)] items-center justify-center"
+        aria-hidden="true"
+      >
+        <span
+          className={cn(
+            "block h-1.5 rounded-full transition-[width,background-color,box-shadow] duration-75 ease-out motion-reduce:transition-none",
+            tone,
+          )}
+          style={{ width: `${width}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -157,13 +225,15 @@ export function RoomFeedback({
   lighting,
   interaction,
   showLightingStatus,
+  voiceOnly = false,
 }) {
   return (
     <>
-      <ConnectionNotice connection={connection} />
-      {showLightingStatus && <LightingStatus lighting={lighting} />}
-      <ChannelToast interaction={interaction} />
-      <InteractionOverlay interaction={interaction} />
+      {!voiceOnly && <ConnectionNotice connection={connection} />}
+      {!voiceOnly && showLightingStatus && <LightingStatus lighting={lighting} />}
+      {!voiceOnly && <ChannelToast interaction={interaction} />}
+      {!voiceOnly && <InteractionOverlay interaction={interaction} />}
+      <VoiceCaptureBar interaction={interaction} />
     </>
   );
 }
