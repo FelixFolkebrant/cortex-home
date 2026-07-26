@@ -29,6 +29,19 @@ They are written only to the root-readable Netplan configuration on the iMac.
 The coordinator URL is written only to the endpoint's local configuration. The
 temporary remote copy is removed when provisioning exits.
 
+For an already provisioned endpoint, treat that configuration as the source of
+truth instead of guessing the coordinator host or copying a stale deployment
+address from documentation. Read the exact configured origin with:
+
+```sh
+ssh imac 'sed -n "1p" /etc/cortex-endpoint/coordinator-url'
+```
+
+Use the command's complete output, including scheme and port, wherever an
+operator step asks for the configured coordinator origin. Network addresses
+remain runtime configuration and are deliberately not committed to the
+repository.
+
 Provisioning installs the minimal graphical and wireless packages plus the
 reviewed Raspotify build, creates the locked `cortex-endpoint` account,
 configures its automatic full-screen session, points Chromium at the network

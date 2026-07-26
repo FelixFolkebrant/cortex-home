@@ -147,6 +147,7 @@ export function keyboardAction(event, lighting) {
   const channel = {
     Digit1: "today",
     Digit2: "music",
+    Digit3: "camera",
   }[event.code];
   if (channel) {
     return { action: CHANNEL_ACTION, channel };

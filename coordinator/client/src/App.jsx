@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "react";
+import { CameraChannel } from "./CameraChannel";
 import { MusicChannel, MusicFullscreen } from "./MusicChannel";
 import { RoomFeedback } from "./RoomFeedback";
 import {
@@ -477,6 +478,16 @@ export function App() {
 
   const channel = room.channel?.active || "today";
   const showMusicFullscreen = channel === "music" && musicFullscreen;
+  let channelPresentation;
+  if (channel === "music") {
+    channelPresentation = (
+      <MusicChannel playback={room.playback} connection={room.connection} />
+    );
+  } else if (channel === "camera") {
+    channelPresentation = <CameraChannel />;
+  } else {
+    channelPresentation = <TodayChannel summary={room.today} />;
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#120f0c] text-[#f8f0dc]">
@@ -493,11 +504,7 @@ export function App() {
             className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgb(255_255_255_/_5%)_1px,transparent_1px),linear-gradient(90deg,rgb(255_255_255_/_5%)_1px,transparent_1px)] [background-size:4rem_4rem] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
           />
 
-          {channel === "today" ? (
-            <TodayChannel summary={room.today} />
-          ) : (
-            <MusicChannel playback={room.playback} connection={room.connection} />
-          )}
+          {channelPresentation}
         </>
       )}
 
@@ -505,7 +512,7 @@ export function App() {
         connection={room.connection}
         lighting={room.lighting}
         interaction={room.interaction}
-        showLightingStatus={channel === "today"}
+        showLightingStatus={channel !== "music"}
         voiceOnly={showMusicFullscreen}
       />
     </div>
