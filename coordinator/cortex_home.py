@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+from context import build_room_context
 from hue import (
     HueAdapter,
     HueSceneError,
@@ -323,6 +324,15 @@ class Coordinator:
     def is_endpoint_connected(self):
         with self.lock:
             return self.endpoint is not None
+
+    def context(self):
+        with self.lock:
+            return build_room_context(
+                self.channel.get("active"),
+                self.today,
+                self.playback,
+                self.lighting,
+            )
 
     def set_hue_status(self, status):
         with self.lock:
