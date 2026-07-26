@@ -8,6 +8,7 @@ export const initialRoomState = {
     state: "idle",
     action: null,
     message: null,
+    scene: null,
   },
 };
 
@@ -45,6 +46,7 @@ export function roomReducer(state, event) {
           state: event.state,
           action: event.action ?? null,
           message: event.message ?? null,
+          scene: event.scene ?? null,
         },
       };
     default:
@@ -96,7 +98,28 @@ export function artworkSource(item) {
   }
 }
 
-export function keyboardChannel(event) {
+export function nextScene(lighting) {
+  if (
+    lighting?.status !== "available" ||
+    !Array.isArray(lighting.scenes) ||
+    lighting.scenes.length === 0 ||
+    !Array.isArray(lighting.activeScenes)
+  ) {
+    return null;
+  }
+
+  if (lighting.activeScenes.length !== 1) {
+    return lighting.scenes[0];
+  }
+
+  const activeIndex = lighting.scenes.indexOf(lighting.activeScenes[0]);
+  if (activeIndex < 0) {
+    return lighting.scenes[0];
+  }
+  return lighting.scenes[(activeIndex + 1) % lighting.scenes.length];
+}
+
+export function keyboardAction(event, lighting) {
   if (
     !event.ctrlKey ||
     !event.altKey ||
@@ -107,10 +130,18 @@ export function keyboardChannel(event) {
     return null;
   }
 
-  return (
-    {
-      Digit1: "today",
-      Digit2: "music",
-    }[event.code] || null
-  );
+  const channel = {
+    Digit1: "today",
+    Digit2: "music",
+  }[event.code];
+  if (channel) {
+    return { action: "channel.select", channel };
+  }
+
+  if (event.code === "KeyS") {
+    const scene = nextScene(lighting);
+    return scene ? { action: "room.scene.activate", scene } : null;
+  }
+
+  return null;
 }

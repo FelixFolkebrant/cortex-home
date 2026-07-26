@@ -81,21 +81,22 @@ The request remains open until the endpoint reports completion or failure. The
 JSON response carries the same request ID. Use a new request ID for every
 invocation while the coordinator process remains running.
 
-An outside caller can activate the fixed `Warm` scene in room `Rum` even when
-the endpoint is disconnected:
+An outside caller can activate any detected scene in room `Rum` by its exact
+name, even when the endpoint is disconnected:
 
 ```sh
 curl \
   --fail-with-body \
   --header 'Content-Type: application/json' \
-  --data '{"requestId":"warm-1","action":"room.scene.activate"}' \
+  --data '{"requestId":"relax-1","action":"room.scene.activate","scene":"Relax"}' \
   http://<server-host>:8080/api/actions
 ```
 
-The action accepts no room, scene, or Hue resource argument. It remains open
-until a later Hue event reports `Warm` active, the 10-second action bound
-expires, or the adapter reports an unavailable or rejected command. Every
-request needs a new request ID.
+The action accepts one exact name from the current `room.lighting` scene
+catalog, but no room or Hue resource identifier. It remains open until a later
+Hue event reports that scene active, the 10-second action bound expires, or the
+adapter reports an unavailable or rejected command. Every request needs a new
+request ID.
 
 An outside caller can select the room's active view even while the endpoint is
 reconnecting:
@@ -112,15 +113,19 @@ The only accepted channel values are `today` and `music`. The coordinator
 starts on Today, publishes the selected `channel.active` snapshot to every
 endpoint connection, and returns completion after it publishes that state.
 On the room display, `Ctrl`+`Alt`+`1` selects Today and `Ctrl`+`Alt`+`2`
-selects Music through that same action. Other key combinations and repeated
-key presses do nothing.
+selects Music through that same action. `Ctrl`+`Alt`+`S` activates the next
+detected room scene in case-insensitive name order and wraps after the last
+scene. Other key combinations and repeated key presses do nothing. The Hue
+remote remains exclusively native to Hue; Cortex Home does not subscribe to
+its button events.
 
-For a focused deployed check, use the repository-owned verifier. It checks safe
-health, generates a unique request ID, activates `Warm`, and requires observed
-completion while the operator watches the lamps and room display:
+For a focused deployed check, use the repository-owned verifier with one exact
+detected scene name. It checks safe health, generates a unique request ID, and
+requires observed completion while the operator watches the lamps and room
+display:
 
 ```sh
-./coordinator/verify_warm_scene.py <server-host>
+./coordinator/verify_scene.py <server-host> 'Relax'
 ```
 
 The iMac playback adapter posts a complete normalized observation to:
@@ -135,10 +140,25 @@ keeps only the latest snapshot in memory, and publishes changed snapshots as
 `music.playback` server-sent events. Every new endpoint connection receives the
 current snapshot immediately after its `ready` event.
 
-The coordinator also publishes `room.lighting` snapshots with only `scene`,
-`status`, and `observedAt`. The scene is always `Warm`; status is `active`,
-`inactive`, or `unavailable`. Hue credentials, bridge identity, room and scene
-resource IDs, and raw events remain inside the adapter.
+The coordinator also publishes `room.lighting` snapshots. An available
+snapshot contains the complete scene-name catalog for exact room `Rum` and
+every currently active scene:
+
+```json
+{
+  "status": "available",
+  "scenes": ["Bright", "Relax", "Warm"],
+  "activeScenes": ["Relax"],
+  "observedAt": "2026-07-26T12:00:00.000Z"
+}
+```
+
+Names use deterministic case-insensitive order. No active scene means the lamps
+have custom lighting; multiple active scenes remain explicit. Missing or
+ambiguous room configuration, an empty catalog, duplicate names without regard
+to case, or Hue unavailability publishes `status: "unavailable"` with empty
+arrays. Hue credentials, bridge identity, room and scene resource IDs, and raw
+events remain inside the adapter.
 
 The full-screen client keeps playback, lighting, coordinator connection, and
 temporary action feedback as independent state. Loaded tracks and episodes

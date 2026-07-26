@@ -2,9 +2,9 @@
 
 ## Slice
 
-The room display can switch between useful Today and Music channels, and one
-physical room control can invoke the same allow-listed channel and Hue actions
-as another Cortex Home caller with visible observed-state feedback.
+The room display can switch between useful Today and Music channels, show the
+existing Hue scenes and which are active, and let the attached keyboard invoke
+the same allow-listed channel and scene actions as another Cortex Home caller.
 
 - The existing Hue bridge owns lamp, room, scene, and remote state; a pinned
   Hue client library connects it directly to the ThinkPad coordinator.
@@ -14,8 +14,8 @@ as another Cortex Home caller with visible observed-state feedback.
   dashboard or application runtime.
 - Today shows local time, date, current weather, and a small near-term forecast
   at room-viewing scale.
-- One Hue-native remote or switch supplies deliberate tactile channel and scene
-  inputs without adding normal keyboard, mouse, or touchscreen operation.
+- Fixed keyboard shortcuts supply deliberate channel selection and scene
+  cycling without adding mouse, touchscreen, or a new hardware integration.
 - Accepted actions, observed results, unavailability, and failure remain
   visually unmistakable.
 
@@ -27,17 +27,17 @@ feedback or permission paths.
 
 - Home Assistant, a general automation platform, dashboards, user-facing
   automations, device history, or public access.
-- Individual lamp controls, color pickers, arbitrary scene names, brightness
-  sliders, or a general device browser.
+- Individual lamp controls, color pickers, scene creation or editing,
+  brightness sliders, or a general device browser.
 - Calendar, email, tasks, news, commute, account data, or configurable Today
   widgets.
 - More than Today and Music, nested navigation, browser history, deep links, or
   a universal channel/plugin protocol.
 - Voice, microphone, camera, presence, gesture, agent, or proactive input.
-- Replacing the Hue app, existing switches, or manual Spotify control.
-- Supporting multiple physical controllers or configurable button mappings.
-- Purchasing another room controller before the existing Hue remote is
-  qualified.
+- Replacing the Hue app, remapping or subscribing to the Hue remote, changing
+  existing switches, or replacing manual Spotify control.
+- Supporting physical controllers, configurable key bindings, or a shortcut
+  settings interface.
 
 ## Deferred To Later Planpoints
 
@@ -48,8 +48,9 @@ feedback or permission paths.
   establish the first real composition boundary.
 - A repository split remains deferred until the Hue adapter or channel client
   demonstrates an independently useful deployment lifecycle.
-- Additional lighting scenes and controls remain later issue work because one
-  scene is enough to prove authority, observed state, and failure feedback.
+- Creating or editing scenes and adding other lighting controls remain later
+  issue work because the existing room catalog is enough to prove named
+  activation, observed state, and failure feedback.
 - Home Assistant remains deferred until another device family, cross-device
   automation, history, or administration flow proves that a general platform
   would replace more machinery than it adds.
@@ -91,35 +92,34 @@ feedback or permission paths.
   compositor or universal channel framework solves needs not yet demonstrated.
 - Status: decided
 
-### C3 - First Physical Room Input
+### C3 - Interim Room Input
 
-- Decision: Which input family first invokes coordinator actions without a
-  keyboard, mouse, touchscreen, microphone, or camera.
-- Options: A Hue-native remote or switch through the existing bridge; a
-  dedicated USB/HID control attached to the iMac; a new custom radio or
-  microcontroller input.
-- Impact if wrong: The system could acquire another privileged endpoint daemon,
-  bypass the coordinator action boundary, or commit to hardware that does not
-  fit normal room use.
-- Proposed choice: Use the existing Hue remote exposed through the direct Hue
-  adapter. Confirm its exact model and supported bridge events in GH-008, then
-  map only one deliberate control to channel selection and one to the accepted
-  Hue scene; ignore other gestures until a later issue needs them.
-- Why: This reuses the local bridge and selected device authority, avoids
-  privileged iMac hardware access, and lets a tactile input call the same
-  coordinator actions as another client. The exact supported device can be
-  selected after confirming what the user owns or wants in the room.
+- Decision: Which deliberate input invokes coordinator actions before the
+  voice-agent slice.
+- Options: Fixed shortcuts on the attached keyboard; subscribe to the existing
+  Hue remote; add another dedicated physical controller.
+- Impact if wrong: An interim input could add hardware integration and
+  configuration that the later voice path makes unnecessary, or interfere
+  with a remote whose native Hue behavior is already useful.
+- Proposed choice: Keep the existing `Ctrl`+`Alt` channel shortcuts and add
+  `Ctrl`+`Alt`+`S` to cycle through the detected room scenes. The Hue remote
+  remains exclusively native to Hue and Cortex Home does not subscribe to its
+  events.
+- Why: The keyboard is already attached to the endpoint and already invokes
+  coordinator-owned channel actions. One scene-cycle shortcut proves named room
+  actions without another adapter, configuration surface, or conflict with the
+  remote's existing behavior.
 - Status: decided
 
 ## Plumbing
 
 - Threaded now: `channel.active` carries `today` or `music`; a normalized
   `today.summary` carries current conditions and the small daily forecast; and
-  `room.lighting` carries availability and observed room state from the Hue
-  bridge to the coordinator and client.
+  `room.lighting` carries the detected scene catalog, availability, and active
+  scene names from the Hue bridge to the coordinator and client.
 - Actions threaded now: `channel.select` accepts only `today` or `music`, and
-  `room.scene.activate` accepts no client-supplied Hue resource or scene ID. UI
-  callers and the physical-input adapter submit these same actions through the
+  `room.scene.activate` accepts one exact detected scene name but no Hue
+  resource ID. UI and keyboard callers submit these same actions through the
   coordinator.
 - Result boundary: Coordinator acceptance acknowledges only that a request may
   proceed. Completion follows a matching active-channel snapshot or observed
@@ -144,10 +144,10 @@ feedback or permission paths.
 3. **GH-010 - Compose Today And Music Channels**: add coordinator-owned channel
    selection, render a focused Today view beside the existing Music view, and
    preserve reconnect and interaction overlays across channel changes.
-4. **GH-011 - Add The First Physical Room Control**: connect the accepted
-   tactile input through the coordinator's existing actions and qualify channel
-   selection, the Hue scene, ignored gestures, failure feedback, and recovery
-   on the real room hardware.
+4. **GH-011 - Discover And Cycle Room Scenes**: replace the fixed Warm snapshot
+   with the room's complete scene catalog and active scene names, accept exact
+   named-scene activation, and cycle the catalog from one fixed keyboard
+   shortcut without integrating the Hue remote.
 
 ## Conceptual Heatmap
 
@@ -157,7 +157,7 @@ Reference: `../project/HEATMAP.md`.
 
 - C1: device and action authority; see Crossroads section.
 - C2: channel presentation architecture; see Crossroads section.
-- C3: first physical room input; see Crossroads section.
+- C3: interim room input; see Crossroads section.
 
 ### Hot
 
@@ -165,7 +165,7 @@ Reference: `../project/HEATMAP.md`.
 
 - Decision: Keep Hue resource IDs, application credentials, provider event
   shapes, and client-library objects inside one coordinator adapter.
-- Why: The React client, physical input, and future agent should depend on
+- Why: The React client, keyboard, and future agent should depend on
   stable room actions and state rather than the selected device authority's
   schema.
 - Alternatives: Let every caller use Hue directly; expose Hue resource IDs in
@@ -174,9 +174,9 @@ Reference: `../project/HEATMAP.md`.
 #### H2 - Complete Actions From Observed State
 
 - Decision: Treat a successful Hue command as accepted work and complete it
-  only after the expected room state is observed.
-- Why: A service response does not prove the lamps changed, and tactile inputs
-  need the same trustworthy feedback as UI and future agent callers.
+  only after the requested named scene is observed active.
+- Why: A service response does not prove the lamps changed, and keyboard and
+  future agent callers need the same trustworthy feedback as other callers.
 - Alternatives: Complete immediately after the API response; delay for a fixed
   interval; let each caller decide whether the action worked.
 
@@ -190,11 +190,11 @@ Reference: `../project/HEATMAP.md`.
 - Alternatives: Build a plugin architecture; add routing and configurable
   dashboards; duplicate the complete full-screen shell in each channel.
 
-#### H4 - Keep Physical Mappings Deliberate
+#### H4 - Keep Keyboard Mappings Deliberate
 
-- Decision: Accept only the minimum channel and room-action gestures from the
-  first controller and ignore everything else.
-- Why: A room control should be predictable, while configurable mappings and
-  button-combination state would expand both failure modes and setup burden.
-- Alternatives: Forward raw button events; expose every gesture; add a mapping
-  editor before a second controller exists.
+- Decision: Accept only the fixed channel and scene-cycle shortcuts and ignore
+  other key combinations.
+- Why: A room control should be predictable, while configurable mappings would
+  expand both failure modes and setup burden before voice control exists.
+- Alternatives: Subscribe to the Hue remote; accept broad single-key controls;
+  add configurable key bindings.

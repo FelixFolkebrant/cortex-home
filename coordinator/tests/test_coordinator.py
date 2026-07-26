@@ -37,6 +37,11 @@ PLAYING_OBSERVATION = {
     },
     "positionMs": 1200,
 }
+AVAILABLE_LIGHTING = {
+    "status": "available",
+    "scenes": ["Bright", "Relax", "Warm"],
+    "activeScenes": ["Warm"],
+}
 
 
 class CoordinatorTests(unittest.TestCase):
@@ -64,15 +69,30 @@ class CoordinatorTests(unittest.TestCase):
         self.addCleanup(executor.shutdown)
         return future
 
-    def submit_scene_in_background(self, request_id="scene-request-1"):
+    def submit_scene_in_background(
+        self,
+        request_id="scene-request-1",
+        scene="Relax",
+    ):
         executor = ThreadPoolExecutor(max_workers=1)
         future = executor.submit(
             self.coordinator.submit,
             request_id,
             SCENE_ACTION,
+            None,
+            scene,
         )
         self.addCleanup(executor.shutdown)
         return future
+
+    def make_scenes_available(self, active_scenes=None):
+        self.coordinator.report_lighting(
+            {
+                **AVAILABLE_LIGHTING,
+                "activeScenes": active_scenes or [],
+            }
+        )
+        self.endpoint.events.get(timeout=1)
 
     def next_identify(self):
         event, payload = self.endpoint.events.get(timeout=1)
@@ -253,14 +273,15 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(snapshot["item"]["title"], "Never Gonna Give You Up")
 
     def test_sends_and_publishes_only_changed_lighting_snapshots(self):
-        snapshot = self.coordinator.report_lighting("active")
+        snapshot = self.coordinator.report_lighting(AVAILABLE_LIGHTING)
 
         self.assertEqual(
             set(snapshot),
-            {"scene", "status", "observedAt"},
+            {"status", "scenes", "activeScenes", "observedAt"},
         )
-        self.assertEqual(snapshot["scene"], "Warm")
-        self.assertEqual(snapshot["status"], "active")
+        self.assertEqual(snapshot["status"], "available")
+        self.assertEqual(snapshot["scenes"], ["Bright", "Relax", "Warm"])
+        self.assertEqual(snapshot["activeScenes"], ["Warm"])
         self.assertRegex(
             snapshot["observedAt"],
             r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$",
@@ -269,21 +290,55 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(event, "room.lighting")
         self.assertEqual(published, snapshot)
 
-        self.assertEqual(self.coordinator.report_lighting("active"), snapshot)
+        self.assertEqual(
+            self.coordinator.report_lighting(AVAILABLE_LIGHTING),
+            snapshot,
+        )
         with self.assertRaises(queue.Empty):
             self.endpoint.events.get_nowait()
 
-        inactive = self.coordinator.report_lighting("inactive")
+        custom = self.coordinator.report_lighting(
+            {**AVAILABLE_LIGHTING, "activeScenes": []}
+        )
         event, published = self.endpoint.events.get(timeout=1)
         self.assertEqual(event, "room.lighting")
-        self.assertEqual(published, inactive)
+        self.assertEqual(published, custom)
 
-        with self.assertRaises(ValueError):
-            self.coordinator.report_lighting("unknown")
+        invalid_snapshots = [
+            {},
+            {"status": "unknown", "scenes": [], "activeScenes": []},
+            {"status": "available", "scenes": [], "activeScenes": []},
+            {
+                "status": "available",
+                "scenes": ["Warm", "warm"],
+                "activeScenes": [],
+            },
+            {
+                "status": "available",
+                "scenes": ["Warm", "Bright"],
+                "activeScenes": [],
+            },
+            {"status": "available", "scenes": ["Warm"], "activeScenes": ["Missing"]},
+            {
+                "status": "available",
+                "scenes": ["Bright", "Warm"],
+                "activeScenes": ["Warm", "Bright"],
+            },
+            {"status": "unavailable", "scenes": ["Warm"], "activeScenes": []},
+        ]
+        for lighting in invalid_snapshots:
+            with self.subTest(lighting=lighting):
+                with self.assertRaises(ValueError):
+                    self.coordinator.report_lighting(lighting)
 
     def test_activates_a_scene_and_publishes_observed_completion(self):
-        def activate(_timeout):
-            self.coordinator.report_lighting("active")
+        self.make_scenes_available()
+
+        def activate(scene, _timeout):
+            self.assertEqual(scene, "Relax")
+            self.coordinator.report_lighting(
+                {**AVAILABLE_LIGHTING, "activeScenes": [scene]}
+            )
 
         self.coordinator.set_scene_activator(activate)
         future = self.submit_scene_in_background()
@@ -291,10 +346,11 @@ class CoordinatorTests(unittest.TestCase):
         event, accepted = self.endpoint.events.get(timeout=1)
         self.assertEqual(event, "action.status")
         self.assertEqual(accepted["action"], SCENE_ACTION)
+        self.assertEqual(accepted["scene"], "Relax")
         self.assertEqual(accepted["status"], "accepted")
         event, lighting = self.endpoint.events.get(timeout=1)
         self.assertEqual(event, "room.lighting")
-        self.assertEqual(lighting["status"], "active")
+        self.assertEqual(lighting["activeScenes"], ["Relax"])
         event, completed = self.endpoint.events.get(timeout=1)
         self.assertEqual(event, "action.status")
         self.assertEqual(completed["status"], "completed")
@@ -304,18 +360,48 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(payload, completed)
 
     def test_scene_action_does_not_require_the_endpoint(self):
+        self.make_scenes_available()
         self.coordinator.disconnect_endpoint(self.endpoint.token)
         calls = []
-        self.coordinator.set_scene_activator(calls.append)
+        self.coordinator.set_scene_activator(
+            lambda scene, timeout: calls.append((scene, timeout))
+        )
 
         status, payload = self.coordinator.submit(
             "scene-without-endpoint",
             SCENE_ACTION,
+            scene="Bright",
         )
 
         self.assertEqual(status, HTTPStatus.OK)
         self.assertEqual(payload["status"], "completed")
-        self.assertEqual(calls, [self.coordinator.action_timeout])
+        self.assertEqual(
+            calls,
+            [("Bright", self.coordinator.action_timeout)],
+        )
+
+    def test_rejects_missing_unknown_and_misplaced_scene_arguments(self):
+        self.make_scenes_available()
+        cases = [
+            (
+                ("missing-scene", SCENE_ACTION),
+                "invalid_scene",
+            ),
+            (
+                ("unknown-scene", SCENE_ACTION, None, "Missing"),
+                "invalid_scene",
+            ),
+            (
+                ("scene-on-channel", CHANNEL_ACTION, "today", "Warm"),
+                "invalid_action_arguments",
+            ),
+        ]
+
+        for arguments, expected_code in cases:
+            with self.subTest(arguments=arguments):
+                with self.assertRaises(ApiError) as raised:
+                    self.coordinator.submit(*arguments)
+                self.assertEqual(raised.exception.code, expected_code)
 
     def test_selects_a_channel_after_publishing_matching_state(self):
         status, payload = self.coordinator.submit(
@@ -362,11 +448,12 @@ class CoordinatorTests(unittest.TestCase):
                 self.assertEqual(raised.exception.code, "invalid_channel")
 
     def test_endpoint_disconnect_does_not_fail_a_scene_action(self):
+        self.make_scenes_available()
         started = threading.Event()
         release = threading.Event()
         self.addCleanup(release.set)
 
-        def activate(_timeout):
+        def activate(_scene, _timeout):
             started.set()
             release.wait(1)
 
@@ -385,6 +472,7 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(payload["status"], "completed")
 
     def test_scene_action_returns_distinct_adapter_failures(self):
+        self.make_scenes_available()
         cases = [
             (
                 HueSceneUnavailable,
@@ -397,13 +485,14 @@ class CoordinatorTests(unittest.TestCase):
 
         for index, (error, expected_status, expected_code) in enumerate(cases):
             with self.subTest(code=expected_code):
-                def fail(_timeout, error=error):
+                def fail(_scene, _timeout, error=error):
                     raise error
 
                 self.coordinator.set_scene_activator(fail)
                 status, payload = self.coordinator.submit(
                     f"failed-scene-{index}",
                     SCENE_ACTION,
+                    scene="Relax",
                 )
                 self.assertEqual(status, expected_status)
                 self.assertEqual(payload["status"], "failed")
@@ -417,11 +506,12 @@ class CoordinatorTests(unittest.TestCase):
                 self.assertEqual(failed["code"], expected_code)
 
     def test_serializes_endpoint_and_scene_actions(self):
+        self.make_scenes_available()
         started = threading.Event()
         release = threading.Event()
         self.addCleanup(release.set)
 
-        def activate(_timeout):
+        def activate(_scene, _timeout):
             started.set()
             release.wait(1)
 
@@ -589,7 +679,7 @@ class HttpTests(unittest.TestCase):
         lighting = snapshots["room.lighting"]
         self.assertIn(
             lighting["status"],
-            {"active", "inactive", "unavailable"},
+            {"available", "unavailable"},
         )
 
         def submit_action():
@@ -648,7 +738,7 @@ class HttpTests(unittest.TestCase):
         self.server.coordinator.disconnect_endpoint(endpoint_token)
 
     def test_completes_a_scene_action_over_http(self):
-        self.server.coordinator.report_lighting("inactive")
+        self.server.coordinator.report_lighting(AVAILABLE_LIGHTING)
         events_connection = http.client.HTTPConnection(
             "127.0.0.1",
             self.port,
@@ -661,7 +751,9 @@ class HttpTests(unittest.TestCase):
         self.read_initial_events(events_response)
 
         self.server.coordinator.set_scene_activator(
-            lambda _timeout: self.server.coordinator.report_lighting("active")
+            lambda scene, _timeout: self.server.coordinator.report_lighting(
+                {**AVAILABLE_LIGHTING, "activeScenes": [scene]}
+            )
         )
         self.addCleanup(self.server.coordinator.set_scene_activator, None)
 
@@ -679,6 +771,7 @@ class HttpTests(unittest.TestCase):
                         {
                             "requestId": "http-scene-request",
                             "action": SCENE_ACTION,
+                            "scene": "Relax",
                         }
                     ),
                     headers={"Content-Type": "application/json"},
@@ -693,10 +786,11 @@ class HttpTests(unittest.TestCase):
             event, accepted = self.read_event(events_response)
             self.assertEqual(event, "action.status")
             self.assertEqual(accepted["status"], "accepted")
+            self.assertEqual(accepted["scene"], "Relax")
 
             event, lighting = self.read_event(events_response)
             self.assertEqual(event, "room.lighting")
-            self.assertEqual(lighting["status"], "active")
+            self.assertEqual(lighting["activeScenes"], ["Relax"])
 
             event, completed = self.read_event(events_response)
             self.assertEqual(event, "action.status")

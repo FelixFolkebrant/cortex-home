@@ -5,7 +5,7 @@ import {
   artworkSource,
   formatTime,
   initialRoomState,
-  keyboardChannel,
+  keyboardAction,
   projectPosition,
   roomReducer,
 } from "./music";
@@ -19,11 +19,6 @@ const interactionCopy = {
     identifying: ["Here I am.", "Playing the room signal."],
     completed: ["Identified.", "The room confirmed the request."],
     failed: ["Couldn’t identify.", "The request failed."],
-  },
-  [SCENE_ACTION]: {
-    working: ["Warming the room.", "Waiting for Hue to confirm the scene."],
-    completed: ["Warm is active.", "The room confirmed the scene."],
-    failed: ["Couldn’t warm the room.", "The scene request failed."],
   },
   [CHANNEL_ACTION]: {
     working: ["Changing view.", "Showing the selected room view."],
@@ -406,16 +401,16 @@ function ConnectionNotice({ connection }) {
 
 function LightingStatus({ lighting }) {
   const status = lighting?.status || "unavailable";
-  const label = {
-    active: "Warm active",
-    inactive: "Warm inactive",
-    unavailable: "Warm unavailable",
-  }[status];
-  const indicator = {
-    active: "bg-[#efc66f] shadow-[0_0_1rem_rgb(239_198_111_/_75%)]",
-    inactive: "bg-[#736959]",
-    unavailable: "bg-[#b87568]",
-  }[status];
+  const activeScenes = lighting?.activeScenes || [];
+  let label = "Scenes unavailable";
+  let indicator = "bg-[#b87568]";
+  if (status === "available" && activeScenes.length === 0) {
+    label = "Custom lighting";
+    indicator = "bg-[#736959]";
+  } else if (status === "available") {
+    label = `${activeScenes.join(" + ")} active`;
+    indicator = "bg-[#efc66f] shadow-[0_0_1rem_rgb(239_198_111_/_75%)]";
+  }
 
   return (
     <div
@@ -434,7 +429,16 @@ function InteractionOverlay({ interaction }) {
     return null;
   }
 
-  const copy = interactionCopy[interaction.action]?.[interaction.state];
+  const scene = interaction.scene || "Scene";
+  const sceneCopy = {
+    working: [`Activating ${scene}.`, "Waiting for Hue to confirm the scene."],
+    completed: [`${scene} is active.`, "The room confirmed the scene."],
+    failed: [`Couldn’t activate ${scene}.`, "The scene request failed."],
+  };
+  const copy =
+    interaction.action === SCENE_ACTION
+      ? sceneCopy[interaction.state]
+      : interactionCopy[interaction.action]?.[interaction.state];
   if (!copy) {
     return null;
   }
@@ -505,6 +509,7 @@ export function App() {
     ?.getAttribute("src");
   const endpointToken = useRef(null);
   const activeRequestId = useRef(null);
+  const lighting = useRef(null);
   const actionGeneration = useRef(0);
   const interactionTimer = useRef(null);
 
@@ -516,9 +521,9 @@ export function App() {
       }
     }
 
-    function showInteraction(action, state, message, duration) {
+    function showInteraction(action, state, message, duration, scene) {
       clearInteractionTimer();
-      dispatch({ type: "interaction", action, state, message });
+      dispatch({ type: "interaction", action, state, message, scene });
 
       if (duration) {
         interactionTimer.current = window.setTimeout(() => {
@@ -613,6 +618,41 @@ export function App() {
       }
     }
 
+    async function activateScene(scene) {
+      const requestId = `keyboard-scene-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      activeRequestId.current = requestId;
+      showInteraction(SCENE_ACTION, "working", null, null, scene);
+
+      try {
+        const response = await fetch("/api/actions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requestId,
+            action: SCENE_ACTION,
+            scene,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result.error || `Coordinator returned ${response.status}.`);
+        }
+        if (activeRequestId.current === requestId) {
+          activeRequestId.current = null;
+          showInteraction(SCENE_ACTION, "completed", null, 2500, scene);
+        }
+      } catch (error) {
+        if (activeRequestId.current !== requestId) {
+          return;
+        }
+        activeRequestId.current = null;
+        const message = error instanceof Error ? error.message : "Unknown failure.";
+        showInteraction(SCENE_ACTION, "failed", message, 5000, scene);
+      }
+    }
+
     function parseMessage(event) {
       try {
         return JSON.parse(event.data);
@@ -671,6 +711,7 @@ export function App() {
     events.addEventListener("room.lighting", (event) => {
       const snapshot = parseMessage(event);
       if (snapshot) {
+        lighting.current = snapshot;
         dispatch({ type: "lighting", snapshot });
       }
     });
@@ -683,19 +724,19 @@ export function App() {
 
       if (message.status === "accepted") {
         activeRequestId.current = message.requestId;
-        showInteraction(message.action, "working");
+        showInteraction(message.action, "working", null, null, message.scene);
       } else if (
         message.requestId === activeRequestId.current &&
         message.status === "completed"
       ) {
         activeRequestId.current = null;
-        showInteraction(message.action, "completed", null, 2500);
+        showInteraction(message.action, "completed", null, 2500, message.scene);
       } else if (
         message.requestId === activeRequestId.current &&
         message.status === "failed"
       ) {
         activeRequestId.current = null;
-        showInteraction(message.action, "failed", message.error, 5000);
+        showInteraction(message.action, "failed", message.error, 5000, message.scene);
       }
     });
 
@@ -728,12 +769,16 @@ export function App() {
     };
 
     function onKeyDown(event) {
-      const channel = keyboardChannel(event);
-      if (!channel || activeRequestId.current) {
+      const request = keyboardAction(event, lighting.current);
+      if (!request || activeRequestId.current) {
         return;
       }
       event.preventDefault();
-      selectChannel(channel);
+      if (request.action === CHANNEL_ACTION) {
+        selectChannel(request.channel);
+      } else {
+        activateScene(request.scene);
+      }
     }
 
     window.addEventListener("keydown", onKeyDown);

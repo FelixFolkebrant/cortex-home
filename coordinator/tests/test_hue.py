@@ -18,8 +18,8 @@ from hue import (
     HueSceneError,
     HueSceneTimeout,
     HueSceneUnavailable,
-    normalize_scene_status,
-    resolve_scene,
+    is_scene_active,
+    resolve_scenes,
     summarize_v2,
 )
 
@@ -178,9 +178,9 @@ class HueAdapterTests(unittest.TestCase):
 
     def test_activates_the_resolved_scene_from_the_adapter_thread(self):
         self.write_config()
-        scene = make_scene()
-        scenes = FakeScenes(scene, emit_on_recall=True)
-        bridge = SimpleNamespace(scenes=scenes)
+        scene = make_scene(name="Relax")
+        scenes = FakeScenes([scene], emit_on_recall=True)
+        bridge = make_bridge(scenes=scenes)
 
         async def connector(
             _config,
@@ -190,32 +190,74 @@ class HueAdapterTests(unittest.TestCase):
             publish_activator,
             stop_event,
         ):
-            control = HueSceneControl(bridge, scene, publish_lighting)
-            scenes.subscribe(control.observe, id_filter=scene.id)
-            control.observe("update", scene)
-            publish_activator(control.activate)
+            control = HueSceneControl(
+                bridge,
+                publish_lighting,
+                publish_activator,
+            )
+            scenes.subscribe(control.observe)
+            control.refresh()
             status("connected")
             while not stop_event.is_set():
                 await asyncio.sleep(0.01)
 
         adapter = self.start_adapter(connector)
         self.wait_for("connected")
-        adapter.activate_scene(0.1)
+        adapter.activate_scene("Relax", 0.1)
 
-        self.assertEqual(scenes.recalled, ["scene-secret-id"])
-        self.assertEqual(adapter.snapshot()["lighting"], "active")
+        self.assertEqual(scenes.recalled, ["scene-relax-secret-id"])
+        self.assertEqual(
+            adapter.snapshot()["lighting"],
+            {
+                "status": "available",
+                "scenes": ["Relax"],
+                "activeScenes": ["Relax"],
+            },
+        )
 
     def test_rejects_scene_activation_while_unavailable(self):
         adapter = self.start_adapter(None)
         self.wait_for("unconfigured")
 
         with self.assertRaises(HueSceneUnavailable):
-            adapter.activate_scene(0.1)
+            adapter.activate_scene("Relax", 0.1)
+
+    def test_rejects_malformed_lighting_snapshots(self):
+        adapter = HueAdapter(self.config_path, lambda _status: None)
+        invalid = [
+            {},
+            {"status": "available", "scenes": [], "activeScenes": []},
+            {
+                "status": "available",
+                "scenes": ["Warm", "warm"],
+                "activeScenes": [],
+            },
+            {
+                "status": "available",
+                "scenes": ["Warm", "Bright"],
+                "activeScenes": [],
+            },
+            {
+                "status": "available",
+                "scenes": ["Bright", "Warm"],
+                "activeScenes": ["Warm", "Bright"],
+            },
+        ]
+
+        for lighting in invalid:
+            with self.subTest(lighting=lighting):
+                with self.assertRaises(ValueError):
+                    adapter._publish_lighting(lighting)
 
 
-def make_scene(name="Warm", group_id="room-secret-id", active="inactive"):
+def make_scene(
+    name="Warm",
+    group_id="room-secret-id",
+    active="inactive",
+    scene_id=None,
+):
     return SimpleNamespace(
-        id="scene-secret-id",
+        id=scene_id or f"scene-{name.lower()}-secret-id",
         metadata=SimpleNamespace(name=name),
         group=SimpleNamespace(rid=group_id),
         status=SimpleNamespace(active=SimpleNamespace(value=active)),
@@ -223,9 +265,8 @@ def make_scene(name="Warm", group_id="room-secret-id", active="inactive"):
 
 
 class FakeScenes:
-    def __init__(self, scene, emit_on_recall=False, error=None, delay=0):
-        self.items = [scene]
-        self.scene = scene
+    def __init__(self, scenes, emit_on_recall=False, error=None, delay=0):
+        self.items = scenes
         self.emit_on_recall = emit_on_recall
         self.error = error
         self.delay = delay
@@ -243,37 +284,43 @@ class FakeScenes:
         if self.error:
             raise self.error
         if self.emit_on_recall:
-            self.scene.status.active.value = "static"
-            self.callback("update", self.scene)
+            scene = next(scene for scene in self.items if scene.id == scene_id)
+            scene.status.active.value = "static"
+            self.callback("update", scene)
+
+
+def make_bridge(rooms=None, scenes=None):
+    if rooms is None:
+        rooms = [
+            SimpleNamespace(
+                id="room-secret-id",
+                metadata=SimpleNamespace(name="Rum"),
+            )
+        ]
+    if scenes is None:
+        scenes = FakeScenes([make_scene()])
+    elif isinstance(scenes, list):
+        scenes = FakeScenes(scenes)
+    return SimpleNamespace(
+        groups=SimpleNamespace(room=SimpleNamespace(items=rooms)),
+        scenes=scenes,
+    )
 
 
 class HueSceneTests(unittest.TestCase):
-    def make_bridge(self, rooms=None, scenes=None):
-        if rooms is None:
-            rooms = [
-                SimpleNamespace(
-                    id="room-secret-id",
-                    metadata=SimpleNamespace(name="Rum"),
-                )
-            ]
-        if scenes is None:
-            scenes = [make_scene()]
-        return SimpleNamespace(
-            groups=SimpleNamespace(
-                room=SimpleNamespace(items=rooms)
-            ),
-            scenes=SimpleNamespace(items=scenes),
-        )
+    def test_resolves_every_room_scene_in_case_insensitive_order(self):
+        relax = make_scene(name="relax")
+        bright = make_scene(name="Bright")
+        other = make_scene(name="Office", group_id="other-room-id")
 
-    def test_resolves_one_warm_scene_belonging_to_rum(self):
-        scene = make_scene()
+        resolved = resolve_scenes(make_bridge(scenes=[relax, other, bright]))
 
-        self.assertIs(resolve_scene(self.make_bridge(scenes=[scene])), scene)
+        self.assertEqual(resolved, [bright, relax])
 
-    def test_rejects_missing_ambiguous_and_wrong_room_targets(self):
+    def test_rejects_missing_ambiguous_empty_and_duplicate_catalogs(self):
         cases = [
-            self.make_bridge(rooms=[]),
-            self.make_bridge(
+            make_bridge(rooms=[]),
+            make_bridge(
                 rooms=[
                     SimpleNamespace(
                         id="room-secret-id",
@@ -285,66 +332,139 @@ class HueSceneTests(unittest.TestCase):
                     ),
                 ]
             ),
-            self.make_bridge(scenes=[make_scene(name="Relax")]),
-            self.make_bridge(scenes=[make_scene(group_id="other-room-id")]),
-            self.make_bridge(scenes=[make_scene(), make_scene()]),
+            make_bridge(scenes=[]),
+            make_bridge(scenes=[make_scene(group_id="other-room-id")]),
+            make_bridge(scenes=[make_scene(name="")]),
+            make_bridge(scenes=[make_scene(), make_scene(name="warm")]),
         ]
 
         for bridge in cases:
             with self.subTest(bridge=bridge):
-                self.assertIsNone(resolve_scene(bridge))
+                self.assertIsNone(resolve_scenes(bridge))
 
     def test_normalizes_only_static_and_dynamic_scene_status_as_active(self):
-        self.assertEqual(normalize_scene_status(make_scene(active="static")), "active")
-        self.assertEqual(
-            normalize_scene_status(make_scene(active="dynamic_palette")),
-            "active",
-        )
-        self.assertEqual(normalize_scene_status(make_scene()), "inactive")
-        self.assertEqual(
-            normalize_scene_status(SimpleNamespace(status=None)),
-            "inactive",
-        )
+        self.assertTrue(is_scene_active(make_scene(active="static")))
+        self.assertTrue(is_scene_active(make_scene(active="dynamic_palette")))
+        self.assertFalse(is_scene_active(make_scene()))
+        self.assertFalse(is_scene_active(SimpleNamespace(status=None)))
+
+    def test_publishes_zero_one_and_multiple_active_scenes(self):
+        async def exercise():
+            bright = make_scene(name="Bright")
+            relax = make_scene(name="Relax")
+            scenes = FakeScenes([relax, bright])
+            lighting = []
+            control = HueSceneControl(make_bridge(scenes=scenes), lighting.append)
+            scenes.subscribe(control.observe)
+
+            control.refresh()
+            bright.status.active.value = "static"
+            scenes.callback("update", bright)
+            relax.status.active.value = "dynamic_palette"
+            scenes.callback("update", relax)
+
+            self.assertEqual(
+                lighting,
+                [
+                    {
+                        "status": "available",
+                        "scenes": ["Bright", "Relax"],
+                        "activeScenes": [],
+                    },
+                    {
+                        "status": "available",
+                        "scenes": ["Bright", "Relax"],
+                        "activeScenes": ["Bright"],
+                    },
+                    {
+                        "status": "available",
+                        "scenes": ["Bright", "Relax"],
+                        "activeScenes": ["Bright", "Relax"],
+                    },
+                ],
+            )
+
+        asyncio.run(exercise())
+
+    def test_refreshes_when_scenes_are_added_or_removed(self):
+        async def exercise():
+            warm = make_scene()
+            scenes = FakeScenes([warm])
+            lighting = []
+            activators = []
+            control = HueSceneControl(
+                make_bridge(scenes=scenes),
+                lighting.append,
+                activators.append,
+            )
+            scenes.subscribe(control.observe)
+            control.refresh()
+
+            bright = make_scene(name="Bright")
+            scenes.items.append(bright)
+            scenes.callback("add", bright)
+            self.assertEqual(lighting[-1]["scenes"], ["Bright", "Warm"])
+
+            scenes.items.clear()
+            scenes.callback("delete", warm)
+            self.assertEqual(lighting[-1], {
+                "status": "unavailable",
+                "scenes": [],
+                "activeScenes": [],
+            })
+            self.assertIsNone(activators[-1])
+
+        asyncio.run(exercise())
 
     def test_completes_from_a_later_active_observation(self):
         async def exercise():
-            scene = make_scene()
-            scenes = FakeScenes(scene)
+            scene = make_scene(name="Relax")
+            scenes = FakeScenes([scene])
             lighting = []
-            control = HueSceneControl(
-                SimpleNamespace(scenes=scenes),
-                scene,
-                lighting.append,
-            )
-            scenes.subscribe(control.observe, id_filter=scene.id)
-            control.observe("update", scene)
+            control = HueSceneControl(make_bridge(scenes=scenes), lighting.append)
+            scenes.subscribe(control.observe)
+            control.refresh()
 
-            activation = asyncio.create_task(control.activate_async(0.1))
+            activation = asyncio.create_task(
+                control.activate_async("Relax", 0.1)
+            )
             await asyncio.sleep(0)
             scene.status.active.value = "static"
             scenes.callback("update", scene)
             await activation
 
-            self.assertEqual(lighting, ["inactive", "active"])
-            self.assertEqual(scenes.recalled, ["scene-secret-id"])
+            self.assertEqual(lighting[-1]["activeScenes"], ["Relax"])
+            self.assertEqual(scenes.recalled, ["scene-relax-secret-id"])
 
         asyncio.run(exercise())
 
     def test_requires_a_new_observation_when_the_scene_is_already_active(self):
         async def exercise():
             scene = make_scene(active="static")
-            scenes = FakeScenes(scene, emit_on_recall=True)
+            scenes = FakeScenes([scene], emit_on_recall=True)
             control = HueSceneControl(
-                SimpleNamespace(scenes=scenes),
-                scene,
+                make_bridge(scenes=scenes),
                 lambda _status: None,
             )
-            scenes.subscribe(control.observe, id_filter=scene.id)
-            control.observe("update", scene)
+            scenes.subscribe(control.observe)
+            control.refresh()
 
-            await control.activate_async(0.1)
+            await control.activate_async("Warm", 0.1)
 
-            self.assertEqual(scenes.recalled, ["scene-secret-id"])
+            self.assertEqual(scenes.recalled, ["scene-warm-secret-id"])
+
+        asyncio.run(exercise())
+
+    def test_rejects_an_unknown_scene(self):
+        async def exercise():
+            control = HueSceneControl(
+                make_bridge(scenes=[make_scene()]),
+                lambda _lighting: None,
+            )
+            control.refresh()
+
+            with self.assertRaises(HueSceneUnavailable):
+                await control.activate_async("Missing", 0.1)
 
         asyncio.run(exercise())
 
@@ -352,13 +472,13 @@ class HueSceneTests(unittest.TestCase):
         async def exercise():
             scene = make_scene()
             control = HueSceneControl(
-                SimpleNamespace(scenes=FakeScenes(scene)),
-                scene,
+                make_bridge(scenes=[scene]),
                 lambda _status: None,
             )
+            control.refresh()
 
             with self.assertRaises(HueSceneTimeout):
-                await control.activate_async(0.01)
+                await control.activate_async("Warm", 0.01)
 
         asyncio.run(exercise())
 
@@ -366,13 +486,13 @@ class HueSceneTests(unittest.TestCase):
         async def exercise():
             scene = make_scene()
             control = HueSceneControl(
-                SimpleNamespace(scenes=FakeScenes(scene, delay=0.1)),
-                scene,
+                make_bridge(scenes=FakeScenes([scene], delay=0.1)),
                 lambda _status: None,
             )
+            control.refresh()
 
             with self.assertRaises(HueSceneTimeout):
-                await control.activate_async(0.01)
+                await control.activate_async("Warm", 0.01)
 
         asyncio.run(exercise())
 
@@ -380,39 +500,42 @@ class HueSceneTests(unittest.TestCase):
         async def exercise():
             scene = make_scene()
             control = HueSceneControl(
-                SimpleNamespace(
-                    scenes=FakeScenes(scene, error=OSError("rejected"))
+                make_bridge(
+                    scenes=FakeScenes([scene], error=OSError("rejected"))
                 ),
-                scene,
                 lambda _status: None,
             )
+            control.refresh()
 
             with self.assertRaises(HueSceneError):
-                await control.activate_async(0.1)
+                await control.activate_async("Warm", 0.1)
 
         asyncio.run(exercise())
 
     def test_interruption_fails_pending_activation_and_recovers_observation(self):
         async def exercise():
             scene = make_scene()
-            scenes = FakeScenes(scene)
+            scenes = FakeScenes([scene])
             lighting = []
             control = HueSceneControl(
-                SimpleNamespace(scenes=scenes),
-                scene,
+                make_bridge(scenes=scenes),
                 lighting.append,
             )
+            scenes.subscribe(control.observe)
+            control.refresh()
 
-            activation = asyncio.create_task(control.activate_async(0.1))
+            activation = asyncio.create_task(
+                control.activate_async("Warm", 0.1)
+            )
             await asyncio.sleep(0)
             control.unavailable()
             with self.assertRaises(HueSceneUnavailable):
                 await activation
 
             scene.status.active.value = "static"
-            control.observe("update", scene)
+            control.refresh()
             self.assertTrue(control.available)
-            self.assertEqual(lighting, ["unavailable", "active"])
+            self.assertEqual(lighting[-1]["activeScenes"], ["Warm"])
 
         asyncio.run(exercise())
 

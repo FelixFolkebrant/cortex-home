@@ -11,7 +11,6 @@ from pathlib import Path
 CONFIG_KEYS = {"app_key", "bridge_id", "host", "supports_v2"}
 HOST_PATTERN = re.compile(r"^[A-Za-z0-9.-]+$")
 ROOM_NAME = "Rum"
-SCENE_NAME = "Warm"
 HUE_STATUSES = {
     "connected",
     "connecting",
@@ -117,7 +116,15 @@ def summarize_v2(bridge):
     }
 
 
-def resolve_scene(bridge):
+def unavailable_lighting():
+    return {
+        "status": "unavailable",
+        "scenes": [],
+        "activeScenes": [],
+    }
+
+
+def resolve_scenes(bridge):
     rooms = [
         room
         for room in bridge.groups.room.items
@@ -129,61 +136,95 @@ def resolve_scene(bridge):
     scenes = [
         scene
         for scene in bridge.scenes.items
-        if scene.metadata.name == SCENE_NAME and scene.group.rid == rooms[0].id
+        if scene.group.rid == rooms[0].id
     ]
-    return scenes[0] if len(scenes) == 1 else None
+    names = [getattr(scene.metadata, "name", None) for scene in scenes]
+    folded_names = [
+        name.casefold() for name in names if isinstance(name, str) and name
+    ]
+    if (
+        not scenes
+        or len(folded_names) != len(scenes)
+        or len(set(folded_names)) != len(folded_names)
+    ):
+        return None
+
+    return sorted(scenes, key=lambda scene: scene.metadata.name.casefold())
 
 
-def normalize_scene_status(scene):
+def is_scene_active(scene):
     active = getattr(getattr(scene, "status", None), "active", None)
     value = getattr(active, "value", active)
-    return "active" if value in {"static", "dynamic_palette"} else "inactive"
+    return value in {"static", "dynamic_palette"}
 
 
 class HueSceneControl:
-    def __init__(self, bridge, scene, publish_lighting):
+    def __init__(
+        self,
+        bridge,
+        publish_lighting,
+        publish_activator=lambda _activator: None,
+    ):
         self.bridge = bridge
-        self.scene = scene
         self.publish_lighting = publish_lighting
+        self.publish_activator = publish_activator
         self.loop = asyncio.get_running_loop()
-        self.waiters = set()
-        self.available = True
+        self.waiters = {}
+        self.scenes = {}
+        self.available = False
 
-    def observe(self, event_type, scene):
-        if (
-            getattr(event_type, "value", event_type) == "delete"
-            or scene.metadata.name != SCENE_NAME
-            or scene.group.rid != self.scene.group.rid
-        ):
+    def observe(self, _event_type, _scene):
+        self.refresh()
+
+    def refresh(self):
+        scenes = resolve_scenes(self.bridge)
+        if scenes is None:
             self.unavailable()
             return
 
+        self.scenes = {scene.metadata.name: scene for scene in scenes}
         self.available = True
-        status = normalize_scene_status(scene)
-        self.publish_lighting(status)
-        if status == "active":
-            for waiter in tuple(self.waiters):
-                if not waiter.done():
-                    waiter.set_result(None)
+        active_scenes = [
+            name for name, scene in self.scenes.items() if is_scene_active(scene)
+        ]
+        self.publish_lighting(
+            {
+                "status": "available",
+                "scenes": list(self.scenes),
+                "activeScenes": active_scenes,
+            }
+        )
+        self.publish_activator(self.activate)
+
+        for observation, target in tuple(self.waiters.items()):
+            if observation.done():
+                continue
+            if target not in self.scenes:
+                observation.set_exception(HueSceneUnavailable())
+            elif target in active_scenes:
+                observation.set_result(None)
 
     def unavailable(self):
         self.available = False
-        self.publish_lighting("unavailable")
-        for waiter in tuple(self.waiters):
-            if not waiter.done():
-                waiter.set_exception(HueSceneUnavailable())
+        self.scenes = {}
+        self.publish_activator(None)
+        self.publish_lighting(unavailable_lighting())
+        for observation in tuple(self.waiters):
+            if not observation.done():
+                observation.set_exception(HueSceneUnavailable())
 
-    async def activate_async(self, timeout):
-        if not self.available:
+    async def activate_async(self, scene_name, timeout):
+        scene = self.scenes.get(scene_name)
+        if not self.available or scene is None:
             raise HueSceneUnavailable
 
         observation = self.loop.create_future()
-        self.waiters.add(observation)
+        self.waiters[observation] = scene_name
         try:
             try:
                 async with asyncio.timeout(timeout):
                     try:
-                        await self.bridge.scenes.recall(self.scene.id)
+                        await self.bridge.scenes.recall(scene.id)
                     except asyncio.CancelledError:
                         raise
                     except Exception as error:
@@ -193,13 +234,13 @@ class HueSceneControl:
             except TimeoutError as error:
                 raise HueSceneTimeout from error
         finally:
-            self.waiters.discard(observation)
+            self.waiters.pop(observation, None)
             if not observation.done():
                 observation.cancel()
 
-    def activate(self, timeout):
+    def activate(self, scene_name, timeout):
         future = asyncio.run_coroutine_threadsafe(
-            self.activate_async(timeout),
+            self.activate_async(scene_name, timeout),
             self.loop,
         )
         try:
@@ -233,12 +274,7 @@ async def connect_hue(
                     scene_control.unavailable()
             elif event_type in {EventType.CONNECTED, EventType.RECONNECTED}:
                 if scene_control:
-                    scene_control.observe(
-                        EventType.RESOURCE_UPDATED,
-                        scene_control.scene,
-                    )
-                    if scene_control.available:
-                        publish_activator(scene_control.activate)
+                    scene_control.refresh()
                 publish_status("connected")
 
         bridge.events.subscribe(
@@ -255,14 +291,13 @@ async def connect_hue(
             raise HueConfigurationError
 
         publish_inventory(summarize_v2(bridge))
-        scene = resolve_scene(bridge)
-        if scene:
-            scene_control = HueSceneControl(bridge, scene, publish_lighting)
-            bridge.scenes.subscribe(scene_control.observe, id_filter=scene.id)
-            scene_control.observe(EventType.RESOURCE_UPDATED, scene)
-            publish_activator(scene_control.activate)
-        else:
-            publish_lighting("unavailable")
+        scene_control = HueSceneControl(
+            bridge,
+            publish_lighting,
+            publish_activator,
+        )
+        bridge.scenes.subscribe(scene_control.observe)
+        scene_control.refresh()
         if bridge.events.connected:
             publish_status("connected")
 
@@ -275,7 +310,7 @@ async def connect_hue(
         if scene_control:
             scene_control.unavailable()
         else:
-            publish_lighting("unavailable")
+            publish_lighting(unavailable_lighting())
         with suppress(Exception):
             await bridge.close()
 
@@ -299,7 +334,7 @@ class HueAdapter:
         self.lock = threading.Lock()
         self.status = "unconfigured"
         self.inventory = None
-        self.lighting = "unavailable"
+        self.lighting = unavailable_lighting()
         self.activator = None
 
     def start(self):
@@ -323,13 +358,13 @@ class HueAdapter:
                 "lighting": self.lighting,
             }
 
-    def activate_scene(self, timeout):
+    def activate_scene(self, scene_name, timeout):
         with self.lock:
             activator = self.activator
             available = self.status == "connected" and activator is not None
         if not available:
             raise HueSceneUnavailable
-        activator(timeout)
+        activator(scene_name, timeout)
 
     def _publish_status(self, status):
         if status not in HUE_STATUSES:
@@ -340,20 +375,48 @@ class HueAdapter:
                 self.activator = None
         self.on_status(status)
         if status != "connected":
-            self._publish_lighting("unavailable")
+            self._publish_lighting(unavailable_lighting())
 
     def _publish_inventory(self, inventory):
         with self.lock:
             self.inventory = inventory
 
-    def _publish_lighting(self, status):
-        if status not in {"active", "inactive", "unavailable"}:
-            raise ValueError(f"Unknown Hue lighting status: {status}")
+    def _publish_lighting(self, lighting):
+        scenes = lighting.get("scenes") if isinstance(lighting, dict) else None
+        active_scenes = (
+            lighting.get("activeScenes") if isinstance(lighting, dict) else None
+        )
+        if (
+            not isinstance(lighting, dict)
+            or set(lighting) != {"status", "scenes", "activeScenes"}
+            or lighting["status"] not in {"available", "unavailable"}
+            or not isinstance(scenes, list)
+            or not all(isinstance(scene, str) and scene for scene in scenes)
+            or scenes != sorted(scenes, key=str.casefold)
+            or len({scene.casefold() for scene in scenes}) != len(scenes)
+            or not isinstance(active_scenes, list)
+            or not all(isinstance(scene, str) for scene in active_scenes)
+            or active_scenes
+            != [scene for scene in scenes if scene in active_scenes]
+            or (
+                lighting["status"] == "unavailable"
+                and (scenes or active_scenes)
+            )
+            or (
+                lighting["status"] == "available"
+                and not scenes
+            )
+        ):
+            raise ValueError("Invalid Hue lighting snapshot")
         with self.lock:
-            if status == self.lighting:
+            if lighting == self.lighting:
                 return
-            self.lighting = status
-        self.on_lighting(status)
+            self.lighting = {
+                "status": lighting["status"],
+                "scenes": list(lighting["scenes"]),
+                "activeScenes": list(lighting["activeScenes"]),
+            }
+        self.on_lighting(self.lighting)
 
     def _publish_activator(self, activator):
         with self.lock:

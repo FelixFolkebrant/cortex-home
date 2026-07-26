@@ -60,7 +60,7 @@ def format_http_error(error):
     return f"HTTP {error.code}" + (f": {detail}" if detail else "")
 
 
-def verify(base_url, request_id=None, output=print):
+def verify(base_url, scene, request_id=None, output=print):
     status, health = request_json(f"{base_url}/api/health")
     if (
         status != 200
@@ -74,14 +74,15 @@ def verify(base_url, request_id=None, output=print):
         "Health passed: coordinator ok, "
         f"Hue connected, endpoint {health.get('endpoint', 'unknown')}."
     )
-    output("Activating Warm in Rum. Watch the lamps and room display now.")
+    output(f"Activating {scene} in Rum. Watch the lamps and room display now.")
 
-    request_id = request_id or f"warm-verify-{time.time_ns():x}"
+    request_id = request_id or f"scene-verify-{time.time_ns():x}"
     status, result = request_json(
         f"{base_url}/api/actions",
         {
             "requestId": request_id,
             "action": SCENE_ACTION,
+            "scene": scene,
         },
         timeout=15,
     )
@@ -89,18 +90,20 @@ def verify(base_url, request_id=None, output=print):
         "requestId": request_id,
         "action": SCENE_ACTION,
         "status": "completed",
+        "scene": scene,
     }
     if status != 200 or result != expected:
         raise VerificationError("The scene action returned an unexpected result.")
 
-    output("PASS: Hue reported Warm active after the scene request.")
+    output(f"PASS: Hue reported {scene} active after the scene request.")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Verify the deployed Cortex Home Warm scene action."
+        description="Verify one deployed Cortex Home named scene action."
     )
     parser.add_argument("server_host", help="Local coordinator hostname or IPv4 address")
+    parser.add_argument("scene", help="Exact detected Hue scene name")
     return parser.parse_args()
 
 
@@ -110,7 +113,7 @@ def main():
         raise SystemExit("The server host must be an IPv4 address or local hostname.")
 
     try:
-        verify(f"http://{args.server_host}:8080")
+        verify(f"http://{args.server_host}:8080", args.scene)
     except VerificationError as error:
         raise SystemExit(f"FAIL: {error}") from error
 
