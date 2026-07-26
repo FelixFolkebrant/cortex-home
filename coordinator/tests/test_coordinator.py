@@ -13,7 +13,14 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from cortex_home import ACTION, ApiError, Coordinator, CortexHomeServer
+from cortex_home import (
+    ACTION,
+    SCENE_ACTION,
+    ApiError,
+    Coordinator,
+    CortexHomeServer,
+)
+from hue import HueSceneError, HueSceneTimeout, HueSceneUnavailable
 
 
 PLAYING_OBSERVATION = {
@@ -37,10 +44,23 @@ class CoordinatorTests(unittest.TestCase):
         self.endpoint = self.coordinator.connect_endpoint()
         event, _payload = self.endpoint.events.get(timeout=1)
         self.assertEqual(event, "music.playback")
+        event, lighting = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "room.lighting")
+        self.assertEqual(lighting["status"], "unavailable")
 
     def submit_in_background(self, request_id="request-1"):
         executor = ThreadPoolExecutor(max_workers=1)
         future = executor.submit(self.coordinator.submit, request_id, ACTION)
+        self.addCleanup(executor.shutdown)
+        return future
+
+    def submit_scene_in_background(self, request_id="scene-request-1"):
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(
+            self.coordinator.submit,
+            request_id,
+            SCENE_ACTION,
+        )
         self.addCleanup(executor.shutdown)
         return future
 
@@ -147,7 +167,7 @@ class CoordinatorTests(unittest.TestCase):
             self.coordinator.submit("request-2", ACTION)
 
         self.assertEqual(raised.exception.status, HTTPStatus.CONFLICT)
-        self.assertEqual(raised.exception.code, "endpoint_busy")
+        self.assertEqual(raised.exception.code, "action_busy")
         self.coordinator.disconnect_endpoint(self.endpoint.token)
         future.result(timeout=1)
 
@@ -223,6 +243,147 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(event, "music.playback")
         self.assertEqual(snapshot["status"], "playing")
         self.assertEqual(snapshot["item"]["title"], "Never Gonna Give You Up")
+
+    def test_sends_and_publishes_only_changed_lighting_snapshots(self):
+        snapshot = self.coordinator.report_lighting("active")
+
+        self.assertEqual(
+            set(snapshot),
+            {"scene", "status", "observedAt"},
+        )
+        self.assertEqual(snapshot["scene"], "Warm")
+        self.assertEqual(snapshot["status"], "active")
+        self.assertRegex(
+            snapshot["observedAt"],
+            r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$",
+        )
+        event, published = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "room.lighting")
+        self.assertEqual(published, snapshot)
+
+        self.assertEqual(self.coordinator.report_lighting("active"), snapshot)
+        with self.assertRaises(queue.Empty):
+            self.endpoint.events.get_nowait()
+
+        inactive = self.coordinator.report_lighting("inactive")
+        event, published = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "room.lighting")
+        self.assertEqual(published, inactive)
+
+        with self.assertRaises(ValueError):
+            self.coordinator.report_lighting("unknown")
+
+    def test_activates_a_scene_and_publishes_observed_completion(self):
+        def activate(_timeout):
+            self.coordinator.report_lighting("active")
+
+        self.coordinator.set_scene_activator(activate)
+        future = self.submit_scene_in_background()
+
+        event, accepted = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "action.status")
+        self.assertEqual(accepted["action"], SCENE_ACTION)
+        self.assertEqual(accepted["status"], "accepted")
+        event, lighting = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "room.lighting")
+        self.assertEqual(lighting["status"], "active")
+        event, completed = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "action.status")
+        self.assertEqual(completed["status"], "completed")
+
+        status, payload = future.result(timeout=1)
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(payload, completed)
+
+    def test_scene_action_does_not_require_the_endpoint(self):
+        self.coordinator.disconnect_endpoint(self.endpoint.token)
+        calls = []
+        self.coordinator.set_scene_activator(calls.append)
+
+        status, payload = self.coordinator.submit(
+            "scene-without-endpoint",
+            SCENE_ACTION,
+        )
+
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(payload["status"], "completed")
+        self.assertEqual(calls, [self.coordinator.action_timeout])
+
+    def test_endpoint_disconnect_does_not_fail_a_scene_action(self):
+        started = threading.Event()
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        def activate(_timeout):
+            started.set()
+            release.wait(1)
+
+        self.coordinator.set_scene_activator(activate)
+        future = self.submit_scene_in_background()
+        event, accepted = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "action.status")
+        self.assertEqual(accepted["status"], "accepted")
+        self.assertTrue(started.wait(1))
+
+        self.coordinator.disconnect_endpoint(self.endpoint.token)
+        release.set()
+
+        status, payload = future.result(timeout=1)
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(payload["status"], "completed")
+
+    def test_scene_action_returns_distinct_adapter_failures(self):
+        cases = [
+            (
+                HueSceneUnavailable,
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "scene_unavailable",
+            ),
+            (HueSceneTimeout, HTTPStatus.GATEWAY_TIMEOUT, "scene_timeout"),
+            (HueSceneError, HTTPStatus.BAD_GATEWAY, "scene_failed"),
+        ]
+
+        for index, (error, expected_status, expected_code) in enumerate(cases):
+            with self.subTest(code=expected_code):
+                def fail(_timeout, error=error):
+                    raise error
+
+                self.coordinator.set_scene_activator(fail)
+                status, payload = self.coordinator.submit(
+                    f"failed-scene-{index}",
+                    SCENE_ACTION,
+                )
+                self.assertEqual(status, expected_status)
+                self.assertEqual(payload["status"], "failed")
+                self.assertEqual(payload["code"], expected_code)
+
+                event, accepted = self.endpoint.events.get(timeout=1)
+                self.assertEqual(event, "action.status")
+                self.assertEqual(accepted["status"], "accepted")
+                event, failed = self.endpoint.events.get(timeout=1)
+                self.assertEqual(event, "action.status")
+                self.assertEqual(failed["code"], expected_code)
+
+    def test_serializes_endpoint_and_scene_actions(self):
+        started = threading.Event()
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        def activate(_timeout):
+            started.set()
+            release.wait(1)
+
+        self.coordinator.set_scene_activator(activate)
+        future = self.submit_scene_in_background()
+        self.endpoint.events.get(timeout=1)
+        self.assertTrue(started.wait(1))
+
+        with self.assertRaises(ApiError) as raised:
+            self.coordinator.submit("overlapping-identify", ACTION)
+        self.assertEqual(raised.exception.code, "action_busy")
+
+        release.set()
+        future.result(timeout=1)
 
     def test_replaces_and_publishes_only_changed_playback(self):
         snapshot = self.coordinator.report_playback(PLAYING_OBSERVATION)
@@ -362,6 +523,12 @@ class HttpTests(unittest.TestCase):
         event, playback = self.read_event(events_response)
         self.assertEqual(event, "music.playback")
         self.assertIn(playback["status"], {"playing", "unavailable"})
+        event, lighting = self.read_event(events_response)
+        self.assertEqual(event, "room.lighting")
+        self.assertIn(
+            lighting["status"],
+            {"active", "inactive", "unavailable"},
+        )
 
         def submit_action():
             connection = http.client.HTTPConnection(
@@ -417,6 +584,67 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(payload["status"], "completed")
 
         self.server.coordinator.disconnect_endpoint(endpoint_token)
+
+    def test_completes_a_scene_action_over_http(self):
+        self.server.coordinator.report_lighting("inactive")
+        events_connection = http.client.HTTPConnection(
+            "127.0.0.1",
+            self.port,
+            timeout=1,
+        )
+        self.addCleanup(events_connection.close)
+        events_connection.request("GET", "/api/events")
+        events_response = events_connection.getresponse()
+        self.assertEqual(events_response.status, HTTPStatus.OK)
+        self.read_event(events_response)
+        self.read_event(events_response)
+        self.read_event(events_response)
+
+        self.server.coordinator.set_scene_activator(
+            lambda _timeout: self.server.coordinator.report_lighting("active")
+        )
+        self.addCleanup(self.server.coordinator.set_scene_activator, None)
+
+        def submit_action():
+            connection = http.client.HTTPConnection(
+                "127.0.0.1",
+                self.port,
+                timeout=1,
+            )
+            try:
+                connection.request(
+                    "POST",
+                    "/api/actions",
+                    body=json.dumps(
+                        {
+                            "requestId": "http-scene-request",
+                            "action": SCENE_ACTION,
+                        }
+                    ),
+                    headers={"Content-Type": "application/json"},
+                )
+                response = connection.getresponse()
+                return response.status, json.loads(response.read())
+            finally:
+                connection.close()
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            result = executor.submit(submit_action)
+            event, accepted = self.read_event(events_response)
+            self.assertEqual(event, "action.status")
+            self.assertEqual(accepted["status"], "accepted")
+
+            event, lighting = self.read_event(events_response)
+            self.assertEqual(event, "room.lighting")
+            self.assertEqual(lighting["status"], "active")
+
+            event, completed = self.read_event(events_response)
+            self.assertEqual(event, "action.status")
+            self.assertEqual(completed["status"], "completed")
+
+            status, payload = result.result(timeout=1)
+            self.assertEqual(status, HTTPStatus.OK)
+            self.assertEqual(payload, completed)
 
     def test_serves_the_client_and_health(self):
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=1)
@@ -524,6 +752,7 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(events_response.status, HTTPStatus.OK)
         self.read_event(events_response)
         self.read_event(events_response)
+        self.read_event(events_response)
 
         status, snapshot = self.request(
             "POST",
@@ -551,6 +780,7 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(first_response.status, HTTPStatus.OK)
         self.read_event(first_response)
         self.read_event(first_response)
+        self.read_event(first_response)
 
         second_connection = http.client.HTTPConnection(
             "127.0.0.1",
@@ -561,6 +791,7 @@ class HttpTests(unittest.TestCase):
         second_connection.request("GET", "/api/events")
         second_response = second_connection.getresponse()
         self.assertEqual(second_response.status, HTTPStatus.OK)
+        self.read_event(second_response)
         self.read_event(second_response)
         self.read_event(second_response)
 
