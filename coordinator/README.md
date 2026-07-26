@@ -115,9 +115,11 @@ endpoint connection, and returns completion after it publishes that state.
 On the room display, `Ctrl`+`Alt`+`1` selects Today and `Ctrl`+`Alt`+`2`
 selects Music through that same action. `Ctrl`+`Alt`+`S` activates the next
 detected room scene in case-insensitive name order and wraps after the last
-scene. Other key combinations and repeated key presses do nothing. The Hue
-remote remains exclusively native to Hue; Cortex Home does not subscribe to
-its button events.
+scene. While Music is active, `Ctrl`+`M` locally toggles its fullscreen artwork
+presentation without sending a coordinator action. Leaving Music resets that
+presentation. Other key combinations and repeated key presses do nothing. The
+Hue remote remains exclusively native to Hue; Cortex Home does not subscribe
+to its button events.
 
 For a focused deployed check, use the repository-owned verifier with one exact
 detected scene name. It checks safe health, generates a unique request ID, and
@@ -203,6 +205,17 @@ render as the Music view, playing progress is projected locally from
 `positionMs` and `observedAt`, and terminal snapshots remove the prior item.
 The browser loads only the snapshot's HTTPS artwork; an unavailable image falls
 back to the local Cortex Home record mark.
+
+Music's local fullscreen presentation centers the square artwork and samples a
+small in-browser copy to choose the surrounding majority color, a recurring
+distinctive title-fill color, and whichever of pure black or white has higher
+contrast. Its rotated title is the progress indicator; the unplayed segment is
+60% opaque and the creators are 40% opaque. Complete track changes swipe left
+over 400ms while the surrounding majority color fades. The presentation omits
+source, collection, timestamps, duration, normal player chrome, and shared
+feedback. The final-ten-second upcoming treatment is implemented for complete
+upcoming-item input; the current normalized receiver does not publish that
+metadata and the client does not fabricate it.
 
 Each event-stream connection also receives the hashed production client entry.
 If Chromium is still running a replaced bundle after coordinator deployment,

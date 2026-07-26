@@ -54,3 +54,46 @@ The endpoint advertises itself as `imac.local` on the home network. Press
 `Control`+`Option`+`Return` on the iMac keyboard to open an unprivileged
 recovery terminal above the kiosk. Run `su - imac` there when administrative
 access is required, and close the terminal to return to the full-screen page.
+
+## Playback Diagnostics
+
+When Music becomes black unexpectedly, note the song title and reproduce it
+once while following the receiver journal for at most 60 seconds:
+
+```sh
+ssh <endpoint-ssh-host>
+sudo timeout 60 journalctl \
+  --follow \
+  --unit=raspotify.service \
+  --output=short-precise
+```
+
+Immediately after the screen becomes black, capture the normalized playback
+state and the recent receiver log:
+
+```sh
+sudo cat /run/raspotify/cortex-playback.json | python3 -m json.tool
+sudo journalctl \
+  --unit=raspotify.service \
+  --since="-2 minutes" \
+  --output=short-precise \
+  --no-pager
+```
+
+On the coordinator, capture the same two-minute window:
+
+```sh
+ssh <server-ssh-host>
+sudo journalctl \
+  --unit=cortex-home.service \
+  --since="-2 minutes" \
+  --output=short-precise \
+  --no-pager
+```
+
+If Chromium developer tools open with `Control`+`Shift`+`J`, record any red
+console or failed artwork-network message at the moment the screen changes.
+The useful distinction is whether the normalized state says `playing` with a
+complete `item`, or `unavailable` with `item: null`. Do not copy the raw
+`/api/events` stream because its initial ready event contains the endpoint
+token.
