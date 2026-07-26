@@ -16,9 +16,9 @@
 - Let the attached keyboard select Today with `Ctrl`+`Alt`+`1` and Music with
   `Ctrl`+`Alt`+`2`, using the same coordinator-owned `channel.select` action
   as every other caller.
-- Preserve Music playback, Warm-scene state, connection recovery, and the
-  existing interaction overlay while a channel changes or the endpoint
-  reconnects.
+- Preserve Music playback, Warm-scene state, and connection recovery while a
+  channel changes or the endpoint reconnects. Channel feedback uses a compact
+  upper-right toast; existing room-action overlays remain full-screen.
 
 ## Out Of Scope
 
@@ -81,10 +81,10 @@
 - [ ] Music retains its existing loaded, empty, stopped, and unavailable
   presentation. Playback, lighting, connection state, and temporary action
   feedback survive channel updates and endpoint reconnection independently.
-- [ ] Channel selection visibly acknowledges the requested channel, shows the
-  completed channel after the matching snapshot arrives, and makes a failed or
-  unavailable interaction unmistakable without leaving a stale overlay over
-  the selected view.
+- [ ] Channel selection visibly acknowledges the requested channel with a
+  compact upper-right toast, shows completion after the matching snapshot
+  arrives, and makes failure unmistakable without obscuring the selected view.
+  Identification and lighting retain their existing full-screen feedback.
 - [ ] `Ctrl`+`Alt`+`1` selects Today and `Ctrl`+`Alt`+`2` selects Music from
   the full-screen client. Repeated, shifted, meta-modified, or other key
   combinations do not invoke an action; each accepted shortcut uses the same
@@ -123,8 +123,9 @@
   updates.
 - Keep one full-screen shell and switch only between explicit `Today` and
   `Music` view components; add no navigation framework or control surface.
-- Present temporary channel-selection feedback above either view and retain the
-  existing reconnect and Warm-scene feedback behavior.
+- Present temporary channel-selection feedback as a compact toast above either
+  view and retain the existing reconnect notice and full-screen Warm-scene
+  feedback.
 - Add the two fixed keyboard shortcuts without adding a configurable key map or
   client-local channel state.
 - Cover reducer and presentation-state transitions, then document the exact
@@ -181,15 +182,15 @@ Reference: `../project/HEATMAP.md`.
   state or temporary feedback.
 - Proposed approach: Store active channel, Today, playback, lighting,
   connection, and interaction as separate reducer fields. Keep connection and
-  interaction layers at the shared shell level.
+  interaction layers at the shared shell level; render channel interaction as
+  a small toast and room actions as full-screen feedback.
 - Why: A selected channel should not erase Music state, lighting feedback, or
   a reconnect notice, and the same ownership will make the Hue remote's later
   actions clear.
 - Alternatives: Remount an isolated app per channel; duplicate connection and
   feedback logic; reset all state when changing views.
-- Review focus: Event ordering while reconnecting, interaction-overlay
-  lifetime, stale or unavailable Today state, narrow layouts, and reduced
-  motion.
+- Review focus: Event ordering while reconnecting, toast and overlay lifetime,
+  stale or unavailable Today state, narrow layouts, and reduced motion.
 
 ## Stylistic
 
@@ -203,3 +204,13 @@ Reference: `../project/HEATMAP.md`.
 - When to apply: Use this hierarchy only for the explicit Today view. Do not
   turn it into a shared dashboard component before another channel proves that
   need.
+
+### S2 - Keep Channel Feedback Out Of The Way
+
+- Choice: Show channel accepted, completed, and failed feedback as a compact
+  upper-right toast while preserving full-screen overlays for room
+  identification and lighting.
+- Alternative: Reuse the full-screen room-action overlay for every action, or
+  provide no visible channel feedback.
+- When to apply: Use this distinction for channel selection only until another
+  view action proves a shared feedback style is needed.
