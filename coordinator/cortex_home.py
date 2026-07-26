@@ -15,10 +15,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from hue import HueAdapter
+from hue import (
+    HueAdapter,
+    HueSceneError,
+    HueSceneTimeout,
+    HueSceneUnavailable,
+)
 
 
 ACTION = "endpoint.identify"
+SCENE_ACTION = "room.scene.activate"
+ALLOWED_ACTIONS = {ACTION, SCENE_ACTION}
 MAX_BODY_BYTES = 4096
 MAX_COLLECTION_LENGTH = 512
 MAX_CREATORS = 16
@@ -57,18 +64,22 @@ class ApiError(Exception):
 @dataclass
 class PendingRequest:
     request_id: str
-    endpoint_token: str
+    action: str
+    endpoint_token: str | None = None
     state: str = "accepted"
     error: str | None = None
+    code: str | None = None
     http_status: int = HTTPStatus.OK
     finished: threading.Event = field(default_factory=threading.Event)
 
     def payload(self):
         payload = {
             "requestId": self.request_id,
-            "action": ACTION,
+            "action": self.action,
             "status": self.state,
         }
+        if self.code:
+            payload["code"] = self.code
         if self.error:
             payload["error"] = self.error
         return payload
@@ -87,8 +98,9 @@ class EndpointConnection:
 
 
 class Coordinator:
-    def __init__(self, action_timeout=10):
+    def __init__(self, action_timeout=10, scene_activator=None):
         self.action_timeout = action_timeout
+        self.scene_activator = scene_activator
         self.lock = threading.RLock()
         self.endpoint = None
         self.active_request_id = None
@@ -100,6 +112,11 @@ class Coordinator:
             "observedAt": utc_timestamp(),
         }
         self.hue_status = "unconfigured"
+        self.lighting = {
+            "scene": "Warm",
+            "status": "unavailable",
+            "observedAt": utc_timestamp(),
+        }
 
     def connect_endpoint(self):
         with self.lock:
@@ -114,6 +131,7 @@ class Coordinator:
 
             self.endpoint = EndpointConnection()
             self.endpoint.send("music.playback", self.playback)
+            self.endpoint.send("room.lighting", self.lighting)
             return self.endpoint
 
     def disconnect_endpoint(self, token):
@@ -130,11 +148,11 @@ class Coordinator:
 
     def submit(self, request_id, action):
         self._validate_request_id(request_id)
-        if action != ACTION:
+        if action not in ALLOWED_ACTIONS:
             raise ApiError(
                 HTTPStatus.BAD_REQUEST,
                 "unknown_action",
-                f"Only {ACTION} is allowed.",
+                "The action is not allowed.",
             )
 
         with self.lock:
@@ -144,27 +162,34 @@ class Coordinator:
                     "duplicate_request_id",
                     "The request ID has already been used.",
                 )
-            if not self.endpoint:
+            if self.active_request_id:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "action_busy",
+                    "The room is already handling an action.",
+                )
+            if action == ACTION and not self.endpoint:
                 raise ApiError(
                     HTTPStatus.SERVICE_UNAVAILABLE,
                     "endpoint_unavailable",
                     "The room endpoint is not connected.",
                 )
-            if self.active_request_id:
-                raise ApiError(
-                    HTTPStatus.CONFLICT,
-                    "endpoint_busy",
-                    "The room endpoint is already identifying.",
-                )
 
-            pending = PendingRequest(request_id, self.endpoint.token)
+            endpoint_token = self.endpoint.token if action == ACTION else None
+            pending = PendingRequest(request_id, action, endpoint_token)
             self.requests[request_id] = pending
             self.active_request_id = request_id
             self._trim_requests_locked()
-            self.endpoint.send(
-                "identify",
-                {"requestId": request_id, "action": ACTION},
-            )
+            if action == ACTION:
+                self.endpoint.send(
+                    "identify",
+                    {"requestId": request_id, "action": ACTION},
+                )
+            elif self.endpoint:
+                self.endpoint.send("action.status", pending.payload())
+
+        if action == SCENE_ACTION:
+            return self._activate_scene(pending)
 
         if not pending.finished.wait(self.action_timeout):
             with self.lock:
@@ -174,6 +199,7 @@ class Coordinator:
                         "failed",
                         "action timed out",
                         HTTPStatus.GATEWAY_TIMEOUT,
+                        code="action_timeout",
                         notify_endpoint=True,
                     )
 
@@ -248,6 +274,25 @@ class Coordinator:
         with self.lock:
             self.hue_status = status
 
+    def set_scene_activator(self, activator):
+        self.scene_activator = activator
+
+    def report_lighting(self, status):
+        if status not in {"active", "inactive", "unavailable"}:
+            raise ValueError(f"Unknown room lighting status: {status}")
+
+        with self.lock:
+            if status == self.lighting["status"]:
+                return self.lighting
+            self.lighting = {
+                "scene": "Warm",
+                "status": status,
+                "observedAt": utc_timestamp(),
+            }
+            if self.endpoint:
+                self.endpoint.send("room.lighting", self.lighting)
+            return self.lighting
+
     def health(self):
         with self.lock:
             return {
@@ -278,22 +323,65 @@ class Coordinator:
         if pending.endpoint_token == endpoint_token and not pending.finished.is_set():
             self._finish_locked(pending, "failed", error, http_status)
 
+    def _activate_scene(self, pending):
+        try:
+            if self.scene_activator is None:
+                raise HueSceneUnavailable
+            self.scene_activator(self.action_timeout)
+        except HueSceneUnavailable:
+            result = (
+                "scene_unavailable",
+                "The Warm scene is unavailable.",
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+        except HueSceneTimeout:
+            result = (
+                "scene_timeout",
+                "The Warm scene did not report completion in time.",
+                HTTPStatus.GATEWAY_TIMEOUT,
+            )
+        except HueSceneError:
+            result = (
+                "scene_failed",
+                "The Hue bridge rejected the Warm scene action.",
+                HTTPStatus.BAD_GATEWAY,
+            )
+        else:
+            with self.lock:
+                self._finish_locked(pending, "completed", None, HTTPStatus.OK)
+            return pending.http_status, pending.payload()
+
+        code, error, http_status = result
+        with self.lock:
+            self._finish_locked(
+                pending,
+                "failed",
+                error,
+                http_status,
+                code=code,
+            )
+        return pending.http_status, pending.payload()
+
     def _finish_locked(
         self,
         pending,
         state,
         error,
         http_status,
+        code=None,
         notify_endpoint=False,
     ):
         pending.state = state
         pending.error = error
+        pending.code = code
         pending.http_status = http_status
         if self.active_request_id == pending.request_id:
             self.active_request_id = None
         pending.finished.set()
 
-        if (
+        if pending.action == SCENE_ACTION and self.endpoint:
+            self.endpoint.send("action.status", pending.payload())
+        elif (
             notify_endpoint
             and self.endpoint
             and self.endpoint.token == pending.endpoint_token
@@ -691,7 +779,12 @@ def parse_args():
 def main():
     args = parse_args()
     coordinator = Coordinator(action_timeout=args.action_timeout)
-    hue = HueAdapter(args.hue_config, coordinator.set_hue_status)
+    hue = HueAdapter(
+        args.hue_config,
+        coordinator.set_hue_status,
+        coordinator.report_lighting,
+    )
+    coordinator.set_scene_activator(hue.activate_scene)
     server = CortexHomeServer(
         (args.host, args.port),
         coordinator,

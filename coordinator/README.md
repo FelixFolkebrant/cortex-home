@@ -58,8 +58,7 @@ pnpm --dir coordinator/client test
 pnpm --dir coordinator/client build
 ```
 
-With the endpoint connected, an outside caller can invoke the only allowed
-action:
+With the endpoint connected, an outside caller can invoke its identify action:
 
 ```sh
 curl \
@@ -73,6 +72,30 @@ The request remains open until the endpoint reports completion or failure. The
 JSON response carries the same request ID. Use a new request ID for every
 invocation while the coordinator process remains running.
 
+An outside caller can activate the fixed `Warm` scene in room `Rum` even when
+the endpoint is disconnected:
+
+```sh
+curl \
+  --fail-with-body \
+  --header 'Content-Type: application/json' \
+  --data '{"requestId":"warm-1","action":"room.scene.activate"}' \
+  http://<server-host>:8080/api/actions
+```
+
+The action accepts no room, scene, or Hue resource argument. It remains open
+until a later Hue event reports `Warm` active, the 10-second action bound
+expires, or the adapter reports an unavailable or rejected command. Every
+request needs a new request ID.
+
+For a focused deployed check, use the repository-owned verifier. It checks safe
+health, generates a unique request ID, activates `Warm`, and requires observed
+completion while the operator watches the lamps and room display:
+
+```sh
+./coordinator/verify_warm_scene.py <server-host>
+```
+
 The iMac playback adapter posts a complete normalized observation to:
 
 ```text
@@ -85,12 +108,17 @@ keeps only the latest snapshot in memory, and publishes changed snapshots as
 `music.playback` server-sent events. Every new endpoint connection receives the
 current snapshot immediately after its `ready` event.
 
-The full-screen client keeps playback, coordinator connection, and temporary
-identify feedback as independent state. Loaded tracks and episodes render as
-the Music view, playing progress is projected locally from `positionMs` and
-`observedAt`, and terminal snapshots remove the prior item. The browser loads
-only the snapshot's HTTPS artwork; an unavailable image falls back to the local
-Cortex Home record mark.
+The coordinator also publishes `room.lighting` snapshots with only `scene`,
+`status`, and `observedAt`. The scene is always `Warm`; status is `active`,
+`inactive`, or `unavailable`. Hue credentials, bridge identity, room and scene
+resource IDs, and raw events remain inside the adapter.
+
+The full-screen client keeps playback, lighting, coordinator connection, and
+temporary action feedback as independent state. Loaded tracks and episodes
+render as the Music view, playing progress is projected locally from
+`positionMs` and `observedAt`, and terminal snapshots remove the prior item.
+The browser loads only the snapshot's HTTPS artwork; an unavailable image falls
+back to the local Cortex Home record mark.
 
 Each event-stream connection also receives the hashed production client entry.
 If Chromium is still running a replaced bundle after coordinator deployment,
