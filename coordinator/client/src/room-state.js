@@ -149,3 +149,15 @@ export function keyboardAction(event, lighting) {
 
   return null;
 }
+
+export function isMusicFullscreenShortcut(event, channel) {
+  return (
+    channel === "music" &&
+    event.code === "KeyM" &&
+    !event.altKey &&
+    event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.repeat
+  );
+}
