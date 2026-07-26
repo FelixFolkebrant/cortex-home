@@ -1,5 +1,7 @@
 export const initialRoomState = {
   connection: "connecting",
+  channel: null,
+  today: null,
   playback: null,
   lighting: null,
   interaction: {
@@ -20,6 +22,16 @@ export function roomReducer(state, event) {
       return {
         ...state,
         playback: event.snapshot,
+      };
+    case "channel":
+      return {
+        ...state,
+        channel: event.snapshot,
+      };
+    case "today":
+      return {
+        ...state,
+        today: event.snapshot,
       };
     case "lighting":
       return {

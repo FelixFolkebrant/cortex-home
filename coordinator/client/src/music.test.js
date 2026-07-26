@@ -69,6 +69,33 @@ test("lighting and scene interaction events remain independent", () => {
   });
 });
 
+test("channel and Today updates preserve Music and room feedback", () => {
+  const today = {
+    status: "available",
+    timeZone: "Europe/Stockholm",
+    current: { condition: "clear", temperatureC: 20 },
+    forecast: [],
+  };
+  const withPlayback = roomReducer(initialRoomState, {
+    type: "playback",
+    snapshot: playing,
+  });
+  const withLighting = roomReducer(withPlayback, {
+    type: "lighting",
+    snapshot: { scene: "Warm", status: "active" },
+  });
+  const withToday = roomReducer(withLighting, { type: "today", snapshot: today });
+  const result = roomReducer(withToday, {
+    type: "channel",
+    snapshot: { active: "today" },
+  });
+
+  assert.equal(result.playback, playing);
+  assert.equal(result.lighting.status, "active");
+  assert.equal(result.today, today);
+  assert.equal(result.channel.active, "today");
+});
+
 test("a terminal snapshot replaces loaded playback", () => {
   const withPlayback = roomReducer(initialRoomState, {
     type: "playback",
