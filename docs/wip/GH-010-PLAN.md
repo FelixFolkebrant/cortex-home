@@ -13,6 +13,9 @@
 - Render explicit full-screen Today and Music views in the existing React
   shell. Today shows local time, date, current conditions, and the small
   forecast at room-viewing scale.
+- Let the attached keyboard select Today with `Ctrl`+`Alt`+`1` and Music with
+  `Ctrl`+`Alt`+`2`, using the same coordinator-owned `channel.select` action
+  as every other caller.
 - Preserve Music playback, Warm-scene state, connection recovery, and the
   existing interaction overlay while a channel changes or the endpoint
   reconnects.
@@ -23,8 +26,8 @@
   registry, plugins, configurable dashboards, or widgets.
 - Calendar, email, tasks, news, commute, traffic, account data, or any
   configurable Today content.
-- An on-screen channel picker or ordinary keyboard, mouse, or touchscreen
-  operation.
+- An on-screen channel picker, mouse, touchscreen, arbitrary keyboard
+  shortcuts, or configurable key bindings.
 - A Hue remote mapping, other physical controls, or changes to the accepted
   Warm scene action.
 - Weather history, alerts, hourly detail, location search, user geolocation,
@@ -82,6 +85,10 @@
   completed channel after the matching snapshot arrives, and makes a failed or
   unavailable interaction unmistakable without leaving a stale overlay over
   the selected view.
+- [ ] `Ctrl`+`Alt`+`1` selects Today and `Ctrl`+`Alt`+`2` selects Music from
+  the full-screen client. Repeated, shifted, meta-modified, or other key
+  combinations do not invoke an action; each accepted shortcut uses the same
+  visible request and completion feedback as an outside caller.
 - [ ] Focused coordinator, HTTP/SSE, weather-adapter, and client reducer tests
   cover the accepted channel contract, invalid selections, reconnect snapshots,
   weather normalization and unavailability, view-state preservation, and
@@ -118,6 +125,8 @@
   `Music` view components; add no navigation framework or control surface.
 - Present temporary channel-selection feedback above either view and retain the
   existing reconnect and Warm-scene feedback behavior.
+- Add the two fixed keyboard shortcuts without adding a configurable key map or
+  client-local channel state.
 - Cover reducer and presentation-state transitions, then document the exact
   local and deployed review path.
 
@@ -140,7 +149,8 @@ Reference: `../project/HEATMAP.md`.
 - Alternatives: Client-local view state; URLs or a React router; one process or
   desktop per channel; a dynamic channel registry.
 - Review focus: Action completion ordering, reconnect state, duplicate or busy
-  requests, no endpoint dependency, and absence of a generalized framework.
+  requests, no endpoint dependency, keyboard repeat handling, and absence of a
+  generalized framework.
 
 ### H2 - Normalize One Bounded Today Summary At The Coordinator
 
