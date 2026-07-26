@@ -7,8 +7,8 @@ the visible Today or Music channel, hear one spoken answer, and activate one
 exact detected Hue scene through the same coordinator action used by other
 callers.
 
-- The Anker microphone is deliberately activated from the iMac keyboard and is
-  never sampled while the shortcut is not held.
+- The USB-connected Anker PowerConf S330 microphone is deliberately activated
+  from the iMac keyboard and is never sampled while the shortcut is not held.
 - The iMac captures one bounded utterance and shows listening, transcribing,
   thinking, acting, speaking, success, and failure state.
 - The ThinkPad transcribes English speech and synthesizes speech locally behind
@@ -96,11 +96,11 @@ without creating an ambient or general-purpose assistant.
 - Impact if wrong: Raw room audio could leave the home, the iMac could inherit
   unacceptable compute, or the system could require a second endpoint protocol.
 - Proposed choice: Capture one press-bounded PCM utterance in Chromium from the
-  Anker microphone and send it only to the ThinkPad. Qualify English Vosk
-  against quantized `whisper.cpp`, and Piper against Pocket TTS, on the actual
-  Ryzen 5 host and microphone path. Put each role behind one small backend
-  contract, pin the measured winners, and return bounded audio through the
-  existing client and Sonos audio route. Piper is the initial TTS baseline;
+  USB-connected Anker PowerConf S330 and send it only to the ThinkPad. Qualify
+  English Vosk against quantized `whisper.cpp`, and Piper against Pocket TTS, on
+  the actual Ryzen 5 host and microphone path. Put each role behind one small
+  backend contract, pin the measured winners, and return bounded audio through
+  the existing client and Sonos audio route. Piper is the initial TTS baseline;
   Pocket TTS must earn selection through latency, resource, and listening
   checks. Qualify playback stop latency while the audio path is active so later
   interruption does not depend on an unmeasured Sonos buffer.
@@ -212,11 +212,11 @@ without creating an ambient or general-purpose assistant.
 1. **GH-012 - Publish Agent-Safe Room Context**: extract one immutable,
    provider-free context projection for Today, Music, and lighting without
    adding a model, microphone, public endpoint, or frontend change.
-2. **GH-014 - Qualify Deliberate Local Speech**: qualify the Anker microphone,
-   press-bounded Chromium capture, English Vosk and quantized `whisper.cpp`,
-   Piper and Pocket TTS, the two small backend contracts, endpoint permissions,
-   bounded start and playback-stop latency, and resource use before agent
-   behavior depends on them.
+2. **GH-014 - Qualify Deliberate Local Speech**: qualify the USB-connected
+   Anker PowerConf S330, press-bounded Chromium capture, English Vosk and
+   quantized `whisper.cpp`, Piper and Pocket TTS, the two small backend
+   contracts, endpoint permissions, bounded start and playback-stop latency,
+   and resource use before agent behavior depends on them.
 3. **GH-016 - Answer One Contextual Follow-Up**: add the supervised Node
    process, Pi Agent Core with `pi-ai`, protected OpenRouter credential, pinned
    qualified text model, request-ID cancellation seam, ephemeral interaction

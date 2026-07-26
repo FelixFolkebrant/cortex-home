@@ -160,7 +160,7 @@ its native Hue behavior.
 | Philips Hue bridge, remote, and three lamps | Detected room scenes and local lighting control; the remote remains Hue-native | Scene creation, editing, and controls beyond scene activation |
 | iPhone 17 | Personal controller, Spotify source, and possible casting source | None needed for the first slice |
 | Google Fitbit | Possible later sensor/input | Exact model and accessible data |
-| Anker conference microphone | Possible deliberate voice input | Exact model and preferred physical location |
+| Anker PowerConf S330 conference microphone | Possible deliberate voice input; currently connected to the iMac over USB | Preferred permanent physical location |
 
 ### ThinkPad Coordinator Baseline
 
