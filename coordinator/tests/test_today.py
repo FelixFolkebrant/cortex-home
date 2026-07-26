@@ -38,6 +38,12 @@ def forecast():
                     },
                 }
             )
+    entries.append(
+        {
+            "time": "2026-07-29T12:00:00Z",
+            "data": {"instant": {"details": {"air_temperature": 24.1}}},
+        }
+    )
     return {"properties": {"timeseries": entries}}
 
 

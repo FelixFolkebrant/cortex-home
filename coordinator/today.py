@@ -156,16 +156,32 @@ def normalize_forecast(forecast):
         series = forecast["properties"]["timeseries"]
         if not isinstance(series, list) or not series:
             raise ValueError
-        entries = [normalize_entry(entry) for entry in series]
     except (KeyError, TypeError, ValueError):
         raise TodayUnavailable from None
 
-    current = entries[0]
     local_zone = ZoneInfo(TIME_ZONE)
     days = {}
-    for entry in entries:
-        day = entry["time"].astimezone(local_zone).date().isoformat()
-        days.setdefault(day, []).append(entry)
+    for raw_entry in series:
+        try:
+            local_day = (
+                datetime.fromisoformat(raw_entry["time"].replace("Z", "+00:00"))
+                .astimezone(local_zone)
+                .date()
+                .isoformat()
+            )
+        except (AttributeError, KeyError, TypeError, ValueError):
+            raise TodayUnavailable from None
+        if local_day not in days and len(days) == 3:
+            break
+        try:
+            entry = normalize_entry(raw_entry)
+        except (KeyError, TypeError, ValueError):
+            raise TodayUnavailable from None
+        days.setdefault(local_day, []).append(entry)
+
+    current = next(iter(days.values()), [None])[0]
+    if current is None:
+        raise TodayUnavailable
 
     forecast_days = []
     for day, entries_for_day in list(days.items())[:3]:
