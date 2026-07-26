@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from cortex_home import (
     ACTION,
+    CHANNEL_ACTION,
     SCENE_ACTION,
     ApiError,
     Coordinator,
@@ -42,11 +43,20 @@ class CoordinatorTests(unittest.TestCase):
     def setUp(self):
         self.coordinator = Coordinator(action_timeout=0.1)
         self.endpoint = self.coordinator.connect_endpoint()
-        event, _payload = self.endpoint.events.get(timeout=1)
-        self.assertEqual(event, "music.playback")
-        event, lighting = self.endpoint.events.get(timeout=1)
-        self.assertEqual(event, "room.lighting")
+        snapshots = self.initial_snapshots(self.endpoint)
+        lighting = snapshots["room.lighting"]
         self.assertEqual(lighting["status"], "unavailable")
+
+    def initial_snapshots(self, endpoint):
+        snapshots = {}
+        for _index in range(4):
+            event, payload = endpoint.events.get(timeout=1)
+            snapshots[event] = payload
+        self.assertEqual(
+            set(snapshots),
+            {"music.playback", "channel.active", "today.summary", "room.lighting"},
+        )
+        return snapshots
 
     def submit_in_background(self, request_id="request-1"):
         executor = ThreadPoolExecutor(max_workers=1)
@@ -225,9 +235,8 @@ class CoordinatorTests(unittest.TestCase):
         coordinator = Coordinator()
         endpoint = coordinator.connect_endpoint()
 
-        event, snapshot = endpoint.events.get(timeout=1)
+        snapshot = self.initial_snapshots(endpoint)["music.playback"]
 
-        self.assertEqual(event, "music.playback")
         self.assertEqual(snapshot["status"], "unavailable")
         self.assertIsNone(snapshot["item"])
         self.assertEqual(snapshot["positionMs"], 0)
@@ -239,8 +248,7 @@ class CoordinatorTests(unittest.TestCase):
         coordinator.disconnect_endpoint(endpoint.token)
         coordinator.report_playback(PLAYING_OBSERVATION)
         endpoint = coordinator.connect_endpoint()
-        event, snapshot = endpoint.events.get(timeout=1)
-        self.assertEqual(event, "music.playback")
+        snapshot = self.initial_snapshots(endpoint)["music.playback"]
         self.assertEqual(snapshot["status"], "playing")
         self.assertEqual(snapshot["item"]["title"], "Never Gonna Give You Up")
 
@@ -308,6 +316,50 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(status, HTTPStatus.OK)
         self.assertEqual(payload["status"], "completed")
         self.assertEqual(calls, [self.coordinator.action_timeout])
+
+    def test_selects_a_channel_after_publishing_matching_state(self):
+        status, payload = self.coordinator.submit(
+            "today-to-music",
+            CHANNEL_ACTION,
+            "music",
+        )
+
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(
+            payload,
+            {
+                "requestId": "today-to-music",
+                "action": CHANNEL_ACTION,
+                "status": "completed",
+            },
+        )
+        event, accepted = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "action.status")
+        self.assertEqual(accepted["status"], "accepted")
+        event, channel = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "channel.active")
+        self.assertEqual(channel, {"active": "music"})
+        event, completed = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "action.status")
+        self.assertEqual(completed, payload)
+
+    def test_selects_a_channel_without_an_endpoint_and_rejects_invalid_values(self):
+        self.coordinator.disconnect_endpoint(self.endpoint.token)
+
+        status, payload = self.coordinator.submit(
+            "select-without-endpoint",
+            CHANNEL_ACTION,
+            "music",
+        )
+
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(payload["status"], "completed")
+        self.assertEqual(self.coordinator.channel, {"active": "music"})
+        for channel in (None, "news", True):
+            with self.subTest(channel=channel):
+                with self.assertRaises(ApiError) as raised:
+                    self.coordinator.submit("invalid-channel", CHANNEL_ACTION, channel)
+                self.assertEqual(raised.exception.code, "invalid_channel")
 
     def test_endpoint_disconnect_does_not_fail_a_scene_action(self):
         started = threading.Event()
@@ -505,6 +557,19 @@ class HttpTests(unittest.TestCase):
         response.readline()
         return event, json.loads(data)
 
+    def read_initial_events(self, response):
+        event, ready = self.read_event(response)
+        self.assertEqual(event, "ready")
+        snapshots = {}
+        for _index in range(4):
+            event, payload = self.read_event(response)
+            snapshots[event] = payload
+        self.assertEqual(
+            set(snapshots),
+            {"music.playback", "channel.active", "today.summary", "room.lighting"},
+        )
+        return ready, snapshots
+
     def test_completes_an_action_over_http(self):
         events_connection = http.client.HTTPConnection(
             "127.0.0.1",
@@ -516,15 +581,12 @@ class HttpTests(unittest.TestCase):
         events_response = events_connection.getresponse()
         self.assertEqual(events_response.status, HTTPStatus.OK)
 
-        event, ready = self.read_event(events_response)
-        self.assertEqual(event, "ready")
+        ready, snapshots = self.read_initial_events(events_response)
         self.assertEqual(ready["clientEntry"], "/assets/app.js")
         endpoint_token = ready["endpointToken"]
-        event, playback = self.read_event(events_response)
-        self.assertEqual(event, "music.playback")
+        playback = snapshots["music.playback"]
         self.assertIn(playback["status"], {"playing", "unavailable"})
-        event, lighting = self.read_event(events_response)
-        self.assertEqual(event, "room.lighting")
+        lighting = snapshots["room.lighting"]
         self.assertIn(
             lighting["status"],
             {"active", "inactive", "unavailable"},
@@ -596,9 +658,7 @@ class HttpTests(unittest.TestCase):
         events_connection.request("GET", "/api/events")
         events_response = events_connection.getresponse()
         self.assertEqual(events_response.status, HTTPStatus.OK)
-        self.read_event(events_response)
-        self.read_event(events_response)
-        self.read_event(events_response)
+        self.read_initial_events(events_response)
 
         self.server.coordinator.set_scene_activator(
             lambda _timeout: self.server.coordinator.report_lighting("active")
@@ -730,6 +790,39 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(status, HTTPStatus.SERVICE_UNAVAILABLE)
         self.assertEqual(payload["code"], "endpoint_unavailable")
 
+    def test_selects_a_channel_over_http(self):
+        status, payload = self.request(
+            "POST",
+            "/api/actions",
+            body=json.dumps(
+                {
+                    "requestId": "http-select-music",
+                    "action": CHANNEL_ACTION,
+                    "channel": "music",
+                }
+            ),
+            headers={"Content-Type": "application/json"},
+        )
+
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(payload["status"], "completed")
+        self.assertEqual(self.server.coordinator.channel, {"active": "music"})
+
+        status, payload = self.request(
+            "POST",
+            "/api/actions",
+            body=json.dumps(
+                {
+                    "requestId": "http-invalid-channel",
+                    "action": CHANNEL_ACTION,
+                    "channel": "news",
+                }
+            ),
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(status, HTTPStatus.BAD_REQUEST)
+        self.assertEqual(payload["code"], "invalid_channel")
+
     def test_rejects_a_callback_without_an_endpoint_token(self):
         status, payload = self.request(
             "POST",
@@ -750,9 +843,7 @@ class HttpTests(unittest.TestCase):
         events_connection.request("GET", "/api/events")
         events_response = events_connection.getresponse()
         self.assertEqual(events_response.status, HTTPStatus.OK)
-        self.read_event(events_response)
-        self.read_event(events_response)
-        self.read_event(events_response)
+        self.read_initial_events(events_response)
 
         status, snapshot = self.request(
             "POST",
@@ -778,9 +869,7 @@ class HttpTests(unittest.TestCase):
         first_connection.request("GET", "/api/events")
         first_response = first_connection.getresponse()
         self.assertEqual(first_response.status, HTTPStatus.OK)
-        self.read_event(first_response)
-        self.read_event(first_response)
-        self.read_event(first_response)
+        self.read_initial_events(first_response)
 
         second_connection = http.client.HTTPConnection(
             "127.0.0.1",
@@ -791,9 +880,7 @@ class HttpTests(unittest.TestCase):
         second_connection.request("GET", "/api/events")
         second_response = second_connection.getresponse()
         self.assertEqual(second_response.status, HTTPStatus.OK)
-        self.read_event(second_response)
-        self.read_event(second_response)
-        self.read_event(second_response)
+        self.read_initial_events(second_response)
 
         self.assertEqual(first_response.readline(), b"")
 

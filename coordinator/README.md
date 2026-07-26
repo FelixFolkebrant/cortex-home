@@ -35,6 +35,15 @@ survives ordinary coordinator deployments.
 `invalid_configuration`. These states do not change Music behavior or the
 coordinator HTTP status.
 
+Today uses yr.no's Locationforecast 2.0 compact endpoint for fixed Linköping
+coordinates. Only the ThinkPad calls yr.no; it identifies Cortex Home with the
+repository URL, caches the response and its expiry metadata at
+`/var/cache/cortex-home/locationforecast.json`, and conditionally refreshes it
+after expiry. The endpoint receives only normalized current conditions and a
+three-day forecast, then displays the required MET Norway / CC BY 4.0
+attribution. If the forecast cannot be refreshed, Today says weather is
+unavailable without changing Music, Hue, or the coordinator health endpoint.
+
 For local development, start the coordinator:
 
 ```sh
@@ -87,6 +96,24 @@ The action accepts no room, scene, or Hue resource argument. It remains open
 until a later Hue event reports `Warm` active, the 10-second action bound
 expires, or the adapter reports an unavailable or rejected command. Every
 request needs a new request ID.
+
+An outside caller can select the room's active view even while the endpoint is
+reconnecting:
+
+```sh
+curl \
+  --fail-with-body \
+  --header 'Content-Type: application/json' \
+  --data '{"requestId":"show-music-1","action":"channel.select","channel":"music"}' \
+  http://<server-host>:8080/api/actions
+```
+
+The only accepted channel values are `today` and `music`. The coordinator
+starts on Today, publishes the selected `channel.active` snapshot to every
+endpoint connection, and returns completion after it publishes that state.
+On the room display, `Ctrl`+`Alt`+`1` selects Today and `Ctrl`+`Alt`+`2`
+selects Music through that same action. Other key combinations and repeated
+key presses do nothing.
 
 For a focused deployed check, use the repository-owned verifier. It checks safe
 health, generates a unique request ID, activates `Warm`, and requires observed

@@ -21,11 +21,14 @@ from hue import (
     HueSceneTimeout,
     HueSceneUnavailable,
 )
+from today import TodayAdapter, unavailable_summary
 
 
 ACTION = "endpoint.identify"
 SCENE_ACTION = "room.scene.activate"
-ALLOWED_ACTIONS = {ACTION, SCENE_ACTION}
+CHANNEL_ACTION = "channel.select"
+ALLOWED_ACTIONS = {ACTION, SCENE_ACTION, CHANNEL_ACTION}
+CHANNELS = {"today", "music"}
 MAX_BODY_BYTES = 4096
 MAX_COLLECTION_LENGTH = 512
 MAX_CREATORS = 16
@@ -111,6 +114,8 @@ class Coordinator:
             "positionMs": 0,
             "observedAt": utc_timestamp(),
         }
+        self.channel = {"active": "today"}
+        self.today = {**unavailable_summary(), "observedAt": utc_timestamp()}
         self.hue_status = "unconfigured"
         self.lighting = {
             "scene": "Warm",
@@ -131,6 +136,8 @@ class Coordinator:
 
             self.endpoint = EndpointConnection()
             self.endpoint.send("music.playback", self.playback)
+            self.endpoint.send("channel.active", self.channel)
+            self.endpoint.send("today.summary", self.today)
             self.endpoint.send("room.lighting", self.lighting)
             return self.endpoint
 
@@ -146,13 +153,25 @@ class Coordinator:
                 HTTPStatus.SERVICE_UNAVAILABLE,
             )
 
-    def submit(self, request_id, action):
+    def submit(self, request_id, action, channel=None):
         self._validate_request_id(request_id)
         if action not in ALLOWED_ACTIONS:
             raise ApiError(
                 HTTPStatus.BAD_REQUEST,
                 "unknown_action",
                 "The action is not allowed.",
+            )
+        if action == CHANNEL_ACTION and channel not in CHANNELS:
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_channel",
+                "channel must be today or music.",
+            )
+        if action != CHANNEL_ACTION and channel is not None:
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_action_arguments",
+                "The action does not accept a channel.",
             )
 
         with self.lock:
@@ -187,6 +206,11 @@ class Coordinator:
                 )
             elif self.endpoint:
                 self.endpoint.send("action.status", pending.payload())
+
+            if action == CHANNEL_ACTION:
+                self._report_channel_locked(channel, force=True)
+                self._finish_locked(pending, "completed", None, HTTPStatus.OK)
+                return pending.http_status, pending.payload()
 
         if action == SCENE_ACTION:
             return self._activate_scene(pending)
@@ -293,6 +317,22 @@ class Coordinator:
                 self.endpoint.send("room.lighting", self.lighting)
             return self.lighting
 
+    def report_today(self, summary):
+        if not isinstance(summary, dict):
+            raise ValueError("Today summary must be an object.")
+
+        with self.lock:
+            changed = any(
+                self.today.get(key) != summary.get(key)
+                for key in ("status", "timeZone", "current", "forecast")
+            )
+            if not changed:
+                return self.today
+            self.today = {**summary, "observedAt": utc_timestamp()}
+            if self.endpoint:
+                self.endpoint.send("today.summary", self.today)
+            return self.today
+
     def health(self):
         with self.lock:
             return {
@@ -314,6 +354,14 @@ class Coordinator:
             if changed and self.endpoint:
                 self.endpoint.send("music.playback", self.playback)
             return self.playback
+
+    def _report_channel_locked(self, active, force=False):
+        if active == self.channel["active"] and not force:
+            return self.channel
+        self.channel = {"active": active}
+        if self.endpoint:
+            self.endpoint.send("channel.active", self.channel)
+        return self.channel
 
     def _fail_active_locked(self, endpoint_token, error, http_status):
         if not self.active_request_id:
@@ -379,7 +427,7 @@ class Coordinator:
             self.active_request_id = None
         pending.finished.set()
 
-        if pending.action == SCENE_ACTION and self.endpoint:
+        if pending.action in {SCENE_ACTION, CHANNEL_ACTION} and self.endpoint:
             self.endpoint.send("action.status", pending.payload())
         elif (
             notify_endpoint
@@ -442,10 +490,11 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             if path == "/api/actions":
-                body = self._read_json({"requestId", "action"})
+                body = self._read_json({"requestId", "action", "channel"})
                 status, payload = self.server.coordinator.submit(
                     body.get("requestId"),
                     body.get("action"),
+                    body.get("channel"),
                 )
                 self._send_json(status, payload)
                 return
@@ -767,6 +816,11 @@ def parse_args():
         type=Path,
         default=Path(__file__).with_name("client"),
     )
+    parser.add_argument(
+        "--today-cache",
+        type=Path,
+        default=Path("/var/cache/cortex-home/locationforecast.json"),
+    )
     parser.add_argument("--action-timeout", type=float, default=10)
     parser.add_argument(
         "--hue-config",
@@ -785,18 +839,21 @@ def main():
         coordinator.report_lighting,
     )
     coordinator.set_scene_activator(hue.activate_scene)
+    today = TodayAdapter(args.today_cache, coordinator.report_today)
     server = CortexHomeServer(
         (args.host, args.port),
         coordinator,
         args.client,
     )
     hue.start()
+    today.start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+        today.stop()
         hue.stop()
 
 

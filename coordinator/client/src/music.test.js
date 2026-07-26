@@ -4,6 +4,7 @@ import {
   artworkSource,
   formatTime,
   initialRoomState,
+  keyboardChannel,
   projectPosition,
   roomReducer,
 } from "./music.js";
@@ -69,6 +70,33 @@ test("lighting and scene interaction events remain independent", () => {
   });
 });
 
+test("channel and Today updates preserve Music and room feedback", () => {
+  const today = {
+    status: "available",
+    timeZone: "Europe/Stockholm",
+    current: { condition: "clear", temperatureC: 20 },
+    forecast: [],
+  };
+  const withPlayback = roomReducer(initialRoomState, {
+    type: "playback",
+    snapshot: playing,
+  });
+  const withLighting = roomReducer(withPlayback, {
+    type: "lighting",
+    snapshot: { scene: "Warm", status: "active" },
+  });
+  const withToday = roomReducer(withLighting, { type: "today", snapshot: today });
+  const result = roomReducer(withToday, {
+    type: "channel",
+    snapshot: { active: "today" },
+  });
+
+  assert.equal(result.playback, playing);
+  assert.equal(result.lighting.status, "active");
+  assert.equal(result.today, today);
+  assert.equal(result.channel.active, "today");
+});
+
 test("a terminal snapshot replaces loaded playback", () => {
   const withPlayback = roomReducer(initialRoomState, {
     type: "playback",
@@ -129,4 +157,22 @@ test("time formatting supports tracks and long episodes", () => {
   assert.equal(formatTime(0), "0:00");
   assert.equal(formatTime(65_900), "1:05");
   assert.equal(formatTime(3_661_000), "1:01:01");
+});
+
+test("only fixed Ctrl+Alt channel shortcuts are accepted", () => {
+  const keyboardEvent = {
+    altKey: true,
+    code: "Digit1",
+    ctrlKey: true,
+    metaKey: false,
+    repeat: false,
+    shiftKey: false,
+  };
+
+  assert.equal(keyboardChannel(keyboardEvent), "today");
+  assert.equal(keyboardChannel({ ...keyboardEvent, code: "Digit2" }), "music");
+  assert.equal(keyboardChannel({ ...keyboardEvent, code: "Digit3" }), null);
+  assert.equal(keyboardChannel({ ...keyboardEvent, repeat: true }), null);
+  assert.equal(keyboardChannel({ ...keyboardEvent, shiftKey: true }), null);
+  assert.equal(keyboardChannel({ ...keyboardEvent, metaKey: true }), null);
 });

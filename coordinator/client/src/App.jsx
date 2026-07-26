@@ -5,12 +5,14 @@ import {
   artworkSource,
   formatTime,
   initialRoomState,
+  keyboardChannel,
   projectPosition,
   roomReducer,
 } from "./music";
 
 const IDENTIFY_ACTION = "endpoint.identify";
 const SCENE_ACTION = "room.scene.activate";
+const CHANNEL_ACTION = "channel.select";
 
 const interactionCopy = {
   [IDENTIFY_ACTION]: {
@@ -22,6 +24,11 @@ const interactionCopy = {
     working: ["Warming the room.", "Waiting for Hue to confirm the scene."],
     completed: ["Warm is active.", "The room confirmed the scene."],
     failed: ["Couldn’t warm the room.", "The scene request failed."],
+  },
+  [CHANNEL_ACTION]: {
+    working: ["Changing view.", "Showing the selected room view."],
+    completed: ["View ready.", "The room updated its active view."],
+    failed: ["Couldn’t change view.", "The channel request failed."],
   },
 };
 
@@ -278,6 +285,109 @@ function EmptyMusic({ playback, connection }) {
   );
 }
 
+const conditionLabels = {
+  clear: "Clear",
+  cloudy: "Cloudy",
+  fog: "Fog",
+  partly_cloudy: "Partly cloudy",
+  rain: "Rain",
+  sleet: "Sleet",
+  snow: "Snow",
+  thunderstorm: "Thunderstorms",
+  unknown: "Weather unavailable",
+};
+
+function useLocalTime(timeZone) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return {
+    date: new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "full",
+      timeZone,
+    }).format(now),
+    time: new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone,
+    }).format(now),
+  };
+}
+
+function Today({ summary }) {
+  const timeZone = summary?.timeZone || "Europe/Stockholm";
+  const { date, time } = useLocalTime(timeZone);
+  const isAvailable = summary?.status === "available";
+
+  return (
+    <main className="relative z-10 flex min-h-screen flex-col px-[clamp(2rem,6vw,8rem)] py-[clamp(2rem,5vh,5rem)]">
+      <div className="flex flex-wrap items-center justify-between gap-5 text-[clamp(0.8rem,1vw,1.05rem)] font-bold tracking-[0.22em] text-[#d6a954] uppercase">
+        <span>Cortex Home / Today</span>
+        <span className="text-[#9d9382]">Linköping</span>
+      </div>
+
+      <section className="my-auto py-[clamp(3rem,8vh,8rem)]">
+        <p className="text-[clamp(1.2rem,2vw,2.4rem)] font-medium tracking-[-0.025em] text-[#c9bda6]">
+          {date}
+        </p>
+        <h1 className="mt-3 text-[clamp(6rem,17vw,18rem)] leading-[0.78] font-bold tracking-[-0.09em] text-[#fff7e7] tabular-nums">
+          {time}
+        </h1>
+
+        {isAvailable ? (
+          <div className="mt-[clamp(3rem,7vh,7rem)] flex flex-wrap items-end gap-x-8 gap-y-3">
+            <span className="text-[clamp(4rem,9vw,10rem)] leading-none font-bold tracking-[-0.08em] text-[#efc66f] tabular-nums">
+              {summary.current.temperatureC}°
+            </span>
+            <span className="pb-2 text-[clamp(1.5rem,2.8vw,3.5rem)] font-medium tracking-[-0.04em] text-[#e1d4bd]">
+              {conditionLabels[summary.current.condition] || conditionLabels.unknown}
+            </span>
+          </div>
+        ) : (
+          <p className="mt-[clamp(3rem,7vh,7rem)] text-[clamp(1.5rem,2.8vw,3.5rem)] font-medium tracking-[-0.04em] text-[#c9bda6]">
+            Weather is unavailable.
+          </p>
+        )}
+      </section>
+
+      {isAvailable && (
+        <section
+          aria-label="Three-day forecast"
+          className="grid grid-cols-3 gap-3 sm:gap-6"
+        >
+          {summary.forecast.map((day) => (
+            <article
+              className="rounded-[clamp(1rem,1.8vw,2rem)] border border-white/10 bg-[#201b15]/70 p-[clamp(1rem,2vw,2rem)]"
+              key={day.date}
+            >
+              <p className="text-[clamp(0.75rem,1vw,1rem)] font-bold tracking-[0.18em] text-[#d6a954] uppercase">
+                {new Intl.DateTimeFormat("en-GB", {
+                  weekday: "short",
+                  timeZone,
+                }).format(new Date(`${day.date}T12:00:00Z`))}
+              </p>
+              <p className="mt-4 text-[clamp(1.15rem,2vw,2.3rem)] font-medium tracking-[-0.04em] text-[#f0e4ce]">
+                {conditionLabels[day.condition] || conditionLabels.unknown}
+              </p>
+              <p className="mt-5 text-[clamp(1.1rem,1.8vw,2rem)] font-bold tracking-[-0.05em] text-[#c9bda6] tabular-nums">
+                {day.highC}° <span className="text-[#837968]">/ {day.lowC}°</span>
+              </p>
+            </article>
+          ))}
+        </section>
+      )}
+
+      <p className="mt-7 text-xs tracking-[0.12em] text-[#756d60]">
+        Weather data: MET Norway · CC BY 4.0
+      </p>
+    </main>
+  );
+}
+
 function ConnectionNotice({ connection }) {
   if (connection !== "disconnected") {
     return null;
@@ -320,7 +430,7 @@ function LightingStatus({ lighting }) {
 }
 
 function InteractionOverlay({ interaction }) {
-  if (interaction.state === "idle") {
+  if (interaction.state === "idle" || interaction.action === CHANNEL_ACTION) {
     return null;
   }
 
@@ -329,10 +439,11 @@ function InteractionOverlay({ interaction }) {
     return null;
   }
   const [title, defaultMessage] = copy;
-  const label =
-    interaction.action === SCENE_ACTION
-      ? "Cortex Home / Lighting"
-      : "Cortex Home / Room signal";
+  const label = {
+    [CHANNEL_ACTION]: "Cortex Home / Channel",
+    [IDENTIFY_ACTION]: "Cortex Home / Room signal",
+    [SCENE_ACTION]: "Cortex Home / Lighting",
+  }[interaction.action];
 
   return (
     <div
@@ -350,6 +461,39 @@ function InteractionOverlay({ interaction }) {
         {interaction.message || defaultMessage}
       </p>
       <div aria-hidden="true" className={signal({ state: interaction.state })} />
+    </div>
+  );
+}
+
+function ChannelToast({ interaction }) {
+  if (interaction.action !== CHANNEL_ACTION || interaction.state === "idle") {
+    return null;
+  }
+
+  const copy = interactionCopy[CHANNEL_ACTION][interaction.state];
+  if (!copy) {
+    return null;
+  }
+  const [title, defaultMessage] = copy;
+  const tone = {
+    completed: "border-[#92d6a1]/40 text-[#d8f0d9]",
+    failed: "border-[#e67d6f]/40 text-[#ffd4cc]",
+    working: "border-[#e9bd68]/40 text-[#f7dfaa]",
+  }[interaction.state];
+
+  return (
+    <div
+      className={cn(
+        "absolute top-[clamp(6.5rem,10vw,9rem)] right-[clamp(1.5rem,4vw,5rem)] z-40 max-w-[min(22rem,calc(100vw-3rem))] rounded-2xl border bg-[#17130f]/95 px-5 py-4 shadow-2xl backdrop-blur-xl",
+        tone,
+      )}
+      role="status"
+      aria-live="assertive"
+    >
+      <p className="text-sm font-bold tracking-[0.14em] uppercase">{title}</p>
+      <p className="mt-1 text-sm leading-snug text-[#c9bda6]">
+        {interaction.message || defaultMessage}
+      </p>
     </div>
   );
 }
@@ -438,6 +582,37 @@ export function App() {
       }
     }
 
+    async function selectChannel(channel) {
+      const requestId = `keyboard-${channel}-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      activeRequestId.current = requestId;
+      showInteraction(CHANNEL_ACTION, "working");
+
+      try {
+        const response = await fetch("/api/actions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestId, action: CHANNEL_ACTION, channel }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result.error || `Coordinator returned ${response.status}.`);
+        }
+        if (activeRequestId.current === requestId) {
+          activeRequestId.current = null;
+          showInteraction(CHANNEL_ACTION, "completed", null, 2500);
+        }
+      } catch (error) {
+        if (activeRequestId.current !== requestId) {
+          return;
+        }
+        activeRequestId.current = null;
+        const message = error instanceof Error ? error.message : "Unknown failure.";
+        showInteraction(CHANNEL_ACTION, "failed", message, 5000);
+      }
+    }
+
     function parseMessage(event) {
       try {
         return JSON.parse(event.data);
@@ -479,6 +654,20 @@ export function App() {
       }
     });
 
+    events.addEventListener("channel.active", (event) => {
+      const snapshot = parseMessage(event);
+      if (snapshot) {
+        dispatch({ type: "channel", snapshot });
+      }
+    });
+
+    events.addEventListener("today.summary", (event) => {
+      const snapshot = parseMessage(event);
+      if (snapshot) {
+        dispatch({ type: "today", snapshot });
+      }
+    });
+
     events.addEventListener("room.lighting", (event) => {
       const snapshot = parseMessage(event);
       if (snapshot) {
@@ -488,25 +677,25 @@ export function App() {
 
     events.addEventListener("action.status", (event) => {
       const message = parseMessage(event);
-      if (!message || message.action !== SCENE_ACTION) {
+      if (!message || ![SCENE_ACTION, CHANNEL_ACTION].includes(message.action)) {
         return;
       }
 
       if (message.status === "accepted") {
         activeRequestId.current = message.requestId;
-        showInteraction(SCENE_ACTION, "working");
+        showInteraction(message.action, "working");
       } else if (
         message.requestId === activeRequestId.current &&
         message.status === "completed"
       ) {
         activeRequestId.current = null;
-        showInteraction(SCENE_ACTION, "completed", null, 2500);
+        showInteraction(message.action, "completed", null, 2500);
       } else if (
         message.requestId === activeRequestId.current &&
         message.status === "failed"
       ) {
         activeRequestId.current = null;
-        showInteraction(SCENE_ACTION, "failed", message.error, 5000);
+        showInteraction(message.action, "failed", message.error, 5000);
       }
     });
 
@@ -538,12 +727,25 @@ export function App() {
       dispatch({ type: "interaction", state: "idle" });
     };
 
+    function onKeyDown(event) {
+      const channel = keyboardChannel(event);
+      if (!channel || activeRequestId.current) {
+        return;
+      }
+      event.preventDefault();
+      selectChannel(channel);
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+
     return () => {
       clearInteractionTimer();
       events.close();
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, [currentClientEntry]);
 
+  const channel = room.channel?.active || "today";
   const hasLoadedItem = Boolean(room.playback?.item);
 
   return (
@@ -557,7 +759,9 @@ export function App() {
         className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgb(255_255_255_/_5%)_1px,transparent_1px),linear-gradient(90deg,rgb(255_255_255_/_5%)_1px,transparent_1px)] [background-size:4rem_4rem] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
       />
 
-      {hasLoadedItem ? (
+      {channel === "today" ? (
+        <Today summary={room.today} />
+      ) : hasLoadedItem ? (
         <LoadedMusic playback={room.playback} />
       ) : (
         <EmptyMusic playback={room.playback} connection={room.connection} />
@@ -565,6 +769,7 @@ export function App() {
 
       <ConnectionNotice connection={room.connection} />
       <LightingStatus lighting={room.lighting} />
+      <ChannelToast interaction={room.interaction} />
       <InteractionOverlay interaction={room.interaction} />
     </div>
   );

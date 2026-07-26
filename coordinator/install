@@ -40,6 +40,7 @@ scp -q -r \
   "$script_dir/files" \
   "$script_dir/cortex_home.py" \
   "$script_dir/hue.py" \
+  "$script_dir/today.py" \
   "$script_dir/hue_pair.py" \
   "$script_dir/install-host" \
   "$script_dir/requirements.txt" \
