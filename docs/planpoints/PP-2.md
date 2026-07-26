@@ -108,8 +108,8 @@ supports Premium and that using it may be prohibited by Spotify.
 2. **GH-006 COMPLETE - Publish Spotify Playback State**: normalized receiver
    events into `music.playback` snapshots and carried availability, metadata,
    progress, and failures through the coordinator.
-3. **GH-007 NEXT - Present The Music Channel**: replace the provisional idle
-   view with a useful now-playing display while preserving identify and
+3. **GH-007 COMPLETE - Present The Music Channel**: replaced the provisional
+   idle view with a useful now-playing display while preserving identify and
    connection feedback.
 
 ## Conceptual Heatmap
