@@ -37,7 +37,8 @@ playback_sudoers=/etc/sudoers.d/cortex-speech-qualification-playback
 install -d --owner=root --group=root --mode=755 "$(dirname -- "$policy_file")"
 install -D --owner=root --group=root --mode=644 /dev/null "$policy_file"
 printf \
-  '{\n  "AudioCaptureAllowedUrls": ["%s"],\n  "OverrideSecurityRestrictionsOnInsecureOrigin": ["%s"]\n}\n' \
+  '{\n  "AudioCaptureAllowedUrls": ["%s"],\n  "OverrideSecurityRestrictionsOnInsecureOrigin": ["%s"],\n  "VideoCaptureAllowedUrls": ["%s"]\n}\n' \
+  "$coordinator_origin" \
   "$coordinator_origin" \
   "$coordinator_origin" \
   > "$policy_file"

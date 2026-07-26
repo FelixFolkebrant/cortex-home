@@ -51,9 +51,10 @@ restore the committed configuration.
 The same command renders
 `/var/snap/chromium/current/policies/managed/cortex-home-media.json` from the
 configured coordinator origin. The managed policy treats that one HTTP origin
-as a secure context and grants it unattended audio capture. It does not contain
-a wildcard, video permission, or a committed deployment hostname. Chromium
-must restart before the secure-context override takes effect.
+as a secure context and grants it unattended audio and video capture. It does
+not contain a wildcard, global all-media permission, or a committed deployment
+hostname. Chromium must restart before the secure-context override takes
+effect.
 
 On an already provisioned endpoint, install only that policy and restart the
 kiosk with:
@@ -87,11 +88,12 @@ ssh -t imac \
   'sudo python3 -m json.tool /var/snap/chromium/current/policies/managed/cortex-home-media.json'
 ```
 
-The two values must be the configured coordinator origin with one trailing
-slash under `AudioCaptureAllowedUrls` and
-`OverrideSecurityRestrictionsOnInsecureOrigin`. The focused command restarts
-the kiosk; inspect `chrome://policy` from the recovery terminal if Chromium
-does not grant the microphone unattended.
+The three values must be the configured coordinator origin with one trailing
+slash under `AudioCaptureAllowedUrls`,
+`OverrideSecurityRestrictionsOnInsecureOrigin`, and
+`VideoCaptureAllowedUrls`. The focused command restarts the kiosk; inspect
+`chrome://policy` from the recovery terminal if Chromium does not grant the
+microphone or camera unattended.
 
 Raspotify advertises one `Högtalaren` Spotify Connect receiver. It runs as the
 endpoint user and shares that user's PulseAudio session with Chromium so both
