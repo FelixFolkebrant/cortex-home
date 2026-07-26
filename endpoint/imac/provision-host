@@ -122,7 +122,8 @@ install -D --owner=root --group=root --mode=644 \
   /dev/null \
   /var/snap/chromium/current/policies/managed/cortex-home-media.json
 printf \
-  '{\n  "AudioCaptureAllowedUrls": ["%s"],\n  "OverrideSecurityRestrictionsOnInsecureOrigin": ["%s"]\n}\n' \
+  '{\n  "AudioCaptureAllowedUrls": ["%s"],\n  "OverrideSecurityRestrictionsOnInsecureOrigin": ["%s"],\n  "VideoCaptureAllowedUrls": ["%s"]\n}\n' \
+  "$coordinator_origin" \
   "$coordinator_origin" \
   "$coordinator_origin" \
   > /var/snap/chromium/current/policies/managed/cortex-home-media.json

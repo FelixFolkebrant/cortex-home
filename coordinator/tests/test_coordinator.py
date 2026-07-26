@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 from cortex_home import (
     ACTION,
     CHANNEL_ACTION,
+    CHANNELS,
     SCENE_ACTION,
     ApiError,
     Coordinator,
@@ -405,16 +406,16 @@ class CoordinatorTests(unittest.TestCase):
 
     def test_selects_a_channel_after_publishing_matching_state(self):
         status, payload = self.coordinator.submit(
-            "today-to-music",
+            "today-to-camera",
             CHANNEL_ACTION,
-            "music",
+            "camera",
         )
 
         self.assertEqual(status, HTTPStatus.OK)
         self.assertEqual(
             payload,
             {
-                "requestId": "today-to-music",
+                "requestId": "today-to-camera",
                 "action": CHANNEL_ACTION,
                 "status": "completed",
             },
@@ -424,7 +425,7 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(accepted["status"], "accepted")
         event, channel = self.endpoint.events.get(timeout=1)
         self.assertEqual(event, "channel.active")
-        self.assertEqual(channel, {"active": "music"})
+        self.assertEqual(channel, {"active": "camera"})
         event, completed = self.endpoint.events.get(timeout=1)
         self.assertEqual(event, "action.status")
         self.assertEqual(completed, payload)
@@ -458,21 +459,23 @@ class CoordinatorTests(unittest.TestCase):
 
     def test_selects_a_channel_without_an_endpoint_and_rejects_invalid_values(self):
         self.coordinator.disconnect_endpoint(self.endpoint.token)
+        self.assertEqual(CHANNELS, {"today", "music", "camera"})
 
         status, payload = self.coordinator.submit(
             "select-without-endpoint",
             CHANNEL_ACTION,
-            "music",
+            "camera",
         )
 
         self.assertEqual(status, HTTPStatus.OK)
         self.assertEqual(payload["status"], "completed")
-        self.assertEqual(self.coordinator.channel, {"active": "music"})
+        self.assertEqual(self.coordinator.channel, {"active": "camera"})
         for channel in (None, "news", True):
             with self.subTest(channel=channel):
                 with self.assertRaises(ApiError) as raised:
                     self.coordinator.submit("invalid-channel", CHANNEL_ACTION, channel)
                 self.assertEqual(raised.exception.code, "invalid_channel")
+                self.assertEqual(self.coordinator.channel, {"active": "camera"})
 
     def test_endpoint_disconnect_does_not_fail_a_scene_action(self):
         self.make_scenes_available()
@@ -917,9 +920,9 @@ class HttpTests(unittest.TestCase):
             "/api/actions",
             body=json.dumps(
                 {
-                    "requestId": "http-select-music",
+                    "requestId": "http-select-camera",
                     "action": CHANNEL_ACTION,
-                    "channel": "music",
+                    "channel": "camera",
                 }
             ),
             headers={"Content-Type": "application/json"},
@@ -927,7 +930,7 @@ class HttpTests(unittest.TestCase):
 
         self.assertEqual(status, HTTPStatus.OK)
         self.assertEqual(payload["status"], "completed")
-        self.assertEqual(self.server.coordinator.channel, {"active": "music"})
+        self.assertEqual(self.server.coordinator.channel, {"active": "camera"})
 
         status, payload = self.request(
             "POST",
@@ -943,6 +946,7 @@ class HttpTests(unittest.TestCase):
         )
         self.assertEqual(status, HTTPStatus.BAD_REQUEST)
         self.assertEqual(payload["code"], "invalid_channel")
+        self.assertEqual(self.server.coordinator.channel, {"active": "camera"})
 
     def test_rejects_a_callback_without_an_endpoint_token(self):
         status, payload = self.request(

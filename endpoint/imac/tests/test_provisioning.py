@@ -24,12 +24,16 @@ class ProvisioningTests(unittest.TestCase):
             '"OverrideSecurityRestrictionsOnInsecureOrigin": ["%s"]',
             self.script,
         )
+        self.assertIn(
+            '"VideoCaptureAllowedUrls": ["%s"]',
+            self.script,
+        )
         self.assertEqual(
             self.script.count('"$coordinator_origin"'),
-            2,
+            3,
         )
 
-    def test_media_policy_does_not_grant_video_or_wildcard_access(self):
+    def test_media_policy_does_not_grant_wildcard_or_global_media_access(self):
         policy_template = self.script[
             self.script.index("AudioCaptureAllowedUrls") :
             self.script.index(
@@ -38,9 +42,9 @@ class ProvisioningTests(unittest.TestCase):
             )
         ]
 
-        self.assertNotIn("VideoCapture", policy_template)
         self.assertNotIn("*", policy_template)
         self.assertNotIn("MediaStream", policy_template)
+        self.assertNotIn('"VideoCaptureAllowed": true', policy_template)
 
     def test_focused_media_provision_uses_existing_exact_origin(self):
         focused_script = (
@@ -57,9 +61,14 @@ class ProvisioningTests(unittest.TestCase):
             '"OverrideSecurityRestrictionsOnInsecureOrigin"',
             focused_script,
         )
+        self.assertIn('"VideoCaptureAllowedUrls"', focused_script)
+        self.assertEqual(
+            focused_script.count('"$coordinator_origin"'),
+            3,
+        )
         self.assertIn("systemctl restart lightdm.service", focused_script)
-        self.assertNotIn("VideoCaptureAllowedUrls", focused_script)
         self.assertNotIn('["*"]', focused_script)
+        self.assertNotIn('"VideoCaptureAllowed": true', focused_script)
         self.assertNotIn("netplan", focused_script)
 
     def test_qualification_playback_is_limited_to_the_kiosk_audio_session(self):

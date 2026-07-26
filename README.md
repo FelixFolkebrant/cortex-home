@@ -23,6 +23,7 @@ The iMac's qualified hardware and operating-system baseline is recorded in
 
 | Document | Purpose |
 |---|---|
+| [`BACKLOG.md`](BACKLOG.md) | Deferred ideas that are not committed roadmap work |
 | [`IDEA.md`](docs/project/IDEA.md) | Product intent, hardware, user flows, and constraints |
 | [`ROADMAP.md`](docs/project/ROADMAP.md) | Current direction and deferred decisions |
 | [`PP-1.md`](docs/planpoints/PP-1.md) | Current connected-room-endpoint slice |

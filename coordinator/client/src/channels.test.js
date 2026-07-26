@@ -13,6 +13,9 @@ const { MusicChannel, MusicFullscreen, updateFullscreenTracks } =
   await vite.ssrLoadModule("/src/MusicChannel.jsx");
 const { RoomFeedback } = await vite.ssrLoadModule("/src/RoomFeedback.jsx");
 const { TodayChannel } = await vite.ssrLoadModule("/src/TodayChannel.jsx");
+const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
+  "/src/CameraChannel.jsx",
+);
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 after(() => vite.close());
@@ -103,7 +106,44 @@ test("Music channel owns stopped and unavailable presentation", () => {
   assert.match(unavailable, /Högtalaren will report again/);
 });
 
-test("room feedback shows persistent lighting only when requested by Home", () => {
+test("Camera channel is unmistakably local before capture starts", () => {
+  const markup = renderToStaticMarkup(createElement(CameraChannel));
+
+  assert.match(markup, /Cortex Home \/ Camera/);
+  assert.match(markup, /Opening the local camera\./);
+  assert.match(markup, /Camera/);
+  assert.match(markup, /Local mirror · Video stays on this iMac/);
+  assert.match(markup, /Ring light off/);
+  assert.match(markup, /← \/ → light · ↑ \/ ↓ width/);
+  assert.match(markup, /autoPlay/);
+  assert.match(markup, /muted/);
+  assert.match(markup, /scale-x-\[-1\]/);
+  assert.match(markup, /object-cover/);
+  assert.doesNotMatch(markup, /controls/);
+  assert.match(
+    styles,
+    /\.camera-ring-light::after\s*\{[^}]*inset:\s*calc\(var\(--camera-ring-width\) \/ 2\)[^}]*border-radius:[^}]*box-shadow:\s*0 0 0 100vmax[^}]*inset 0 0/s,
+  );
+  assert.doesNotMatch(styles, /\.camera-ring-light\s*\{[^}]*border-radius/s);
+});
+
+test("Camera channel defines explicit recoverable failure presentation", () => {
+  assert.deepEqual(Object.keys(cameraStatusCopy).sort(), [
+    "blocked",
+    "denied",
+    "ended",
+    "starting",
+    "unavailable",
+    "unsupported",
+  ]);
+  assert.match(cameraStatusCopy.blocked.join(" "), /origin/);
+  assert.match(cameraStatusCopy.denied.join(" "), /permission denied/i);
+  assert.match(cameraStatusCopy.ended.join(" "), /leave Camera and return/i);
+  assert.match(cameraStatusCopy.unavailable.join(" "), /missing, busy/);
+  assert.match(cameraStatusCopy.unsupported.join(" "), /isn’t supported/);
+});
+
+test("room feedback shows persistent lighting only when requested by a channel", () => {
   const homeMarkup = renderToStaticMarkup(
     createElement(RoomFeedback, {
       connection: "disconnected",

@@ -29,7 +29,7 @@ ACTION = "endpoint.identify"
 SCENE_ACTION = "room.scene.activate"
 CHANNEL_ACTION = "channel.select"
 ALLOWED_ACTIONS = {ACTION, SCENE_ACTION, CHANNEL_ACTION}
-CHANNELS = {"today", "music"}
+CHANNELS = {"today", "music", "camera"}
 MAX_BODY_BYTES = 4096
 MAX_COLLECTION_LENGTH = 512
 MAX_CREATORS = 16
@@ -170,7 +170,7 @@ class Coordinator:
             raise ApiError(
                 HTTPStatus.BAD_REQUEST,
                 "invalid_channel",
-                "channel must be today or music.",
+                "channel must be today, music, or camera.",
             )
         if action != CHANNEL_ACTION and channel is not None:
             raise ApiError(

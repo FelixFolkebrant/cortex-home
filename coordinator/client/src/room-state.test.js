@@ -94,7 +94,7 @@ test("microphone level updates preserve the active interaction", () => {
   });
 });
 
-test("channel and Today updates preserve Music and room feedback", () => {
+test("Camera and Today updates preserve Music and room feedback", () => {
   const today = {
     status: "available",
     timeZone: "Europe/Stockholm",
@@ -112,13 +112,13 @@ test("channel and Today updates preserve Music and room feedback", () => {
   const withToday = roomReducer(withLighting, { type: "today", snapshot: today });
   const result = roomReducer(withToday, {
     type: "channel",
-    snapshot: { active: "today" },
+    snapshot: { active: "camera" },
   });
 
   assert.equal(result.playback, playing);
   assert.equal(result.lighting.status, "active");
   assert.equal(result.today, today);
-  assert.equal(result.channel.active, "today");
+  assert.equal(result.channel.active, "camera");
 });
 
 test("a terminal snapshot replaces loaded playback", () => {
@@ -201,7 +201,10 @@ test("only fixed Ctrl+Alt channel shortcuts are accepted", () => {
     action: "channel.select",
     channel: "music",
   });
-  assert.equal(keyboardAction({ ...keyboardEvent, code: "Digit3" }), null);
+  assert.deepEqual(keyboardAction({ ...keyboardEvent, code: "Digit3" }), {
+    action: "channel.select",
+    channel: "camera",
+  });
   assert.equal(keyboardAction({ ...keyboardEvent, repeat: true }), null);
   assert.equal(keyboardAction({ ...keyboardEvent, shiftKey: true }), null);
   assert.equal(keyboardAction({ ...keyboardEvent, metaKey: true }), null);
