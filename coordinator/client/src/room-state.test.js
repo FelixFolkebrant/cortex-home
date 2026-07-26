@@ -4,6 +4,7 @@ import {
   artworkSource,
   formatTime,
   initialRoomState,
+  isMusicFullscreenShortcut,
   keyboardAction,
   nextScene,
   projectPosition,
@@ -183,6 +184,44 @@ test("only fixed Ctrl+Alt channel shortcuts are accepted", () => {
   assert.equal(keyboardAction({ ...keyboardEvent, repeat: true }), null);
   assert.equal(keyboardAction({ ...keyboardEvent, shiftKey: true }), null);
   assert.equal(keyboardAction({ ...keyboardEvent, metaKey: true }), null);
+});
+
+test("Ctrl+M toggles the secondary view only from Music", () => {
+  const keyboardEvent = {
+    altKey: false,
+    code: "KeyM",
+    ctrlKey: true,
+    metaKey: false,
+    repeat: false,
+    shiftKey: false,
+  };
+
+  assert.equal(isMusicFullscreenShortcut(keyboardEvent, "music"), true);
+  assert.equal(isMusicFullscreenShortcut(keyboardEvent, "today"), false);
+  assert.equal(
+    isMusicFullscreenShortcut({ ...keyboardEvent, repeat: true }, "music"),
+    false,
+  );
+  assert.equal(
+    isMusicFullscreenShortcut({ ...keyboardEvent, ctrlKey: false }, "music"),
+    false,
+  );
+  assert.equal(
+    isMusicFullscreenShortcut({ ...keyboardEvent, altKey: true }, "music"),
+    false,
+  );
+  assert.equal(
+    isMusicFullscreenShortcut({ ...keyboardEvent, shiftKey: true }, "music"),
+    false,
+  );
+  assert.equal(
+    isMusicFullscreenShortcut({ ...keyboardEvent, metaKey: true }, "music"),
+    false,
+  );
+  assert.equal(
+    isMusicFullscreenShortcut({ ...keyboardEvent, code: "F11" }, "music"),
+    false,
+  );
 });
 
 test("scene cycling follows the catalog and wraps", () => {

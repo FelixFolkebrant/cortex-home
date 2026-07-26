@@ -1,6 +1,17 @@
-import { useEffect, useState } from "react";
-import { cn } from "./classes";
+import { useEffect, useRef, useState } from "react";
+import { FALLBACK_MUSIC_PALETTE, paletteFromImage } from "./music-palette";
 import { artworkSource, formatTime, projectPosition } from "./room-state";
+
+const FULLSCREEN_TRANSITION_MS = 400;
+const FULLSCREEN_ITEM_GRACE_MS = 800;
+const artworkPaletteCache = new Map();
+
+function cacheArtworkPalette(source, palette) {
+  if (artworkPaletteCache.size >= 32) {
+    artworkPaletteCache.delete(artworkPaletteCache.keys().next().value);
+  }
+  artworkPaletteCache.set(source, palette);
+}
 
 function useProjectedPosition(playback) {
   const [now, setNow] = useState(Date.now());
@@ -16,6 +27,76 @@ function useProjectedPosition(playback) {
   }, [playback]);
 
   return projectPosition(playback, now);
+}
+
+function useArtworkPalette(item) {
+  const source = artworkSource(item);
+  const [loaded, setLoaded] = useState({
+    source: null,
+    palette: null,
+    resolved: false,
+  });
+
+  useEffect(() => {
+    if (!source) {
+      return undefined;
+    }
+
+    if (artworkPaletteCache.has(source)) {
+      setLoaded({
+        source,
+        palette: artworkPaletteCache.get(source),
+        resolved: true,
+      });
+      return undefined;
+    }
+
+    let active = true;
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      if (!active) {
+        return;
+      }
+
+      let palette = null;
+      try {
+        palette = paletteFromImage(image);
+      } catch {
+        // An unreadable cross-origin canvas uses the normal fallback palette.
+      }
+      cacheArtworkPalette(source, palette);
+      setLoaded({ source, palette, resolved: true });
+    };
+    image.onerror = () => {
+      if (!active) {
+        return;
+      }
+      cacheArtworkPalette(source, null);
+      setLoaded({ source, palette: null, resolved: true });
+    };
+    image.src = source;
+
+    return () => {
+      active = false;
+      image.onload = null;
+      image.onerror = null;
+    };
+  }, [source]);
+
+  if (!source) {
+    return { palette: null, resolved: true };
+  }
+  if (loaded.source === source) {
+    return loaded;
+  }
+  if (artworkPaletteCache.has(source)) {
+    return {
+      palette: artworkPaletteCache.get(source),
+      resolved: true,
+    };
+  }
+  return { palette: null, resolved: false };
 }
 
 function Artwork({ item }) {
@@ -82,10 +163,31 @@ function PlaybackProgress({ playback }) {
   );
 }
 
+function SpotifySource() {
+  return (
+    <div className="inline-flex items-center gap-3 text-[clamp(1rem,1.2vw,1.25rem)] font-bold tracking-[-0.02em] text-[#e8ddc8]">
+      <span className="sr-only">Playback source:</span>
+      <svg
+        aria-hidden="true"
+        className="h-[1.5em] w-[1.5em] shrink-0"
+        viewBox="0 0 24 24"
+      >
+        <circle cx="12" cy="12" r="12" fill="#1ed760" />
+        <path
+          d="M5.8 8.9c4.1-1.2 8.8-.9 12.4.9M6.7 12.3c3.5-1 7.5-.7 10.6.8M7.5 15.5c2.9-.8 6.1-.6 8.7.7"
+          fill="none"
+          stroke="#101010"
+          strokeLinecap="round"
+          strokeWidth="1.65"
+        />
+      </svg>
+      <span>Spotify</span>
+    </div>
+  );
+}
+
 function LoadedMusic({ playback }) {
-  const { item, status } = playback;
-  const statusLabel = status === "paused" ? "Paused" : "Now playing";
-  const typeLabel = item.type === "episode" ? "Episode" : "Music";
+  const { item } = playback;
 
   return (
     <main className="relative z-10 grid min-h-screen items-center gap-[clamp(3rem,6vw,8rem)] px-[clamp(2rem,6vw,8rem)] py-[clamp(2rem,5vh,5rem)] md:grid-cols-[minmax(20rem,0.88fr)_minmax(0,1.12fr)]">
@@ -94,21 +196,8 @@ function LoadedMusic({ playback }) {
       </section>
 
       <section className="min-w-0">
-        <div className="mb-[clamp(1.5rem,3vh,3rem)] flex flex-wrap items-center gap-4 text-[clamp(0.8rem,1vw,1.05rem)] font-bold tracking-[0.22em] uppercase">
-          <span className="text-[#d6a954]">Cortex Home</span>
-          <span aria-hidden="true" className="h-px w-10 bg-[#d6a954]/50" />
-          <span className="flex items-center gap-3 text-[#e8ddc8]">
-            <span
-              className={cn(
-                "h-2.5 w-2.5 rounded-full",
-                status === "playing"
-                  ? "bg-[#efc66f] shadow-[0_0_1rem_rgb(239_198_111_/_75%)]"
-                  : "bg-[#a89f8f]",
-              )}
-            />
-            {statusLabel}
-          </span>
-          <span className="text-[#8f8677]">/ {typeLabel}</span>
+        <div className="mb-[clamp(1.5rem,3vh,3rem)]">
+          <SpotifySource />
         </div>
 
         <h1 className="music-title max-w-[12ch] text-[clamp(3.5rem,6.2vw,8rem)] leading-[0.88] font-bold tracking-[-0.065em] text-[#fff7e7]">
@@ -127,15 +216,24 @@ function LoadedMusic({ playback }) {
 }
 
 function EmptyMusic({ playback, connection }) {
+  if (playback?.status === "stopped") {
+    return (
+      <main className="relative z-10 grid min-h-screen place-content-center px-[8vw] text-center">
+        <div className="mb-8 flex justify-center">
+          <SpotifySource />
+        </div>
+        <h1 className="mx-auto max-w-[18ch] text-[clamp(3rem,6vw,7rem)] leading-[0.92] font-bold tracking-[-0.06em] text-[#fff7e7]">
+          Choose &quot;Högtalaren&quot; as speaker in Spotify to connect
+        </h1>
+      </main>
+    );
+  }
+
   let title = "Loading the room.";
   let message = "Waiting for the first playback observation.";
   let label = "Connecting";
 
-  if (playback?.status === "stopped") {
-    title = "Playback stopped.";
-    message = "Choose Högtalaren in Spotify when the room needs music.";
-    label = "Stopped";
-  } else if (playback?.status === "unavailable") {
+  if (playback?.status === "unavailable") {
     title = "Receiver unavailable.";
     message = "Högtalaren will report again after the next receiver event.";
     label = "Unavailable";
@@ -146,9 +244,9 @@ function EmptyMusic({ playback, connection }) {
 
   return (
     <main className="relative z-10 grid min-h-screen place-content-center px-[8vw] text-center">
-      <p className="mb-8 text-[clamp(0.9rem,1.2vw,1.2rem)] font-bold tracking-[0.28em] text-[#d6a954] uppercase">
-        Cortex Home / Music
-      </p>
+      <div className="mb-8 flex justify-center">
+        <SpotifySource />
+      </div>
       <h1 className="mx-auto max-w-[12ch] text-[clamp(4.5rem,9vw,10rem)] leading-[0.88] font-bold tracking-[-0.07em] text-[#fff7e7]">
         {title}
       </h1>
@@ -158,6 +256,221 @@ function EmptyMusic({ playback, connection }) {
       <p className="mt-14 text-sm font-bold tracking-[0.24em] text-[#756d60] uppercase">
         {label}
       </p>
+    </main>
+  );
+}
+
+function FullscreenArtwork({ item }) {
+  const source = artworkSource(item);
+
+  return (
+    <div className="music-fullscreen-artwork">
+      {source && (
+        <img
+          key={source}
+          className="h-full w-full object-cover"
+          src={source}
+          alt={`Artwork for ${item.title}`}
+          referrerPolicy="no-referrer"
+          onError={(event) => {
+            event.currentTarget.hidden = true;
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function dimmedMonochrome(color, opacity) {
+  const channel = color === "#000000" ? 0 : 255;
+  return `rgb(${channel} ${channel} ${channel} / ${opacity}%)`;
+}
+
+function ProgressiveTitle({
+  children,
+  className,
+  progress,
+  accent,
+  titleElement: Title,
+}) {
+  const titleFit = Math.max(7, [...children].length * 0.56);
+
+  return (
+    <Title
+      aria-label={`${children}, ${Math.round(progress)} percent complete`}
+      className={`music-fullscreen-progress-title ${className}`}
+      style={{
+        "--music-accent": accent,
+        "--music-current-title-size": `${76 / titleFit}svh`,
+        "--music-next-title-size": `${42 / titleFit}svh`,
+        "--music-progress": `${progress}%`,
+      }}
+    >
+      {children}
+    </Title>
+  );
+}
+
+function FullscreenMetadata({
+  className,
+  item,
+  palette,
+  progress,
+  titleClassName,
+  titleElement,
+}) {
+  return (
+    <section className={className}>
+      <div
+        className="music-fullscreen-copy"
+        style={{
+          "--music-artist": dimmedMonochrome(palette.dim, 40),
+          "--music-unplayed": dimmedMonochrome(palette.dim, 60),
+        }}
+      >
+        <ProgressiveTitle
+          className={titleClassName}
+          progress={progress}
+          accent={palette.accent}
+          titleElement={titleElement}
+        >
+          {item.title}
+        </ProgressiveTitle>
+        <p>{item.creators.join(", ")}</p>
+      </div>
+    </section>
+  );
+}
+
+export function updateFullscreenTracks(tracks, playback) {
+  if (!playback?.item) {
+    return tracks;
+  }
+  if (!tracks.current) {
+    return { ...tracks, current: playback };
+  }
+  if (tracks.current.item.uri === playback.item.uri) {
+    return { ...tracks, current: playback };
+  }
+  return {
+    current: playback,
+    outgoing: tracks.current,
+    generation: tracks.generation + 1,
+  };
+}
+
+function FullscreenTrack({ playback, palette, phase }) {
+  const { item, nextItem } = playback;
+  const position = useProjectedPosition(playback);
+  const nextArtworkPalette = useArtworkPalette(nextItem).palette;
+
+  const progress = Math.min(100, (position / item.durationMs) * 100);
+  const remaining = Math.max(0, item.durationMs - position);
+  const showNext = nextItem && remaining <= 10_000;
+  const nextProgress = Math.min(100, ((10_000 - remaining) / 10_000) * 100);
+
+  return (
+    <div
+      aria-hidden={phase === "outgoing" || undefined}
+      className={`music-fullscreen-track music-fullscreen-track-${phase}`}
+      style={{ "--music-background": palette.background }}
+    >
+      <FullscreenArtwork item={item} />
+      <FullscreenMetadata
+        className="music-fullscreen-current"
+        item={item}
+        palette={palette}
+        progress={progress}
+        titleClassName="music-fullscreen-current-title"
+        titleElement="h1"
+      />
+      {showNext && (
+        <FullscreenMetadata
+          className="music-fullscreen-next"
+          item={nextItem}
+          palette={{
+            accent: nextArtworkPalette?.accent || palette.dim,
+            dim: palette.dim,
+          }}
+          progress={nextProgress}
+          titleClassName="music-fullscreen-next-title"
+          titleElement="h2"
+        />
+      )}
+    </div>
+  );
+}
+
+export function MusicFullscreen({ playback }) {
+  const [tracks, setTracks] = useState(() =>
+    updateFullscreenTracks({ current: null, outgoing: null, generation: 0 }, playback),
+  );
+  const currentPaletteResult = useArtworkPalette(tracks.current?.item);
+  const outgoingPaletteResult = useArtworkPalette(tracks.outgoing?.item);
+  const lastBackground = useRef(FALLBACK_MUSIC_PALETTE.background);
+
+  useEffect(() => {
+    setTracks((current) => updateFullscreenTracks(current, playback));
+  }, [playback]);
+
+  useEffect(() => {
+    if (!tracks.outgoing) {
+      return undefined;
+    }
+
+    const generation = tracks.generation;
+    const timer = window.setTimeout(() => {
+      setTracks((current) =>
+        current.generation === generation ? { ...current, outgoing: null } : current,
+      );
+    }, FULLSCREEN_TRANSITION_MS);
+    return () => window.clearTimeout(timer);
+  }, [tracks.generation, tracks.outgoing]);
+
+  useEffect(() => {
+    if (playback?.item || !tracks.current) {
+      return undefined;
+    }
+
+    const retainedUri = tracks.current.item.uri;
+    const timer = window.setTimeout(() => {
+      setTracks((current) =>
+        current.current?.item.uri === retainedUri
+          ? { ...current, current: null, outgoing: null }
+          : current,
+      );
+    }, FULLSCREEN_ITEM_GRACE_MS);
+    return () => window.clearTimeout(timer);
+  }, [playback?.item, tracks.current]);
+
+  const currentPalette = currentPaletteResult.palette || FALLBACK_MUSIC_PALETTE;
+  const outgoingPalette = outgoingPaletteResult.palette || FALLBACK_MUSIC_PALETTE;
+  if (currentPaletteResult.resolved) {
+    lastBackground.current = currentPalette.background;
+  }
+
+  return (
+    <main
+      aria-label="Music fullscreen view"
+      className="music-fullscreen"
+      style={{ "--music-background": lastBackground.current }}
+    >
+      {tracks.outgoing && (
+        <FullscreenTrack
+          key={tracks.outgoing.item.uri}
+          playback={tracks.outgoing}
+          palette={outgoingPalette}
+          phase="outgoing"
+        />
+      )}
+      {tracks.current && (
+        <FullscreenTrack
+          key={tracks.current.item.uri}
+          playback={tracks.current}
+          palette={currentPalette}
+          phase={tracks.outgoing ? "incoming" : "current"}
+        />
+      )}
     </main>
   );
 }

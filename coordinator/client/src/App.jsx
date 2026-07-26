@@ -1,10 +1,11 @@
-import { useEffect, useReducer, useRef } from "react";
-import { MusicChannel } from "./MusicChannel";
+import { useEffect, useReducer, useRef, useState } from "react";
+import { MusicChannel, MusicFullscreen } from "./MusicChannel";
 import { RoomFeedback } from "./RoomFeedback";
 import {
   CHANNEL_ACTION,
   IDENTIFY_ACTION,
   initialRoomState,
+  isMusicFullscreenShortcut,
   keyboardAction,
   roomReducer,
   SCENE_ACTION,
@@ -88,6 +89,7 @@ async function playIdentifySound() {
 
 export function App() {
   const [room, dispatch] = useReducer(roomReducer, initialRoomState);
+  const [musicFullscreen, setMusicFullscreen] = useState(false);
   const currentClientEntry = document
     .querySelector('script[type="module"][src]')
     ?.getAttribute("src");
@@ -96,6 +98,7 @@ export function App() {
   const lighting = useRef(null);
   const actionGeneration = useRef(0);
   const interactionTimer = useRef(null);
+  const activeChannel = useRef("today");
 
   useEffect(() => {
     function clearInteractionTimer() {
@@ -281,6 +284,10 @@ export function App() {
     events.addEventListener("channel.active", (event) => {
       const snapshot = parseMessage(event);
       if (snapshot) {
+        activeChannel.current = snapshot.active;
+        if (snapshot.active !== "music") {
+          setMusicFullscreen(false);
+        }
         dispatch({ type: "channel", snapshot });
       }
     });
@@ -353,6 +360,12 @@ export function App() {
     };
 
     function onKeyDown(event) {
+      if (isMusicFullscreenShortcut(event, activeChannel.current)) {
+        event.preventDefault();
+        setMusicFullscreen((current) => !current);
+        return;
+      }
+
       const request = keyboardAction(event, lighting.current);
       if (!request || activeRequestId.current) {
         return;
@@ -375,29 +388,37 @@ export function App() {
   }, [currentClientEntry]);
 
   const channel = room.channel?.active || "today";
+  const showMusicFullscreen = channel === "music" && musicFullscreen;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#120f0c] text-[#f8f0dc]">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_22%_42%,rgb(111_78_37_/_22%)_0,transparent_34%),radial-gradient(circle_at_78%_68%,rgb(67_51_34_/_18%)_0,transparent_40%),linear-gradient(135deg,#17130f_0%,#0f0d0a_100%)]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgb(255_255_255_/_5%)_1px,transparent_1px),linear-gradient(90deg,rgb(255_255_255_/_5%)_1px,transparent_1px)] [background-size:4rem_4rem] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
-      />
-
-      {channel === "today" ? (
-        <TodayChannel summary={room.today} />
+      {showMusicFullscreen ? (
+        <MusicFullscreen playback={room.playback} />
       ) : (
-        <MusicChannel playback={room.playback} connection={room.connection} />
-      )}
+        <>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_22%_42%,rgb(111_78_37_/_22%)_0,transparent_34%),radial-gradient(circle_at_78%_68%,rgb(67_51_34_/_18%)_0,transparent_40%),linear-gradient(135deg,#17130f_0%,#0f0d0a_100%)]"
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgb(255_255_255_/_5%)_1px,transparent_1px),linear-gradient(90deg,rgb(255_255_255_/_5%)_1px,transparent_1px)] [background-size:4rem_4rem] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
+          />
 
-      <RoomFeedback
-        connection={room.connection}
-        lighting={room.lighting}
-        interaction={room.interaction}
-      />
+          {channel === "today" ? (
+            <TodayChannel summary={room.today} />
+          ) : (
+            <MusicChannel playback={room.playback} connection={room.connection} />
+          )}
+
+          <RoomFeedback
+            connection={room.connection}
+            lighting={room.lighting}
+            interaction={room.interaction}
+            showLightingStatus={channel === "today"}
+          />
+        </>
+      )}
     </div>
   );
 }

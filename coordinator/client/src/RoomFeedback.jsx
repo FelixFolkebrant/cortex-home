@@ -152,11 +152,16 @@ function ChannelToast({ interaction }) {
   );
 }
 
-export function RoomFeedback({ connection, lighting, interaction }) {
+export function RoomFeedback({
+  connection,
+  lighting,
+  interaction,
+  showLightingStatus,
+}) {
   return (
     <>
       <ConnectionNotice connection={connection} />
-      <LightingStatus lighting={lighting} />
+      {showLightingStatus && <LightingStatus lighting={lighting} />}
       <ChannelToast interaction={interaction} />
       <InteractionOverlay interaction={interaction} />
     </>
