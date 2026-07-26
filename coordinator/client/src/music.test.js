@@ -37,6 +37,36 @@ test("connection and interaction events preserve playback", () => {
   assert.equal(identifying.playback, playing);
   assert.equal(identifying.connection, "disconnected");
   assert.equal(identifying.interaction.state, "identifying");
+  assert.equal(identifying.interaction.action, null);
+});
+
+test("lighting and scene interaction events remain independent", () => {
+  const lighting = {
+    scene: "Warm",
+    status: "active",
+    observedAt: "2026-07-26T12:00:00.000Z",
+  };
+  const withLighting = roomReducer(initialRoomState, {
+    type: "lighting",
+    snapshot: lighting,
+  });
+  const working = roomReducer(withLighting, {
+    type: "interaction",
+    action: "room.scene.activate",
+    state: "working",
+  });
+  const withPlayback = roomReducer(working, {
+    type: "playback",
+    snapshot: playing,
+  });
+
+  assert.equal(withPlayback.lighting, lighting);
+  assert.equal(withPlayback.playback, playing);
+  assert.deepEqual(withPlayback.interaction, {
+    state: "working",
+    action: "room.scene.activate",
+    message: null,
+  });
 });
 
 test("a terminal snapshot replaces loaded playback", () => {

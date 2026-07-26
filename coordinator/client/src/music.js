@@ -1,8 +1,10 @@
 export const initialRoomState = {
   connection: "connecting",
   playback: null,
+  lighting: null,
   interaction: {
     state: "idle",
+    action: null,
     message: null,
   },
 };
@@ -19,11 +21,17 @@ export function roomReducer(state, event) {
         ...state,
         playback: event.snapshot,
       };
+    case "lighting":
+      return {
+        ...state,
+        lighting: event.snapshot,
+      };
     case "interaction":
       return {
         ...state,
         interaction: {
           state: event.state,
+          action: event.action ?? null,
           message: event.message ?? null,
         },
       };

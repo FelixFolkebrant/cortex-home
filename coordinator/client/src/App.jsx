@@ -9,10 +9,20 @@ import {
   roomReducer,
 } from "./music";
 
+const IDENTIFY_ACTION = "endpoint.identify";
+const SCENE_ACTION = "room.scene.activate";
+
 const interactionCopy = {
-  identifying: ["Here I am.", "Playing the room signal."],
-  completed: ["Identified.", "The room confirmed the request."],
-  failed: ["Couldn’t identify.", "The request failed."],
+  [IDENTIFY_ACTION]: {
+    identifying: ["Here I am.", "Playing the room signal."],
+    completed: ["Identified.", "The room confirmed the request."],
+    failed: ["Couldn’t identify.", "The request failed."],
+  },
+  [SCENE_ACTION]: {
+    working: ["Warming the room.", "Waiting for Hue to confirm the scene."],
+    completed: ["Warm is active.", "The room confirmed the scene."],
+    failed: ["Couldn’t warm the room.", "The scene request failed."],
+  },
 };
 
 const signal = cva(
@@ -21,6 +31,8 @@ const signal = cva(
     variants: {
       state: {
         identifying:
+          "animate-identify border-[#ffd27d] shadow-[0_0_0_2rem_rgb(255_210_125_/_16%),0_0_9rem_rgb(255_177_63_/_70%)]",
+        working:
           "animate-identify border-[#ffd27d] shadow-[0_0_0_2rem_rgb(255_210_125_/_16%),0_0_9rem_rgb(255_177_63_/_70%)]",
         completed:
           "scale-[1.08] border-[#92d6a1] shadow-[0_0_0_1.5rem_rgb(146_214_161_/_14%),0_0_7rem_rgb(146_214_161_/_45%)]",
@@ -273,11 +285,36 @@ function ConnectionNotice({ connection }) {
 
   return (
     <div
-      className="absolute top-[clamp(1.5rem,3vw,3rem)] right-[clamp(1.5rem,4vw,5rem)] z-30 flex items-center gap-3 rounded-full border border-[#e9bd68]/30 bg-[#17130f]/90 px-5 py-3 text-sm font-bold tracking-[0.12em] text-[#f0d79d] uppercase shadow-2xl backdrop-blur-xl"
+      className="absolute top-[clamp(1.5rem,3vw,3rem)] right-[clamp(1.5rem,4vw,5rem)] z-30 flex items-center gap-3 rounded-full border border-[#e9bd68]/30 bg-[#17130f]/90 px-5 py-3 text-sm font-bold tracking-[0.12em] text-[#f0d79d] uppercase shadow-2xl backdrop-blur-xl max-sm:top-[5.5rem]"
       role="status"
     >
       <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#e9bd68] motion-reduce:animate-none" />
       Coordinator offline · Reconnecting
+    </div>
+  );
+}
+
+function LightingStatus({ lighting }) {
+  const status = lighting?.status || "unavailable";
+  const label = {
+    active: "Warm active",
+    inactive: "Warm inactive",
+    unavailable: "Warm unavailable",
+  }[status];
+  const indicator = {
+    active: "bg-[#efc66f] shadow-[0_0_1rem_rgb(239_198_111_/_75%)]",
+    inactive: "bg-[#736959]",
+    unavailable: "bg-[#b87568]",
+  }[status];
+
+  return (
+    <div
+      className="absolute top-[clamp(1.5rem,3vw,3rem)] left-[clamp(1.5rem,4vw,5rem)] z-30 flex items-center gap-3 rounded-full border border-white/10 bg-[#17130f]/85 px-5 py-3 text-sm font-bold tracking-[0.12em] text-[#d8ccb6] uppercase shadow-2xl backdrop-blur-xl"
+      role="status"
+      aria-live="polite"
+    >
+      <span className={cn("h-2.5 w-2.5 rounded-full", indicator)} />
+      {label}
     </div>
   );
 }
@@ -287,7 +324,15 @@ function InteractionOverlay({ interaction }) {
     return null;
   }
 
-  const [title, defaultMessage] = interactionCopy[interaction.state];
+  const copy = interactionCopy[interaction.action]?.[interaction.state];
+  if (!copy) {
+    return null;
+  }
+  const [title, defaultMessage] = copy;
+  const label =
+    interaction.action === SCENE_ACTION
+      ? "Cortex Home / Lighting"
+      : "Cortex Home / Room signal";
 
   return (
     <div
@@ -296,7 +341,7 @@ function InteractionOverlay({ interaction }) {
       aria-live="assertive"
     >
       <p className="mb-7 text-[clamp(0.85rem,1vw,1.1rem)] font-bold tracking-[0.28em] text-[#d6a954] uppercase">
-        Cortex Home / Room signal
+        {label}
       </p>
       <h2 className="mx-auto max-w-[12ch] text-[clamp(4.5rem,9vw,10rem)] leading-[0.88] font-bold tracking-[-0.07em] text-[#fff7e7]">
         {title}
@@ -327,9 +372,9 @@ export function App() {
       }
     }
 
-    function showInteraction(state, message, duration) {
+    function showInteraction(action, state, message, duration) {
       clearInteractionTimer();
-      dispatch({ type: "interaction", state, message });
+      dispatch({ type: "interaction", action, state, message });
 
       if (duration) {
         interactionTimer.current = window.setTimeout(() => {
@@ -364,7 +409,7 @@ export function App() {
     async function identify(requestId) {
       const generation = ++actionGeneration.current;
       activeRequestId.current = requestId;
-      showInteraction("identifying");
+      showInteraction(IDENTIFY_ACTION, "identifying");
 
       try {
         await postStatus(requestId, "identifying");
@@ -376,7 +421,7 @@ export function App() {
 
         await postStatus(requestId, "completed");
         activeRequestId.current = null;
-        showInteraction("completed", null, 2500);
+        showInteraction(IDENTIFY_ACTION, "completed", null, 2500);
       } catch (error) {
         if (generation !== actionGeneration.current) {
           return;
@@ -389,7 +434,7 @@ export function App() {
           // The visible failure remains useful when the coordinator is offline.
         }
         activeRequestId.current = null;
-        showInteraction("failed", message, 5000);
+        showInteraction(IDENTIFY_ACTION, "failed", message, 5000);
       }
     }
 
@@ -434,6 +479,37 @@ export function App() {
       }
     });
 
+    events.addEventListener("room.lighting", (event) => {
+      const snapshot = parseMessage(event);
+      if (snapshot) {
+        dispatch({ type: "lighting", snapshot });
+      }
+    });
+
+    events.addEventListener("action.status", (event) => {
+      const message = parseMessage(event);
+      if (!message || message.action !== SCENE_ACTION) {
+        return;
+      }
+
+      if (message.status === "accepted") {
+        activeRequestId.current = message.requestId;
+        showInteraction(SCENE_ACTION, "working");
+      } else if (
+        message.requestId === activeRequestId.current &&
+        message.status === "completed"
+      ) {
+        activeRequestId.current = null;
+        showInteraction(SCENE_ACTION, "completed", null, 2500);
+      } else if (
+        message.requestId === activeRequestId.current &&
+        message.status === "failed"
+      ) {
+        activeRequestId.current = null;
+        showInteraction(SCENE_ACTION, "failed", message.error, 5000);
+      }
+    });
+
     events.addEventListener("identify", (event) => {
       const message = parseMessage(event);
       if (message && !activeRequestId.current) {
@@ -449,7 +525,7 @@ export function App() {
       ) {
         actionGeneration.current += 1;
         activeRequestId.current = null;
-        showInteraction("failed", message.error, 5000);
+        showInteraction(IDENTIFY_ACTION, "failed", message.error, 5000);
       }
     });
 
@@ -488,6 +564,7 @@ export function App() {
       )}
 
       <ConnectionNotice connection={room.connection} />
+      <LightingStatus lighting={room.lighting} />
       <InteractionOverlay interaction={room.interaction} />
     </div>
   );
