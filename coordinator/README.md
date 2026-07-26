@@ -111,6 +111,9 @@ curl \
 The only accepted channel values are `today` and `music`. The coordinator
 starts on Today, publishes the selected `channel.active` snapshot to every
 endpoint connection, and returns completion after it publishes that state.
+On the room display, `Ctrl`+`Alt`+`1` selects Today and `Ctrl`+`Alt`+`2`
+selects Music through that same action. Other key combinations and repeated
+key presses do nothing.
 
 For a focused deployed check, use the repository-owned verifier. It checks safe
 health, generates a unique request ID, activates `Warm`, and requires observed

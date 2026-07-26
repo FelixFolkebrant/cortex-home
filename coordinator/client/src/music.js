@@ -95,3 +95,22 @@ export function artworkSource(item) {
     return null;
   }
 }
+
+export function keyboardChannel(event) {
+  if (
+    !event.ctrlKey ||
+    !event.altKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    event.repeat
+  ) {
+    return null;
+  }
+
+  return (
+    {
+      Digit1: "today",
+      Digit2: "music",
+    }[event.code] || null
+  );
+}

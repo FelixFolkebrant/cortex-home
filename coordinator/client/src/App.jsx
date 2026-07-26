@@ -5,6 +5,7 @@ import {
   artworkSource,
   formatTime,
   initialRoomState,
+  keyboardChannel,
   projectPosition,
   roomReducer,
 } from "./music";
@@ -548,6 +549,37 @@ export function App() {
       }
     }
 
+    async function selectChannel(channel) {
+      const requestId = `keyboard-${channel}-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      activeRequestId.current = requestId;
+      showInteraction(CHANNEL_ACTION, "working");
+
+      try {
+        const response = await fetch("/api/actions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestId, action: CHANNEL_ACTION, channel }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result.error || `Coordinator returned ${response.status}.`);
+        }
+        if (activeRequestId.current === requestId) {
+          activeRequestId.current = null;
+          showInteraction(CHANNEL_ACTION, "completed", null, 2500);
+        }
+      } catch (error) {
+        if (activeRequestId.current !== requestId) {
+          return;
+        }
+        activeRequestId.current = null;
+        const message = error instanceof Error ? error.message : "Unknown failure.";
+        showInteraction(CHANNEL_ACTION, "failed", message, 5000);
+      }
+    }
+
     function parseMessage(event) {
       try {
         return JSON.parse(event.data);
@@ -662,9 +694,21 @@ export function App() {
       dispatch({ type: "interaction", state: "idle" });
     };
 
+    function onKeyDown(event) {
+      const channel = keyboardChannel(event);
+      if (!channel || activeRequestId.current) {
+        return;
+      }
+      event.preventDefault();
+      selectChannel(channel);
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+
     return () => {
       clearInteractionTimer();
       events.close();
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, [currentClientEntry]);
 
