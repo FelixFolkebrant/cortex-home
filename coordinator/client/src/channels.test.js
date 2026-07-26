@@ -113,11 +113,18 @@ test("Camera channel is unmistakably local before capture starts", () => {
   assert.match(markup, /Opening the local camera\./);
   assert.match(markup, /Camera/);
   assert.match(markup, /Local mirror · Video stays on this iMac/);
+  assert.match(markup, /Ring light off/);
+  assert.match(markup, /← \/ → light · ↑ \/ ↓ width/);
   assert.match(markup, /autoPlay/);
   assert.match(markup, /muted/);
   assert.match(markup, /scale-x-\[-1\]/);
   assert.match(markup, /object-cover/);
   assert.doesNotMatch(markup, /controls/);
+  assert.match(
+    styles,
+    /\.camera-ring-light::after\s*\{[^}]*inset:\s*calc\(var\(--camera-ring-width\) \/ 2\)[^}]*border-radius:[^}]*box-shadow:\s*0 0 0 100vmax[^}]*inset 0 0/s,
+  );
+  assert.doesNotMatch(styles, /\.camera-ring-light\s*\{[^}]*border-radius/s);
 });
 
 test("Camera channel defines explicit recoverable failure presentation", () => {

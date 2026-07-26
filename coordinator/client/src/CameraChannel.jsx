@@ -1,5 +1,13 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { startCameraCapture } from "./camera";
+import {
+  adjustCameraLightWidth,
+  CAMERA_LIGHT_WIDTHS,
+  CAMERA_LIGHTS,
+  cameraLightAction,
+  cycleCameraLight,
+  DEFAULT_CAMERA_LIGHT_WIDTH,
+  startCameraCapture,
+} from "./camera";
 import { cn } from "./classes";
 
 export const cameraStatusCopy = {
@@ -25,6 +33,8 @@ export const cameraStatusCopy = {
 
 export function CameraChannel() {
   const [status, setStatus] = useState("starting");
+  const [lightIndex, setLightIndex] = useState(0);
+  const [lightWidthIndex, setLightWidthIndex] = useState(DEFAULT_CAMERA_LIGHT_WIDTH);
   const video = useRef(null);
 
   useLayoutEffect(
@@ -39,7 +49,28 @@ export function CameraChannel() {
     [],
   );
 
+  useLayoutEffect(() => {
+    function onKeyDown(event) {
+      const action = cameraLightAction(event);
+      if (!action) {
+        return;
+      }
+
+      event.preventDefault();
+      if (action === "next" || action === "previous") {
+        setLightIndex((current) => cycleCameraLight(current, action));
+      } else {
+        setLightWidthIndex((current) => adjustCameraLightWidth(current, action));
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const copy = cameraStatusCopy[status];
+  const light = CAMERA_LIGHTS[lightIndex];
+  const lightWidth = CAMERA_LIGHT_WIDTHS[lightWidthIndex];
 
   return (
     <main
@@ -57,6 +88,18 @@ export function CameraChannel() {
         playsInline
         ref={video}
       />
+
+      {status === "live" && light.id !== "off" && (
+        <div
+          aria-hidden="true"
+          className="camera-ring-light pointer-events-none absolute inset-0 z-10"
+          data-camera-light={light.id}
+          style={{
+            "--camera-ring-color": light.color,
+            "--camera-ring-width": lightWidth.value,
+          }}
+        />
+      )}
 
       {copy && (
         <div
@@ -83,6 +126,11 @@ export function CameraChannel() {
         <p className="mt-1 text-sm text-[#d8ccb6]">
           Local mirror · Video stays on this iMac
         </p>
+        <p className="mt-2 text-xs font-bold tracking-[0.1em] text-[#fff7e7] uppercase">
+          {light.label}
+          {light.id !== "off" && ` · ${lightWidth.label}`}
+        </p>
+        <p className="mt-1 text-xs text-[#aa9f8c]">← / → light · ↑ / ↓ width</p>
       </div>
     </main>
   );
