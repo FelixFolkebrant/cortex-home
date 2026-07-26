@@ -39,7 +39,10 @@ scp -q -r \
   "$script_dir/client/dist" \
   "$script_dir/files" \
   "$script_dir/cortex_home.py" \
+  "$script_dir/hue.py" \
+  "$script_dir/hue_pair.py" \
   "$script_dir/install-host" \
+  "$script_dir/requirements.txt" \
   "$server_host:$remote_dir/"
 
 ssh -tt "$server_host" "sudo '$remote_dir/install-host'"

@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$#" -ne 2 ]; then
+  echo "Usage: $0 <server-ssh-host> <bridge-host>" >&2
+  exit 1
+fi
+
+server_host=$1
+bridge_host=$2
+
+case "$bridge_host" in
+  "" | *[!A-Za-z0-9.-]*)
+    echo "The bridge host must be an IPv4 address or local hostname." >&2
+    exit 1
+    ;;
+esac
+
+ssh -tt "$server_host" \
+  "sudo /opt/cortex-home/venv/bin/python /opt/cortex-home/hue_pair.py -- '$bridge_host' &&
+   sudo systemctl restart cortex-home.service &&
+   systemctl is-active --quiet cortex-home.service"
+
+echo "Hue pairing completed."

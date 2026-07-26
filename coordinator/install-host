@@ -12,6 +12,11 @@ if [ ! -x /usr/bin/python3 ]; then
   exit 1
 fi
 
+if ! /usr/bin/python3 -m venv --help >/dev/null 2>&1; then
+  echo "Cortex Home requires the python3-venv package." >&2
+  exit 1
+fi
+
 if ! command -v systemctl >/dev/null 2>&1; then
   echo "Cortex Home requires systemd." >&2
   exit 1
@@ -40,6 +45,24 @@ chown -R root:root /opt/cortex-home/client
 install --owner=root --group=root --mode=755 \
   "$script_dir/cortex_home.py" \
   /opt/cortex-home/cortex_home.py
+install --owner=root --group=root --mode=644 \
+  "$script_dir/hue.py" \
+  /opt/cortex-home/hue.py
+install --owner=root --group=root --mode=755 \
+  "$script_dir/hue_pair.py" \
+  /opt/cortex-home/hue_pair.py
+install --owner=root --group=root --mode=644 \
+  "$script_dir/requirements.txt" \
+  /opt/cortex-home/requirements.txt
+install -d --owner=root --group=cortex-home --mode=750 /etc/cortex-home
+
+/usr/bin/python3 -m venv --clear /opt/cortex-home/venv
+/opt/cortex-home/venv/bin/python -m pip install \
+  --disable-pip-version-check \
+  --no-cache-dir \
+  --requirement /opt/cortex-home/requirements.txt
+/opt/cortex-home/venv/bin/python -m pip check
+
 install --owner=root --group=root --mode=644 \
   "$script_dir/files/cortex-home.service" \
   /etc/systemd/system/cortex-home.service
@@ -74,4 +97,4 @@ systemctl enable cortex-home.service
 systemctl restart cortex-home.service
 systemctl is-active --quiet cortex-home.service
 
-echo "GH-004 coordinator installation completed."
+echo "Cortex Home coordinator installation completed."
