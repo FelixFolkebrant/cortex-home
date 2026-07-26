@@ -430,7 +430,7 @@ function LightingStatus({ lighting }) {
 }
 
 function InteractionOverlay({ interaction }) {
-  if (interaction.state === "idle") {
+  if (interaction.state === "idle" || interaction.action === CHANNEL_ACTION) {
     return null;
   }
 
@@ -461,6 +461,39 @@ function InteractionOverlay({ interaction }) {
         {interaction.message || defaultMessage}
       </p>
       <div aria-hidden="true" className={signal({ state: interaction.state })} />
+    </div>
+  );
+}
+
+function ChannelToast({ interaction }) {
+  if (interaction.action !== CHANNEL_ACTION || interaction.state === "idle") {
+    return null;
+  }
+
+  const copy = interactionCopy[CHANNEL_ACTION][interaction.state];
+  if (!copy) {
+    return null;
+  }
+  const [title, defaultMessage] = copy;
+  const tone = {
+    completed: "border-[#92d6a1]/40 text-[#d8f0d9]",
+    failed: "border-[#e67d6f]/40 text-[#ffd4cc]",
+    working: "border-[#e9bd68]/40 text-[#f7dfaa]",
+  }[interaction.state];
+
+  return (
+    <div
+      className={cn(
+        "absolute top-[clamp(6.5rem,10vw,9rem)] right-[clamp(1.5rem,4vw,5rem)] z-40 max-w-[min(22rem,calc(100vw-3rem))] rounded-2xl border bg-[#17130f]/95 px-5 py-4 shadow-2xl backdrop-blur-xl",
+        tone,
+      )}
+      role="status"
+      aria-live="assertive"
+    >
+      <p className="text-sm font-bold tracking-[0.14em] uppercase">{title}</p>
+      <p className="mt-1 text-sm leading-snug text-[#c9bda6]">
+        {interaction.message || defaultMessage}
+      </p>
     </div>
   );
 }
@@ -736,6 +769,7 @@ export function App() {
 
       <ConnectionNotice connection={room.connection} />
       <LightingStatus lighting={room.lighting} />
+      <ChannelToast interaction={room.interaction} />
       <InteractionOverlay interaction={room.interaction} />
     </div>
   );
