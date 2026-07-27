@@ -173,6 +173,29 @@ off. A prior moving-mirror sample observed approximately 16–56% UxPlay CPU and
 87–90 MiB resident memory; a more static sample observed approximately 132 MiB.
 Those measurements are indicative, not resource limits.
 
+## Wake Alarm
+
+Install one ordinary local MP3 as the endpoint wake sound without rebuilding or
+restarting Cortex Home:
+
+```sh
+./endpoint/imac/provision-alarm-audio <local-mp3>
+```
+
+The command accepts only a regular `.mp3` file up to 32 MiB and atomically
+installs it as root-owned `/etc/cortex-endpoint/wake-alarm.mp3`. The kiosk reads
+this one fixed file only while an observed ringing alarm is active; it never
+uploads audio or exposes a browser picker.
+
+To qualify the physical sleep/wake path after the alarm audio is installed,
+set an alarm at least two minutes ahead, press `Ctrl`+`Alt`+`5`, press Enter
+to arm it, then press `Ctrl`+`Enter` after the armed confirmation appears.
+Confirm that UxPlay stops, the iMac enters deep suspend, and it resumes at the
+selected instant with the Alarm clock visible, `Warm low` requested, and one
+looping alarm sound. Press Enter to dismiss, then repeat once after waking the
+iMac manually before the alarm time; it must remain silent until the scheduled
+instant and permit another deliberate sleep request.
+
 ## Playback Diagnostics
 
 When Music becomes black unexpectedly, note the song title and reproduce it
