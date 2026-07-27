@@ -16,7 +16,7 @@ test("Alarm editor wraps the selected field and accepts two bounded digits", () 
   assert.equal(alarmTime(editor), "08:00");
   editor = reduceAlarmEditor(editor, { type: "select", selected: "minutes" });
   editor = reduceAlarmEditor(editor, { type: "step", amount: -1 });
-  assert.equal(alarmTime(editor), "08:59");
+  assert.equal(alarmTime(editor), "08:55");
   editor = reduceAlarmEditor(editor, { type: "digit", digit: "4", at: 10 });
   editor = reduceAlarmEditor(editor, { type: "digit", digit: "5", at: 20 });
   assert.equal(alarmTime(editor), "08:45");
@@ -55,6 +55,10 @@ test("Alarm keyboard scope accepts only its exact editing and action keys", () =
   assert.equal(alarmKeyboardAction(event, armed), null);
   assert.equal(alarmKeyboardAction({ ...event, ctrlKey: true }, disarmed), null);
   assert.equal(alarmKeyboardAction({ ...event, repeat: true }, disarmed), null);
+  assert.deepEqual(
+    alarmKeyboardAction({ ...event, key: "ArrowUp", repeat: true }, disarmed),
+    { type: "step", amount: 1 },
+  );
   assert.equal(alarmKeyboardAction({ ...event, key: "a" }, disarmed), null);
 });
 

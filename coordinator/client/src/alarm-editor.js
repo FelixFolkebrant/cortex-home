@@ -25,8 +25,10 @@ export function reduceAlarmEditor(editor, action) {
   }
   if (action.type === "step") {
     const maximum = editor.selected === "hours" ? 23 : 59;
+    const increment = editor.selected === "hours" ? 1 : 5;
     const value =
-      (editor[editor.selected] + action.amount + maximum + 1) % (maximum + 1);
+      (editor[editor.selected] + action.amount * increment + maximum + 1) %
+      (maximum + 1);
     return { ...editor, digits: "", [editor.selected]: value };
   }
   if (action.type === "digit") {
@@ -53,7 +55,7 @@ export function reduceAlarmEditor(editor, action) {
 }
 
 export function alarmKeyboardAction(event, snapshot) {
-  if (event.repeat) {
+  if (event.repeat && !["ArrowUp", "ArrowDown"].includes(event.key)) {
     return null;
   }
   if (

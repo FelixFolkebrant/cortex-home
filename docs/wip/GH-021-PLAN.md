@@ -67,7 +67,8 @@
   `channel.select` lifecycle and stops AirPlay before the Alarm view appears.
 - [ ] Alarm editing is keyboard-only. Left and Right select hours or minutes;
   Up adds one to the selected field; Down subtracts one; both wrap within
-  `00–23` and `00–59` exactly as requested.
+  `00–23` and `00–59`. Minutes use five-minute increments, and holding either
+  arrow repeats the selected-field action.
 - [ ] Number keys directly replace the selected field through a bounded
   two-digit entry buffer. Modified or repeated keys, letters, invalid values,
   and stale buffered digits do nothing.
@@ -225,6 +226,7 @@ endpoint suspend, and audio ownership live in `../planpoints/PP-7.md`.
 - Decision: Keep one selected field and one bounded two-digit buffer instead of
   a free-form text input.
 - Proposed approach: Left/Right changes fields; Up increments; Down decrements;
+  minutes use five-minute increments and held arrows repeat;
   two number presses replace the selected value; field changes and a short
   timeout clear the numeric buffer.
 - Why: The attached keyboard is the room control, and the requested direction
