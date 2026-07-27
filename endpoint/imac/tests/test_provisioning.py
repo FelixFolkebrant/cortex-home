@@ -439,6 +439,19 @@ class ProvisioningTests(unittest.TestCase):
         )
         self.assertIn("cortex-endpoint-rtc-suspend.sudoers", self.script)
 
+    def test_focused_alarm_install_changes_only_the_alarm_runtime(self):
+        deploy = (ENDPOINT_DIR / "provision-alarm").read_text()
+        host = (ENDPOINT_DIR / "provision-alarm-host").read_text()
+
+        self.assertIn('"$script_dir/files/cortex-endpoint-alarm"', deploy)
+        self.assertIn('"$script_dir/files/cortex-endpoint-rtc-suspend"', deploy)
+        self.assertIn('"$script_dir/files/cortex-airplay-control"', deploy)
+        self.assertIn("mpg123", host)
+        self.assertIn("cortex-endpoint-rtc-suspend.sudoers", host)
+        self.assertIn("systemctl restart lightdm.service", host)
+        self.assertNotIn("netplan", host)
+        self.assertNotIn("raspotify", host)
+
     def test_airplay_control_is_loopback_only_and_origin_bound(self):
         control = (FILES / "cortex-airplay-control").read_text()
 

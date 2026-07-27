@@ -179,6 +179,7 @@ Install one ordinary local MP3 as the endpoint wake sound without rebuilding or
 restarting Cortex Home:
 
 ```sh
+./endpoint/imac/provision-alarm
 ./endpoint/imac/provision-alarm-audio <local-mp3>
 ```
 

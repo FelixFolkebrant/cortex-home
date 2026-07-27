@@ -1,0 +1,41 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [[ $EUID -ne 0 ]]; then
+  echo "Run this installer as root." >&2
+  exit 1
+fi
+
+source_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+
+if [[ ! -r /etc/cortex-endpoint/coordinator-url ]]; then
+  echo "The endpoint coordinator URL is not configured." >&2
+  exit 1
+fi
+
+/usr/sbin/visudo --check --file="$source_dir/cortex-endpoint-rtc-suspend.sudoers"
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install --yes --no-install-recommends mpg123
+
+install --owner=root --group=root --mode=755 \
+  "$source_dir/cortex-endpoint-alarm" \
+  /usr/local/bin/cortex-endpoint-alarm
+install --owner=root --group=root --mode=755 \
+  "$source_dir/cortex-endpoint-rtc-suspend" \
+  /usr/local/bin/cortex-endpoint-rtc-suspend
+install --owner=root --group=root --mode=440 \
+  "$source_dir/cortex-endpoint-rtc-suspend.sudoers" \
+  /etc/sudoers.d/cortex-endpoint-rtc-suspend
+install --owner=root --group=root --mode=755 \
+  "$source_dir/cortex-airplay-control" \
+  /usr/local/bin/cortex-airplay-control
+install --owner=root --group=root --mode=755 \
+  "$source_dir/cortex-endpoint-session" \
+  /usr/local/bin/cortex-endpoint-session
+
+systemctl restart lightdm.service
+
+echo "Cortex Home endpoint alarm installation completed."
