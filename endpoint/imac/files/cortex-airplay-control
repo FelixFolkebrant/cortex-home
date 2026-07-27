@@ -63,20 +63,18 @@ send_response() {
 }
 
 while true; do
-  coproc AIRPLAY_CONNECTION {
-    /usr/bin/nc -l -N 127.0.0.1 38019
-  }
-  connection_pid=$AIRPLAY_CONNECTION_PID
-  request_fd=${AIRPLAY_CONNECTION[0]}
-  response_fd=${AIRPLAY_CONNECTION[1]}
+  coproc /usr/bin/nc -l -N 127.0.0.1 38019
+  connection_pid=$COPROC_PID
+  request_fd=${COPROC[0]}
+  response_fd=${COPROC[1]}
   method=
   path=
   protocol=
   origin=
 
-  if IFS=' ' read -r -t 5 method path protocol <&"$request_fd"; then
+  if IFS=' ' read -r -t 1 method path protocol <&"$request_fd"; then
     header_count=0
-    while IFS= read -r -t 5 header <&"$request_fd"; do
+    while IFS= read -r -t 1 header <&"$request_fd"; do
       header=${header%$'\r'}
 
       if [[ -z $header ]]; then

@@ -130,9 +130,10 @@ playback without selecting the Anker output or changing microphone input.
 
 `Control`+`Option`+`4` selects the AirPlay view without starting UxPlay. The
 screen contains only the AirPlay mark, title, and an Apple-style switch. Turn
-the switch on to start the receiver; it shows a loader during startup, then
-`Select tv Skärmen to cast screen`. Turn it off to stop UxPlay while remaining
-on the AirPlay view. Open Screen Mirroring on the iPhone and choose `Skärmen`.
+the switch on with `Enter` or a pointer to start the receiver; it shows a loader
+during startup, then `Select tv Skärmen to cast screen`. Use `Enter` again or
+click the switch to stop UxPlay while remaining on the AirPlay view. Open Screen
+Mirroring on the iPhone and choose `Skärmen`.
 The receiver deliberately does not request a PIN or retain a pairing key, so
 there is no password to display or enter. Any device on the same trusted LAN
 can connect while the switch is on. Selecting Today, Music, or Camera with its
@@ -143,8 +144,8 @@ The browser calls an origin-bound control bridge at
 configured coordinator origin, and exposes status, on, and off operations. It
 uses the already-installed OpenBSD netcat and a shell process rather than
 another browser runtime. The measured netcat listener used approximately
-2 MiB resident memory and 0% sampled idle CPU; the supervising shell adds only
-a few more MiB.
+2 MiB resident memory and 0% sampled idle CPU; together with its supervising
+shell, the bridge is approximately 6 MiB.
 
 UxPlay creates its native GStreamer window only after a client begins
 mirroring. Openbox makes every matching window borderless, fullscreen, focused,
