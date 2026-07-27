@@ -64,6 +64,23 @@ async function until(predicate) {
   assert.fail("condition was not reached");
 }
 
+test("the default fetch keeps the browser global receiver", async () => {
+  const originalFetch = globalThis.fetch;
+  let receiver;
+  globalThis.fetch = function request() {
+    receiver = this;
+    return Promise.resolve("response");
+  };
+
+  try {
+    const interaction = new SpokenInteraction({});
+    assert.equal(await interaction.fetch("/api/test"), "response");
+    assert.equal(receiver, globalThis);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("one captured WAV plays and reports speaking then completion", async () => {
   const requests = [];
   const audio = new FakeAudio();

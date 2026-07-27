@@ -8,7 +8,7 @@ export class SpokenInteraction {
   constructor({
     createAudio = (url) => new Audio(url),
     createObjectURL = (blob) => URL.createObjectURL(blob),
-    fetch: request = globalThis.fetch,
+    fetch: request = (...arguments_) => globalThis.fetch(...arguments_),
     onCompleted,
     onFailed,
     revokeObjectURL = (url) => URL.revokeObjectURL(url),
