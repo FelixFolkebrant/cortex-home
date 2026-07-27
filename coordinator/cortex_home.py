@@ -1039,7 +1039,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
             self.send_header(
                 "Content-Security-Policy",
                 "default-src 'self'; "
-                "connect-src 'self'; "
+                "connect-src 'self' http://127.0.0.1:38019; "
                 "img-src 'self' data: https:; "
                 "media-src blob:; "
                 "script-src 'self'; "

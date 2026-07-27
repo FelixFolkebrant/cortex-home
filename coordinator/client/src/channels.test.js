@@ -11,7 +11,9 @@ const vite = await createServer({
 });
 const { MusicChannel, MusicFullscreen, updateFullscreenTracks } =
   await vite.ssrLoadModule("/src/MusicChannel.jsx");
-const { AirPlayChannel } = await vite.ssrLoadModule("/src/AirPlayChannel.jsx");
+const { AirPlayChannel, AirPlayStatus, requestAirPlay } = await vite.ssrLoadModule(
+  "/src/AirPlayChannel.jsx",
+);
 const { RoomFeedback } = await vite.ssrLoadModule("/src/RoomFeedback.jsx");
 const { TodayChannel } = await vite.ssrLoadModule("/src/TodayChannel.jsx");
 const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
@@ -21,15 +23,54 @@ const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 after(() => vite.close());
 
-test("AirPlay channel shows passwordless mirroring and global exit guidance", () => {
+test("AirPlay channel is only a logo, switch, and conditional status region", () => {
   const markup = renderToStaticMarkup(createElement(AirPlayChannel));
 
-  assert.match(markup, /Cortex Home \/ AirPlay/);
-  assert.match(markup, /Ready to mirror\./);
-  assert.match(markup, /choose Cortex AirPlay/);
-  assert.match(markup, /No code required/);
-  assert.match(markup, /Ctrl \+ Alt \+ 4 stops AirPlay/);
-  assert.doesNotMatch(markup, /PIN|password/i);
+  assert.match(markup, />AirPlay</);
+  assert.match(markup, /role="switch"/);
+  assert.match(markup, /aria-checked="false"/);
+  assert.doesNotMatch(markup, /Ready to mirror|No code required|Ctrl/);
+  assert.doesNotMatch(markup, /Select|Skärmen|PIN|password/i);
+});
+
+test("AirPlay shows only a loader while starting and Skärmen when on", () => {
+  const starting = renderToStaticMarkup(
+    createElement(AirPlayStatus, { state: "starting" }),
+  );
+  const on = renderToStaticMarkup(createElement(AirPlayStatus, { state: "on" }));
+
+  assert.match(starting, /Starting AirPlay/);
+  assert.doesNotMatch(starting, /Select|Skärmen/);
+  assert.match(on, /Select/);
+  assert.match(on, /Apple TV/);
+  assert.match(on, /Skärmen/);
+  assert.match(on, /to cast screen/);
+});
+
+test("AirPlay control uses the loopback bridge and validates its state", async () => {
+  const calls = [];
+  const state = await requestAirPlay("/on", async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      json: async () => ({ state: "on" }),
+    };
+  });
+
+  assert.equal(state, "on");
+  assert.deepEqual(calls, [
+    {
+      url: "http://127.0.0.1:38019/on",
+      options: { method: "POST" },
+    },
+  ]);
+  await assert.rejects(
+    requestAirPlay("/status", async () => ({
+      ok: true,
+      json: async () => ({ state: "starting" }),
+    })),
+    /invalid state/,
+  );
 });
 
 test("Today channel owns available weather and attribution presentation", () => {

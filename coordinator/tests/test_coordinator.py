@@ -1382,7 +1382,7 @@ class HttpTests(unittest.TestCase):
             response.getheader("Content-Security-Policy"),
         )
         self.assertIn(
-            "connect-src 'self'",
+            "connect-src 'self' http://127.0.0.1:38019",
             response.getheader("Content-Security-Policy"),
         )
 

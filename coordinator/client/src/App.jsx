@@ -625,15 +625,17 @@ export function App() {
         </>
       )}
 
-      <RoomFeedback
-        connection={room.connection}
-        lighting={room.lighting}
-        interaction={room.interaction}
-        showLightingStatus={channel !== "music"}
-        voiceDebug={voiceDebug}
-        voiceDebugVisible={voiceDebugVisible}
-        voiceOnly={showMusicFullscreen}
-      />
+      {channel !== "airplay" ? (
+        <RoomFeedback
+          connection={room.connection}
+          lighting={room.lighting}
+          interaction={room.interaction}
+          showLightingStatus={channel !== "music"}
+          voiceDebug={voiceDebug}
+          voiceDebugVisible={voiceDebugVisible}
+          voiceOnly={showMusicFullscreen}
+        />
+      ) : null}
     </div>
   );
 }
