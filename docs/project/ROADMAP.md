@@ -96,9 +96,24 @@ Camera frames remain local to Chromium and outside agent context. Photos,
 quotes, stocks, local media, and TV remain later candidates. A candidate
 becomes a Planpoint only when its user flow and data source are clear.
 
+### [6 ACCEPTED - iPhone AirPlay Receiver Exploration](../planpoints/PP-6.md)
+
+Determine whether the iMac can receive an iPhone AirPlay screen mirror through
+UxPlay and compose that native output with the existing Chromium kiosk without
+turning the exploration into a permanent display architecture.
+
+| Crossroad | Decision | Alternatives Rejected |
+|---|---|---|
+| Discovery boundary | One bounded GH-019 investigation before committing an implementation | Shipping an unmeasured receiver; adding a browser casting client first |
+| Composition boundary | Evaluate UxPlay as a native lower layer with Chromium's transparent or translucent surfaces and existing overlays above it | Replacing the kiosk; assuming browser-only rendering can receive AirPlay |
+
+The investigation records physical-room evidence, startup and recovery
+behavior, layering limits, input and notification implications, and the
+smallest credible follow-up slice. It does not select or deploy a permanent
+receiver yet.
+
 ### Later Experiments
 
-- iPhone audio and screen casting.
 - Camera-assisted presence, deliberate gestures, and agent vision.
 - Physical knobs, buttons, and clap input.
 - Fitbit-assisted input.
