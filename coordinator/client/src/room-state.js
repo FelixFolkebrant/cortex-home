@@ -1,6 +1,13 @@
 export const IDENTIFY_ACTION = "endpoint.identify";
 export const SCENE_ACTION = "room.scene.activate";
 export const CHANNEL_ACTION = "channel.select";
+const CHANNELS = ["today", "music", "camera", "airplay"];
+
+function adjacentChannel(channel, direction) {
+  const currentIndex = Math.max(0, CHANNELS.indexOf(channel));
+  const offset = direction === "previous" ? -1 : 1;
+  return CHANNELS[(currentIndex + offset + CHANNELS.length) % CHANNELS.length];
+}
 
 export const initialRoomState = {
   connection: "connecting",
@@ -133,7 +140,7 @@ export function nextScene(lighting) {
   return lighting.scenes[(activeIndex + 1) % lighting.scenes.length];
 }
 
-export function keyboardAction(event, lighting) {
+export function keyboardAction(event, lighting, activeChannel) {
   if (
     !event.ctrlKey ||
     !event.altKey ||
@@ -152,6 +159,17 @@ export function keyboardAction(event, lighting) {
   }[event.code];
   if (channel) {
     return { action: CHANNEL_ACTION, channel };
+  }
+
+  const direction = {
+    ArrowLeft: "previous",
+    ArrowRight: "next",
+  }[event.code];
+  if (direction) {
+    return {
+      action: CHANNEL_ACTION,
+      channel: adjacentChannel(activeChannel, direction),
+    };
   }
 
   if (event.code === "KeyS") {
