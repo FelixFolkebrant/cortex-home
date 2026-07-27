@@ -70,6 +70,10 @@ pnpm --dir coordinator/client test
 pnpm --dir coordinator/client build
 ```
 
+`Control`+`Alt`+`M` toggles a local iMac performance overview above the browser
+shell. It reads bounded current CPU, memory, temperature, load, and uptime data
+from the endpoint's origin-bound loopback bridge and polls only while visible.
+
 ## Speech Qualification
 
 `Ctrl`+`Alt`+`Space` is the deliberate microphone boundary. The first exact
