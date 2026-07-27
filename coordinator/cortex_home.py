@@ -573,6 +573,9 @@ class Coordinator:
                     self.active_interaction,
                     "failed",
                 )
+        close_agent = getattr(self.agent, "close", None)
+        if close_agent:
+            close_agent()
 
     def set_hue_status(self, status):
         with self.lock:

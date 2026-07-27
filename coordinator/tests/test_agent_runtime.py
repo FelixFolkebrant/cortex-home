@@ -140,6 +140,43 @@ class NodeAgentTests(unittest.TestCase):
             )
         self.assertEqual(raised.exception.code, "agent_timeout")
 
+    def test_parent_close_terminates_the_process_group(self):
+        marker = self.root / "started"
+        agent = self.agent(
+            "import pathlib, sys, time\n"
+            "sys.stdin.read()\n"
+            f"pathlib.Path({str(marker)!r}).write_text('started')\n"
+            "time.sleep(30)\n",
+            timeout=5,
+        )
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            result = executor.submit(
+                agent.answer,
+                "voice-shutdown",
+                "Question",
+                {"activeChannel": "today"},
+                threading.Event(),
+            )
+            for _index in range(100):
+                if marker.exists():
+                    break
+                threading.Event().wait(0.01)
+            self.assertTrue(marker.exists())
+            agent.close()
+            with self.assertRaises(AgentError) as raised:
+                result.result(timeout=2)
+
+        self.assertEqual(raised.exception.code, "cancelled")
+        with self.assertRaises(AgentError) as closed:
+            agent.answer(
+                "voice-after-shutdown",
+                "Question",
+                {"activeChannel": "today"},
+                threading.Event(),
+            )
+        self.assertEqual(closed.exception.code, "cancelled")
+
     def test_requires_a_protected_key_before_start(self):
         with self.assertRaises(AgentError) as raised:
             NodeAgent("/node", self.child, "")

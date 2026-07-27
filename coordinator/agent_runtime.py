@@ -2,6 +2,7 @@ import json
 import os
 import signal
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -32,6 +33,10 @@ class NodeAgent:
         self.timeout = timeout
         self.stop_timeout = stop_timeout
         self.popen = popen
+        self.lock = threading.Lock()
+        self.stop_lock = threading.Lock()
+        self.process = None
+        self.closed = False
 
         if not isinstance(api_key, str) or not api_key:
             raise AgentError("agent_unconfigured")
@@ -52,19 +57,23 @@ class NodeAgent:
         if certificate := os.environ.get("NODE_EXTRA_CA_CERTS"):
             environment["NODE_EXTRA_CA_CERTS"] = certificate
 
-        try:
-            process = self.popen(
-                [str(self.node), str(self.child)],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                env=environment,
-                start_new_session=True,
-            )
-        except OSError as error:
-            raise AgentError("agent_start_failed") from error
+        with self.lock:
+            if self.closed:
+                raise AgentError("cancelled")
+            try:
+                process = self.popen(
+                    [str(self.node), str(self.child)],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    env=environment,
+                    start_new_session=True,
+                )
+            except OSError as error:
+                raise AgentError("agent_start_failed") from error
+            self.process = process
 
         started = time.monotonic()
         input_text = f"{payload}\n"
@@ -77,7 +86,7 @@ class NodeAgent:
                 break
             except subprocess.TimeoutExpired:
                 input_text = None
-                if cancelled.is_set():
+                if cancelled.is_set() or self._is_closed():
                     self._stop(process)
                     raise AgentError("cancelled")
                 if time.monotonic() - started >= self.timeout:
@@ -87,7 +96,7 @@ class NodeAgent:
                 self._stop(process)
                 raise AgentError("agent_failed") from error
 
-        if cancelled.is_set():
+        if cancelled.is_set() or self._is_closed():
             raise AgentError("cancelled")
         if stderr or len(stdout.encode()) > MAX_AGENT_OUTPUT_BYTES:
             raise AgentError("agent_protocol_failed")
@@ -126,24 +135,36 @@ class NodeAgent:
             raise AgentError("agent_protocol_failed")
         return answer
 
+    def close(self):
+        with self.lock:
+            self.closed = True
+            process = self.process
+        if process:
+            self._stop(process)
+
+    def _is_closed(self):
+        with self.lock:
+            return self.closed
+
     def _stop(self, process):
-        if process.poll() is not None:
-            self._close_pipes(process)
-            return
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-            process.wait(timeout=self.stop_timeout)
-        except (OSError, subprocess.TimeoutExpired):
+        with self.stop_lock:
+            if process.poll() is not None:
+                self._close_pipes(process)
+                return
             try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except OSError:
-                pass
-            try:
+                os.killpg(process.pid, signal.SIGTERM)
                 process.wait(timeout=self.stop_timeout)
-            except subprocess.TimeoutExpired:
-                pass
-        finally:
-            self._close_pipes(process)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                try:
+                    process.wait(timeout=self.stop_timeout)
+                except subprocess.TimeoutExpired:
+                    pass
+            finally:
+                self._close_pipes(process)
 
     @staticmethod
     def _close_pipes(process):
