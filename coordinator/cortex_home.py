@@ -38,7 +38,7 @@ ALARM_DISARM_ACTION = "alarm.disarm"
 ALARM_DISMISS_ACTION = "alarm.dismiss"
 ALARM_ACTIONS = {ALARM_ARM_ACTION, ALARM_DISARM_ACTION, ALARM_DISMISS_ACTION}
 ALLOWED_ACTIONS = {ACTION, SCENE_ACTION, CHANNEL_ACTION, *ALARM_ACTIONS}
-CHANNELS = {"today", "music", "camera", "airplay"}
+CHANNELS = {"today", "music", "camera", "airplay", "alarm"}
 MAX_BODY_BYTES = 4096
 MAX_AUDIO_BODY_BYTES = 44 + 16_000 * 2 * 15
 MAX_COLLECTION_LENGTH = 512
@@ -221,7 +221,7 @@ class Coordinator:
             raise ApiError(
                 HTTPStatus.BAD_REQUEST,
                 "invalid_channel",
-                "channel must be today, music, camera, or airplay.",
+                "channel must be today, music, camera, airplay, or alarm.",
             )
         if action != CHANNEL_ACTION and channel is not None:
             raise ApiError(

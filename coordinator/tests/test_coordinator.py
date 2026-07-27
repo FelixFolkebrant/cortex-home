@@ -682,7 +682,7 @@ class CoordinatorTests(unittest.TestCase):
 
     def test_selects_a_channel_without_an_endpoint_and_rejects_invalid_values(self):
         self.coordinator.disconnect_endpoint(self.endpoint.token)
-        self.assertEqual(CHANNELS, {"today", "music", "camera", "airplay"})
+        self.assertEqual(CHANNELS, {"today", "music", "camera", "airplay", "alarm"})
 
         status, payload = self.coordinator.submit(
             "select-without-endpoint",
