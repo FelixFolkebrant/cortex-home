@@ -17,7 +17,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from agent_runtime import AgentError, NodeAgent
-from context import build_room_context
+from context import build_answer_context, build_room_context
 from hue import (
     HueAdapter,
     HueSceneError,
@@ -354,11 +354,10 @@ class Coordinator:
 
             with self.lock:
                 self._require_interaction_current_locked(interaction)
-                context = build_room_context(
+                context = build_answer_context(
                     self.channel.get("active"),
                     self.today,
                     self.playback,
-                    self.lighting,
                 )
                 interaction.phase = "thinking"
                 self._publish_interaction_locked(interaction)

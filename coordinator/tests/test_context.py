@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from context import build_room_context
+from context import build_answer_context, build_room_context
 
 
 TODAY = {
@@ -46,6 +46,13 @@ LIGHTING = {
 
 
 class ContextTests(unittest.TestCase):
+    def test_answer_context_contains_only_the_active_view(self):
+        context = build_answer_context("today", TODAY, MUSIC)
+
+        self.assertEqual(set(context), {"activeChannel", "channel"})
+        self.assertEqual(context["activeChannel"], "today")
+        self.assertEqual(context["channel"]["current"]["temperatureC"], 20.5)
+
     def test_projects_only_today_when_today_is_active(self):
         context = build_room_context("today", TODAY, MUSIC, LIGHTING)
 

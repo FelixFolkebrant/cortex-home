@@ -755,6 +755,7 @@ class AgentInteractionTests(unittest.TestCase):
         self.assertEqual(request_id, "voice-1")
         self.assertEqual(transcript, self.recognizer.transcript)
         self.assertEqual(context["activeChannel"], "today")
+        self.assertEqual(set(context), {"activeChannel", "channel"})
         self.next_phase("transcribing")
         self.next_phase("thinking")
 

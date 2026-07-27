@@ -24,7 +24,6 @@ const request = {
       current: { condition: "Clear", temperatureC: 21 },
       type: "today",
     },
-    lighting: { activeScenes: ["Warm"], available: true, scenes: ["Warm"] },
   },
   requestId: "voice-test-1",
   transcript: "Do I need a jacket?",
@@ -66,6 +65,7 @@ test("the child request is exact, bounded, and channel scoped", () => {
     { ...request, transcript: "x".repeat(4_097) },
     { ...request, context: [] },
     { ...request, context: { activeChannel: "camera" } },
+    { ...request, context: { ...request.context, lighting: {} } },
   ]) {
     assert.throws(
       () => validateRequest(invalid),

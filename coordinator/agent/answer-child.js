@@ -90,6 +90,7 @@ export function validateRequest(value) {
   if (
     context === undefined ||
     Buffer.byteLength(context) > MAX_CONTEXT_BYTES ||
+    Object.keys(value.context).sort().join(",") !== "activeChannel,channel" ||
     !["music", "today"].includes(value.context.activeChannel)
   ) {
     throw new AgentRequestError("invalid_request");

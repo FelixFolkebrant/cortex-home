@@ -202,10 +202,12 @@ configuration before it opens port 8080.
 
 Each accepted capture owns one fresh
 `/opt/cortex-home/agent/answer-child.js` process. The child receives only its
-request ID, bounded transcript, and fresh reduced room context through standard
-input. It has no tools or history and returns only one bounded answer through
-standard output. The coordinator terminates its process group on replacement,
-disconnect, timeout, malformed output, or shutdown.
+request ID, bounded transcript, and fresh reduced active-view context through
+standard input. That context contains exactly `activeChannel` and `channel`;
+lighting remains internal until later accepted work. The child has no tools or
+history and returns only one bounded answer through standard output. The
+coordinator terminates its process group on replacement, disconnect, timeout,
+malformed output, or shutdown.
 
 The locked child uses `@earendil-works/pi-agent-core` and
 `@earendil-works/pi-ai` `0.82.1` with
@@ -361,8 +363,9 @@ Unavailable or invalid snapshots reduce to a small unavailable context instead
 of forwarding unknown fields. The projection omits provider objects,
 credentials, artwork URLs, Spotify URIs, endpoint tokens, Hue resource IDs, raw
 events, cache metadata, and coordinator-owned mutable dictionaries. Each
-interaction builds this projection immediately before its one model request and
-passes only the returned value to the supervised child.
+interaction builds a still-smaller active-view projection immediately before
+its one model request and passes only `activeChannel` and `channel` to the
+supervised child.
 
 The full-screen client keeps playback, lighting, coordinator connection, and
 temporary action feedback as independent state. Loaded tracks and episodes
