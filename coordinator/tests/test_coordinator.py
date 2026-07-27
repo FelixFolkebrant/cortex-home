@@ -5,6 +5,7 @@ import os
 import queue
 import threading
 import tempfile
+import time
 import unittest
 import wave
 from concurrent.futures import ThreadPoolExecutor
@@ -308,6 +309,75 @@ class CoordinatorTests(unittest.TestCase):
             )
             self.assertEqual(missed.alarm.status, "missed")
             missed.close()
+
+    def test_ringing_alarm_selects_its_channel_and_activates_only_warm_low(self):
+        class Timer:
+            def __init__(self, *_args, **_kwargs):
+                self.daemon = False
+
+            def start(self):
+                pass
+
+            def cancel(self):
+                pass
+
+        clock = [datetime(2026, 7, 27, 19, 25, tzinfo=timezone.utc)]
+        coordinator = Coordinator(now=lambda: clock[0], timer_factory=Timer)
+        endpoint = coordinator.connect_endpoint()
+        self.initial_snapshots(endpoint)
+        coordinator.submit("alarm-arm", ALARM_ARM_ACTION, alarm_time="21:30")
+        for _index in range(3):
+            endpoint.events.get(timeout=1)
+        activated = threading.Event()
+        calls = []
+
+        def activate(scene, timeout):
+            calls.append((scene, timeout))
+            activated.set()
+
+        coordinator.set_scene_activator(activate)
+        clock[0] += timedelta(minutes=5)
+        coordinator._fire_alarm(coordinator.alarm.firesAt)
+
+        self.assertTrue(activated.wait(1))
+        self.assertEqual(calls, [("Warm low", coordinator.action_timeout)])
+        self.assertEqual(coordinator.alarm.status, "ringing")
+        self.assertEqual(endpoint.events.get(timeout=1)[0], "alarm.state")
+        event, channel = endpoint.events.get(timeout=1)
+        self.assertEqual(event, "channel.active")
+        self.assertEqual(channel, {"active": "alarm"})
+        coordinator.close()
+
+    def test_wake_scene_failure_keeps_the_alarm_ringing_and_dismissible(self):
+        class Timer:
+            def __init__(self, *_args, **_kwargs):
+                self.daemon = False
+
+            def start(self):
+                pass
+
+            def cancel(self):
+                pass
+
+        clock = [datetime(2026, 7, 27, 19, 25, tzinfo=timezone.utc)]
+        coordinator = Coordinator(now=lambda: clock[0], timer_factory=Timer)
+        coordinator.submit("alarm-arm", ALARM_ARM_ACTION, alarm_time="21:30")
+        coordinator.set_scene_activator(
+            lambda _scene, _timeout: (_ for _ in ()).throw(HueSceneUnavailable())
+        )
+        clock[0] += timedelta(minutes=5)
+        coordinator._fire_alarm(coordinator.alarm.firesAt)
+
+        deadline = time.monotonic() + 1
+        while coordinator.alarm.error is None and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(coordinator.alarm.status, "ringing")
+        self.assertEqual(coordinator.alarm.error, "scene_unavailable")
+        status, payload = coordinator.submit("alarm-dismiss", ALARM_DISMISS_ACTION)
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(payload["status"], "completed")
+        self.assertEqual(coordinator.alarm.status, "disarmed")
+        coordinator.close()
 
     def test_completes_with_the_caller_request_id(self):
         future = self.submit_in_background()

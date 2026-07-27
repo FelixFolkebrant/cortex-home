@@ -18,7 +18,15 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from agent_runtime import AgentError, NodeAgent
-from alarm import AlarmStore, DISARMED, armed_alarm, due_state, parse_utc, utc_now
+from alarm import (
+    AlarmSnapshot,
+    AlarmStore,
+    DISARMED,
+    armed_alarm,
+    due_state,
+    parse_utc,
+    utc_now,
+)
 from context import build_answer_context, build_room_context
 from hue import (
     HueAdapter,
@@ -68,6 +76,7 @@ VOSK_MODEL = Path("/opt/cortex-home/models/vosk-model-small-en-us-0.15")
 SPOTIFY_URI_PATTERN = re.compile(
     r"^spotify:(?P<type>track|episode):[A-Za-z0-9]{1,64}$"
 )
+WAKE_SCENE = "Warm low"
 
 
 class ApiError(Exception):
@@ -807,6 +816,40 @@ class Coordinator:
             self.alarm = fired
             self.alarm_store.save(self.alarm)
             self._schedule_alarm_locked()
+            self._publish_alarm_locked()
+            self._report_channel_locked("alarm", force=True)
+        thread = threading.Thread(
+            target=self._activate_wake_scene,
+            args=(fires_at,),
+            name="wake-scene",
+            daemon=True,
+        )
+        thread.start()
+
+    def _activate_wake_scene(self, fires_at):
+        try:
+            if self.scene_activator is None:
+                raise HueSceneUnavailable
+            self.scene_activator(WAKE_SCENE, self.action_timeout)
+        except HueSceneUnavailable:
+            code = "scene_unavailable"
+        except HueSceneTimeout:
+            code = "scene_timeout"
+        except HueSceneError:
+            code = "scene_failed"
+        else:
+            return
+
+        with self.lock:
+            if self.alarm.status != "ringing" or self.alarm.firesAt != fires_at:
+                return
+            self.alarm = AlarmSnapshot(
+                "ringing",
+                self.alarm.time,
+                self.alarm.firesAt,
+                code,
+            )
+            self.alarm_store.save(self.alarm)
             self._publish_alarm_locked()
 
     def _publish_alarm_locked(self):

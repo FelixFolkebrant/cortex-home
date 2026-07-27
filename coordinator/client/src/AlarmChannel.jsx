@@ -94,6 +94,9 @@ export function AlarmChannel({ onAction, snapshot }) {
         <p aria-live="polite" className="mt-12 text-xl text-[#f8f0dc]/75">
           Press Enter to dismiss.
         </p>
+        {snapshot.error ? (
+          <p className="mt-4 text-base text-[#ff6961]">{snapshot.error}</p>
+        ) : null}
       </main>
     );
   }

@@ -128,10 +128,11 @@ def validate_snapshot(snapshot):
         if not isinstance(time_text, str) or not TIME_PATTERN.fullmatch(time_text):
             raise ValueError("Invalid persisted alarm state.")
         parse_utc(fires_at)
-        if status == "failed":
-            if not isinstance(error, str) or not 1 <= len(error) <= MAX_ERROR_LENGTH:
-                raise ValueError("Invalid persisted alarm state.")
-        elif error is not None:
+        if error is not None and (
+            not isinstance(error, str) or not 1 <= len(error) <= MAX_ERROR_LENGTH
+        ):
+            raise ValueError("Invalid persisted alarm state.")
+        if status == "failed" and error is None:
             raise ValueError("Invalid persisted alarm state.")
     return AlarmSnapshot(status, time_text, fires_at, error)
 
