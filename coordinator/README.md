@@ -10,10 +10,12 @@ SSH:
 The SSH destination is supplied at runtime so the server hostname or address
 does not enter Git. The installer uses pnpm to build the React client, copies
 only the production artifacts and coordinator to `/opt/cortex-home`, installs
-`aiohue==4.8.1` in `/opt/cortex-home/venv`, installs `cortex-home.service`, and
-starts the coordinator on port 8080. Node.js and pnpm are build-time
-dependencies only. The server requires Python 3.11 or later with `venv`
-support.
+the locked Python and Node answer runtimes, installs `cortex-home.service`, and
+starts the coordinator on port 8080. On the first deployment it asks for the
+dedicated OpenRouter key without echoing it and writes only
+`/etc/cortex-home/agent.env`, owned by `root:cortex-home` with mode `0640`.
+Later deployments preserve that file. The x86-64 server requires Python 3.11
+or later with `venv` support.
 
 After the first deployment, pair the coordinator with the Hue bridge from a
 machine that can reach the server over SSH:
@@ -44,10 +46,11 @@ three-day forecast, then displays the required MET Norway / CC BY 4.0
 attribution. If the forecast cannot be refreshed, Today says weather is
 unavailable without changing Music, Hue, or the coordinator health endpoint.
 
-For local development, start the coordinator:
+For local client development, keep the installed coordinator running and
+forward its private loopback port:
 
 ```sh
-python3 coordinator/cortex_home.py --host 127.0.0.1
+ssh -N -L 8080:127.0.0.1:8080 <server-ssh-host>
 ```
 
 Then start the Vite client in another terminal:
@@ -77,9 +80,8 @@ loss, error, coordinator reconnection, or client cleanup, and it fails after a
 15-second maximum.
 
 The resulting in-memory value is a WAV container containing one channel of
-signed 16-bit little-endian PCM at 16 kHz. GH-014 discards the value after
-validating the capture boundary; GH-016 will connect it to the selected
-recognizer within one interaction request. No recording, transcript, or
+signed 16-bit little-endian PCM at 16 kHz. The browser sends it only to its
+authenticated coordinator interaction. No recording, transcript, or
 synthesized answer is stored or logged by the application.
 
 Install the pinned qualification candidates on the ThinkPad with:
@@ -186,9 +188,48 @@ The selected product roles are Vosk recognition and Pocket TTS
 synthesis. They implement the `Recognizer` and `Synthesizer` protocols in
 `coordinator/speech.py`; coordinator behavior sees only `WaveAudio`, text, and
 explicit `SpeechError` failures rather than engine objects. whisper.cpp and
-Piper remain pinned qualification candidates so GH-016 can revise either
-single selection if the complete agent turn exposes different evidence; they
-are not runtime switches.
+Piper remain pinned qualification evidence and are not runtime switches.
+
+## Contextual Answer Runtime
+
+The production installer downloads the official Node `24.18.0` x86-64 archive,
+checks its pinned SHA-256 digest, and installs it under
+`/opt/cortex-home/node`. It installs only Vosk `0.3.45`,
+`vosk-model-small-en-us-0.15`, Pocket TTS `2.1.0`, and the English `alba` voice
+for the selected speech path. The Vosk archive is checksum-verified. The
+coordinator preloads both speech engines and validates the private agent
+configuration before it opens port 8080.
+
+Each accepted capture owns one fresh
+`/opt/cortex-home/agent/answer-child.js` process. The child receives only its
+request ID, bounded transcript, and fresh reduced room context through standard
+input. It has no tools or history and returns only one bounded answer through
+standard output. The coordinator terminates its process group on replacement,
+disconnect, timeout, malformed output, or shutdown.
+
+The locked child uses `@earendil-works/pi-agent-core` and
+`@earendil-works/pi-ai` `0.82.1` with
+`google/gemini-3.5-flash-lite`. Every request permits only
+`google-vertex/global`, disables fallbacks, requires supported parameters,
+denies data collection, enables Zero Data Retention routing, and sends
+`store: false`. The provider key reaches only the coordinator and the
+per-interaction child environment; it is never sent to the browser.
+
+The endpoint contract is:
+
+- `POST /api/agent/interactions/<request-id>` with the active endpoint token
+  and `audio/wav` returns the current synthesized `audio/wav`.
+- `DELETE /api/agent/interactions/<request-id>` cancels or reserves that
+  endpoint-owned request ID.
+- `POST /api/agent/interactions/<request-id>/status` reports `speaking`,
+  `completed`, or `failed`.
+- `agent.interaction` SSE publishes only the request ID and
+  `transcribing`, `thinking`, `speaking`, `completed`, or `failed`.
+
+A later exact `Ctrl`+`Alt`+`Space` press replaces current answer processing or
+playback before capturing again. Focus loss, endpoint disconnect, invalid
+audio, recognition, provider, synthesis, and playback failures all release the
+same interaction and show a content-free failed state.
 
 With the endpoint connected, an outside caller can invoke its identify action:
 
@@ -319,9 +360,9 @@ Only the active channel appears in `channel`. A Today channel contains
 Unavailable or invalid snapshots reduce to a small unavailable context instead
 of forwarding unknown fields. The projection omits provider objects,
 credentials, artwork URLs, Spotify URIs, endpoint tokens, Hue resource IDs, raw
-events, cache metadata, and coordinator-owned mutable dictionaries. A later
-agent adapter should call `Coordinator.context()` immediately before one local
-model request and pass only the returned value to the supervised local process.
+events, cache metadata, and coordinator-owned mutable dictionaries. Each
+interaction builds this projection immediately before its one model request and
+passes only the returned value to the supervised child.
 
 The full-screen client keeps playback, lighting, coordinator connection, and
 temporary action feedback as independent state. Loaded tracks and episodes

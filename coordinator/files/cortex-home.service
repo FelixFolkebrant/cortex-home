@@ -8,6 +8,8 @@ Type=simple
 User=cortex-home
 Group=cortex-home
 WorkingDirectory=/opt/cortex-home
+Environment=HF_HOME=/opt/cortex-home/models/pocket-cache
+EnvironmentFile=/etc/cortex-home/agent.env
 ExecStart=/opt/cortex-home/venv/bin/python /opt/cortex-home/cortex_home.py
 Restart=on-failure
 RestartSec=2

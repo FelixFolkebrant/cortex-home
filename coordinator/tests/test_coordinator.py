@@ -1,6 +1,7 @@
 import http.client
 import io
 import json
+import os
 import queue
 import threading
 import tempfile
@@ -9,6 +10,7 @@ import wave
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from pathlib import Path
+from unittest.mock import patch
 
 import sys
 
@@ -17,12 +19,16 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from cortex_home import (
     ACTION,
+    AGENT_CHILD,
+    AGENT_NODE,
     CHANNEL_ACTION,
     CHANNELS,
     SCENE_ACTION,
     ApiError,
     Coordinator,
     CortexHomeServer,
+    VOSK_MODEL,
+    load_interaction_runtime,
 )
 from agent_runtime import AgentError
 from hue import HueSceneError, HueSceneTimeout, HueSceneUnavailable
@@ -89,6 +95,37 @@ class FakeAgent:
         if cancelled.is_set():
             raise AgentError("cancelled")
         return self.answer_text
+
+
+class RuntimeConfigurationTests(unittest.TestCase):
+    def test_loads_only_the_fixed_production_runtime(self):
+        with (
+            patch.dict(os.environ, {"OPENROUTER_API_KEY": "private-key"}, clear=True),
+            patch("cortex_home.NodeAgent", return_value="agent") as node_agent,
+            patch(
+                "cortex_home.load_selected_speech",
+                return_value=("recognizer", "synthesizer"),
+            ) as selected_speech,
+        ):
+            runtime = load_interaction_runtime()
+
+        self.assertEqual(runtime, ("agent", "recognizer", "synthesizer"))
+        node_agent.assert_called_once_with(
+            AGENT_NODE,
+            AGENT_CHILD,
+            "private-key",
+        )
+        selected_speech.assert_called_once_with(VOSK_MODEL)
+
+    def test_missing_agent_key_fails_before_loading_speech(self):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("cortex_home.load_selected_speech") as selected_speech,
+            self.assertRaises(AgentError),
+        ):
+            load_interaction_runtime()
+
+        selected_speech.assert_not_called()
 
 
 class CoordinatorTests(unittest.TestCase):

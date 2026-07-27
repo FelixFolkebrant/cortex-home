@@ -22,12 +22,29 @@ if ! command -v systemctl >/dev/null 2>&1; then
   exit 1
 fi
 
+if [ "$(uname -m)" != "x86_64" ]; then
+  echo "Cortex Home requires an x86-64 coordinator." >&2
+  exit 1
+fi
+
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+node_version=24.18.0
+node_archive=node-v$node_version-linux-x64.tar.xz
+node_checksum=55aa7153f9d88f28d765fcdad5ae6945b5c0f98a36881703817e4c450fa76742
+vosk_model=vosk-model-small-en-us-0.15
+vosk_checksum=30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498
 
 if [ ! -f "$script_dir/dist/index.html" ]; then
   echo "The built Cortex Home client is missing." >&2
   exit 1
 fi
+
+for agent_file in answer-child.js package.json pnpm-lock.yaml; do
+  if [ ! -f "$script_dir/agent/$agent_file" ]; then
+    echo "The Cortex Home agent package is incomplete." >&2
+    exit 1
+  fi
+done
 
 if ! id cortex-home >/dev/null 2>&1; then
   useradd \
@@ -37,6 +54,104 @@ if ! id cortex-home >/dev/null 2>&1; then
     --shell /usr/sbin/nologin \
     cortex-home
 fi
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install --yes --no-install-recommends \
+  ca-certificates \
+  curl \
+  libsndfile1 \
+  python3-venv \
+  unzip \
+  xz-utils
+
+install -d --owner=root --group=cortex-home --mode=750 /etc/cortex-home
+agent_environment=/etc/cortex-home/agent.env
+if [ ! -e "$agent_environment" ]; then
+  printf 'OpenRouter API key: ' >/dev/tty
+  previous_terminal=$(stty -g </dev/tty)
+  stty -echo </dev/tty
+  if ! IFS= read -r agent_key </dev/tty; then
+    stty "$previous_terminal" </dev/tty
+    echo "Could not read the OpenRouter API key." >&2
+    exit 1
+  fi
+  stty "$previous_terminal" </dev/tty
+  printf '\n' >/dev/tty
+  case "$agent_key" in
+    *[!A-Za-z0-9_-]* | "")
+      echo "The OpenRouter API key has an invalid format." >&2
+      exit 1
+      ;;
+  esac
+  if [ "${#agent_key}" -lt 20 ] || [ "${#agent_key}" -gt 256 ]; then
+    echo "The OpenRouter API key has an invalid length." >&2
+    exit 1
+  fi
+  credential_build=$(mktemp /etc/cortex-home/.agent.env.XXXXXX)
+  printf 'OPENROUTER_API_KEY=%s\n' "$agent_key" >"$credential_build"
+  chown root:cortex-home "$credential_build"
+  chmod 640 "$credential_build"
+  mv "$credential_build" "$agent_environment"
+  unset agent_key
+fi
+
+if [ -L "$agent_environment" ] ||
+  [ "$(stat -c '%U:%G %a' "$agent_environment")" != "root:cortex-home 640" ]; then
+  echo "The OpenRouter environment must be root:cortex-home mode 0640." >&2
+  exit 1
+fi
+if ! grep -Eq '^OPENROUTER_API_KEY=[A-Za-z0-9_-]{20,256}$' "$agent_environment" ||
+  [ "$(wc -l <"$agent_environment")" -ne 1 ]; then
+  echo "The OpenRouter environment is invalid." >&2
+  exit 1
+fi
+
+build_dir=$(mktemp -d)
+cleanup() {
+  find "$build_dir" -mindepth 1 -delete
+  rmdir "$build_dir"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+curl \
+  --fail \
+  --location \
+  --output "$build_dir/$node_archive" \
+  "https://nodejs.org/dist/v$node_version/$node_archive"
+printf '%s  %s\n' \
+  "$node_checksum" \
+  "$build_dir/$node_archive" \
+  | sha256sum --check -
+
+install -d --owner=root --group=root --mode=755 /opt/cortex-home/node
+find /opt/cortex-home/node -mindepth 1 -delete
+tar \
+  --extract \
+  --file "$build_dir/$node_archive" \
+  --strip-components=1 \
+  --directory /opt/cortex-home/node
+chown -R root:root /opt/cortex-home/node
+
+install -d --owner=root --group=root --mode=755 /opt/cortex-home/agent
+find /opt/cortex-home/agent -mindepth 1 -delete
+cp \
+  "$script_dir/agent/answer-child.js" \
+  "$script_dir/agent/package.json" \
+  "$script_dir/agent/pnpm-lock.yaml" \
+  /opt/cortex-home/agent/
+COREPACK_HOME="$build_dir/corepack" \
+  /opt/cortex-home/node/bin/corepack install \
+  --global \
+  pnpm@10.18.2
+COREPACK_HOME="$build_dir/corepack" \
+  /opt/cortex-home/node/bin/corepack pnpm \
+  --dir /opt/cortex-home/agent \
+  install \
+  --prod \
+  --frozen-lockfile
+chown -R root:root /opt/cortex-home/agent
 
 install -d --owner=root --group=root --mode=755 /opt/cortex-home/client
 find /opt/cortex-home/client -mindepth 1 -delete
@@ -68,13 +183,48 @@ install --owner=root --group=root --mode=644 \
   /opt/cortex-home/requirements.txt
 install -d --owner=root --group=cortex-home --mode=750 /etc/cortex-home
 install -d --owner=root --group=cortex-home --mode=770 /var/cache/cortex-home
+install -d --owner=root --group=root --mode=755 /opt/cortex-home/models
 
 /usr/bin/python3 -m venv --clear /opt/cortex-home/venv
 /opt/cortex-home/venv/bin/python -m pip install \
   --disable-pip-version-check \
+  --extra-index-url https://download.pytorch.org/whl/cpu \
   --no-cache-dir \
   --requirement /opt/cortex-home/requirements.txt
 /opt/cortex-home/venv/bin/python -m pip check
+
+curl \
+  --fail \
+  --location \
+  --output "$build_dir/$vosk_model.zip" \
+  "https://alphacephei.com/vosk/models/$vosk_model.zip"
+printf '%s  %s\n' \
+  "$vosk_checksum" \
+  "$build_dir/$vosk_model.zip" \
+  | sha256sum --check -
+if [ -e "/opt/cortex-home/models/$vosk_model" ]; then
+  find "/opt/cortex-home/models/$vosk_model" -mindepth 1 -delete
+  rmdir "/opt/cortex-home/models/$vosk_model"
+fi
+unzip -q "$build_dir/$vosk_model.zip" -d /opt/cortex-home/models
+HF_HOME=/opt/cortex-home/models/pocket-cache \
+  /opt/cortex-home/venv/bin/python -c \
+  'from pocket_tts import TTSModel; model = TTSModel.load_model(); model.get_state_for_audio_prompt("alba")'
+chown -R root:root /opt/cortex-home/models
+chmod -R a+rX,u+w,go-w /opt/cortex-home/models
+
+/opt/cortex-home/node/bin/node -e \
+  'if (process.versions.node !== "24.18.0") process.exit(1)'
+/opt/cortex-home/node/bin/node -e \
+  'const fs = require("node:fs"); for (const [name, version] of [["@earendil-works/pi-agent-core", "0.82.1"], ["@earendil-works/pi-ai", "0.82.1"]]) { const actual = JSON.parse(fs.readFileSync(`/opt/cortex-home/agent/node_modules/${name}/package.json`)).version; if (actual !== version) process.exit(1); }'
+set -a
+. "$agent_environment"
+set +a
+HF_HOME=/opt/cortex-home/models/pocket-cache \
+  PYTHONPATH=/opt/cortex-home \
+  /opt/cortex-home/venv/bin/python -c \
+  'from agent_runtime import NodeAgent; from cortex_home import AGENT_CHILD, AGENT_NODE, VOSK_MODEL; from speech import load_selected_speech; NodeAgent(AGENT_NODE, AGENT_CHILD, __import__("os").environ["OPENROUTER_API_KEY"]); load_selected_speech(VOSK_MODEL)'
+unset OPENROUTER_API_KEY
 PYTHONPATH=/opt/cortex-home \
   /opt/cortex-home/venv/bin/python -c "import cortex_home"
 

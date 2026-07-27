@@ -3,6 +3,7 @@
 import argparse
 import json
 import mimetypes
+import os
 import queue
 import re
 import secrets
@@ -15,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from agent_runtime import AgentError
+from agent_runtime import AgentError, NodeAgent
 from context import build_room_context
 from hue import (
     HueAdapter,
@@ -24,7 +25,7 @@ from hue import (
     HueSceneUnavailable,
 )
 from today import TodayAdapter, unavailable_summary
-from speech import SpeechError, read_capture, read_synthesis
+from speech import SpeechError, load_selected_speech, read_capture, read_synthesis
 
 
 ACTION = "endpoint.identify"
@@ -55,6 +56,9 @@ PLAYBACK_KEYS = {"item", "positionMs", "status"}
 PLAYBACK_STATUSES = {"paused", "playing", "stopped", "unavailable"}
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 CLIENT_ENTRY_PATTERN = re.compile(r'<script\b[^>]*\bsrc="(?P<src>/assets/[^"]+)"')
+AGENT_NODE = Path("/opt/cortex-home/node/bin/node")
+AGENT_CHILD = Path("/opt/cortex-home/agent/answer-child.js")
+VOSK_MODEL = Path("/opt/cortex-home/models/vosk-model-small-en-us-0.15")
 SPOTIFY_URI_PATTERN = re.compile(
     r"^spotify:(?P<type>track|episode):[A-Za-z0-9]{1,64}$"
 )
@@ -1318,9 +1322,25 @@ def parse_args():
     return parser.parse_args()
 
 
+def load_interaction_runtime():
+    agent = NodeAgent(
+        AGENT_NODE,
+        AGENT_CHILD,
+        os.environ.get("OPENROUTER_API_KEY"),
+    )
+    recognizer, synthesizer = load_selected_speech(VOSK_MODEL)
+    return agent, recognizer, synthesizer
+
+
 def main():
     args = parse_args()
-    coordinator = Coordinator(action_timeout=args.action_timeout)
+    agent, recognizer, synthesizer = load_interaction_runtime()
+    coordinator = Coordinator(
+        action_timeout=args.action_timeout,
+        agent=agent,
+        recognizer=recognizer,
+        synthesizer=synthesizer,
+    )
     hue = HueAdapter(
         args.hue_config,
         coordinator.set_hue_status,
