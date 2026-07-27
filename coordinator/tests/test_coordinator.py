@@ -794,6 +794,24 @@ class AgentInteractionTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "interaction_cancelled")
         self.assertIsNone(self.synthesizer.text)
 
+    def test_cancellation_before_upload_reserves_the_request_id(self):
+        cancelled = self.coordinator.cancel_interaction(
+            self.endpoint.token,
+            "voice-early-cancel",
+        )
+
+        self.assertEqual(cancelled["phase"], "failed")
+        self.next_phase("failed")
+        with self.assertRaises(ApiError) as raised:
+            self.coordinator.interact(
+                self.endpoint.token,
+                "voice-early-cancel",
+                wave_audio().data,
+            )
+
+        self.assertEqual(raised.exception.code, "duplicate_request_id")
+        self.assertIsNone(self.agent.request)
+
     def test_disconnect_cancels_only_the_owning_interaction(self):
         started = threading.Event()
 

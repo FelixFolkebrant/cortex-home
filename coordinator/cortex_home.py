@@ -418,7 +418,24 @@ class Coordinator:
         with self.lock:
             self._require_endpoint_locked(endpoint_token)
             interaction = self.interactions.get(request_id)
-            if not interaction or interaction.endpoint_token != endpoint_token:
+            if not interaction:
+                if request_id in self.requests:
+                    raise ApiError(
+                        HTTPStatus.NOT_FOUND,
+                        "unknown_interaction",
+                        "No interaction matches this endpoint and request ID.",
+                    )
+                interaction = AgentInteraction(
+                    request_id,
+                    endpoint_token,
+                    phase="failed",
+                )
+                interaction.cancelled.set()
+                self.interactions[request_id] = interaction
+                self._trim_interactions_locked()
+                self._publish_interaction_locked(interaction)
+                return interaction.payload()
+            if interaction.endpoint_token != endpoint_token:
                 raise ApiError(
                     HTTPStatus.NOT_FOUND,
                     "unknown_interaction",
