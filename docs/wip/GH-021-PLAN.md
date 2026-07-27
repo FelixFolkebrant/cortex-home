@@ -73,9 +73,9 @@
   and stale buffered digits do nothing.
 - [ ] The editor clearly distinguishes the selected field, the next calendar
   occurrence, disarmed, armed, sleep-ready, missed, and failure states.
-- [ ] The first plain Enter submits the displayed alarm. Only an observed armed
-  snapshot enables a second plain Enter to request iMac sleep; this prevents an
-  unacknowledged draft from suspending the endpoint.
+- [ ] A plain Enter submits the displayed alarm. Only `Ctrl`+`Enter`, after an
+  observed armed snapshot, requests iMac sleep; this prevents an unacknowledged
+  draft from suspending the endpoint.
 - [ ] Escape before sleep disarms the alarm and returns to editing. No key used
   by the Alarm view changes Camera, Music, AirPlay, voice, or scene-cycle
   behavior outside that mounted view.
@@ -208,10 +208,10 @@ endpoint suspend, and audio ownership live in `../planpoints/PP-7.md`.
 
 ### H1 - Make Sleep A Two-Step Confirmation
 
-- Decision: Use the first Enter to arm through the coordinator and a second
-  Enter, enabled only by the observed armed state, to suspend the iMac.
+- Decision: Use Enter to arm through the coordinator and `Ctrl`+`Enter`,
+  enabled only by the observed armed state, to suspend the iMac.
 - Proposed approach: Show the resolved date and time after arming, then present
-  one explicit `Press Enter to sleep` state. Escape disarms and returns to
+  one explicit `Press Ctrl+Enter to sleep` state. Escape disarms and returns to
   editing.
 - Why: A network acknowledgement must not suspend the endpoint implicitly, and
   automatic idle sleep could interrupt other room uses.
