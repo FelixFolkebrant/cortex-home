@@ -215,22 +215,22 @@ without creating an ambient or general-purpose assistant.
 
 ## Issues
 
-1. **GH-012 - Publish Agent-Safe Room Context**: extract one immutable,
+1. **GH-012 COMPLETE - Publish Agent-Safe Room Context**: extracted one immutable,
    provider-free context projection for Today, Music, and lighting without
    adding a model, microphone, public endpoint, or frontend change.
-2. **GH-014 - Qualify Deliberate Local Speech**: qualify the USB-connected
+2. **GH-014 COMPLETE - Qualify Deliberate Local Speech**: qualified the USB-connected
    Anker PowerConf S330, press-bounded Chromium capture, the shared exact-origin
    media security boundary, English Vosk and quantized `whisper.cpp`, Piper and
    Pocket TTS, the two small backend contracts, endpoint permissions, bounded
    start and playback-stop latency, and resource use before agent behavior
    depends on them.
-3. **GH-016 - Answer One Contextual Follow-Up**: add the supervised Node
+3. **GH-016 COMPLETE - Answer One Contextual Follow-Up**: added the supervised Node
    process, Pi Agent Core with `pi-ai`, protected OpenRouter credential, pinned
    qualified text model, request-ID cancellation seam, ephemeral interaction
    lifecycle, and one spoken answer about Today or Music without tools.
-4. **GH-018 - Activate One Scene By Voice**: expose only exact scene activation,
-   execute at most one strict tool call through the coordinator, and speak the
-   observed result.
+4. **GH-018 NEXT - Activate One Scene By Voice**: expose only exact scene
+   activation, execute at most one strict tool call through the coordinator,
+   and speak the observed result.
 
 ## Conceptual Heatmap
 
