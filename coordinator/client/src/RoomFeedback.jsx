@@ -1,4 +1,5 @@
 import { cva } from "class-variance-authority";
+import { AGENT_INTERACTION_ACTION } from "./agent-interaction";
 import { cn } from "./classes";
 import { CHANNEL_ACTION, IDENTIFY_ACTION, SCENE_ACTION } from "./room-state";
 import { VOICE_CAPTURE_ACTION } from "./voice-capture";
@@ -19,6 +20,13 @@ const interactionCopy = {
     listening: ["Listening.", "Keep holding Control, Alt, and Space."],
     captured: ["Captured.", "The bounded utterance was released."],
     failed: ["Couldn’t capture.", "The microphone request failed."],
+  },
+  [AGENT_INTERACTION_ACTION]: {
+    transcribing: ["Transcribing.", "Turning the bounded utterance into text."],
+    thinking: ["Thinking.", "Using the current room context."],
+    speaking: ["Speaking.", "Playing one short answer."],
+    completed: ["Answered.", "The contextual answer completed."],
+    failed: ["Couldn’t answer.", "The voice interaction failed."],
   },
 };
 
@@ -85,7 +93,8 @@ function InteractionOverlay({ interaction }) {
   if (
     interaction.state === "idle" ||
     interaction.action === CHANNEL_ACTION ||
-    interaction.action === VOICE_CAPTURE_ACTION
+    interaction.action === VOICE_CAPTURE_ACTION ||
+    interaction.action === AGENT_INTERACTION_ACTION
   ) {
     return null;
   }
@@ -132,11 +141,14 @@ function InteractionOverlay({ interaction }) {
 }
 
 function VoiceCaptureBar({ interaction }) {
-  if (interaction.action !== VOICE_CAPTURE_ACTION || interaction.state === "idle") {
+  if (
+    ![AGENT_INTERACTION_ACTION, VOICE_CAPTURE_ACTION].includes(interaction.action) ||
+    interaction.state === "idle"
+  ) {
     return null;
   }
 
-  const copy = interactionCopy[VOICE_CAPTURE_ACTION][interaction.state];
+  const copy = interactionCopy[interaction.action][interaction.state];
   if (!copy) {
     return null;
   }
@@ -144,15 +156,26 @@ function VoiceCaptureBar({ interaction }) {
   const level = Math.max(0, Math.min(1, interaction.level || 0));
   const width = {
     captured: 55,
+    completed: 100,
     failed: 100,
     listening: 10 + level * 90,
     requesting: 18,
+    speaking: 90,
+    thinking: 66,
+    transcribing: 40,
   }[interaction.state];
   const tone = {
     captured: "bg-[#92d6a1] shadow-[0_0_1.5rem_rgb(146_214_161_/_55%)]",
+    completed: "bg-[#92d6a1] shadow-[0_0_1.5rem_rgb(146_214_161_/_55%)]",
     failed: "bg-[#e67d6f] shadow-[0_0_1.5rem_rgb(230_125_111_/_55%)]",
     listening: "bg-[#d6a954] shadow-[0_0_1.75rem_rgb(214_169_84_/_65%)]",
     requesting:
+      "animate-pulse bg-[#d6a954] shadow-[0_0_1.5rem_rgb(214_169_84_/_55%)] motion-reduce:animate-none",
+    speaking:
+      "animate-pulse bg-[#92d6a1] shadow-[0_0_1.75rem_rgb(146_214_161_/_60%)] motion-reduce:animate-none",
+    thinking:
+      "animate-pulse bg-[#d6a954] shadow-[0_0_1.5rem_rgb(214_169_84_/_55%)] motion-reduce:animate-none",
+    transcribing:
       "animate-pulse bg-[#d6a954] shadow-[0_0_1.5rem_rgb(214_169_84_/_55%)] motion-reduce:animate-none",
   }[interaction.state];
 
@@ -162,7 +185,11 @@ function VoiceCaptureBar({ interaction }) {
         className="max-w-[min(90vw,52rem)] rounded-full border border-white/10 bg-[#0d0d0f]/88 px-5 py-2 text-center shadow-2xl backdrop-blur-xl"
         role="status"
         aria-live="assertive"
-        aria-label="Cortex Home / Microphone"
+        aria-label={
+          interaction.action === AGENT_INTERACTION_ACTION
+            ? "Cortex Home / Voice answer"
+            : "Cortex Home / Microphone"
+        }
       >
         <span className="text-xs font-bold tracking-[0.18em] text-[#f1d18b] uppercase">
           {title}

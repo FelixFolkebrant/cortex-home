@@ -321,6 +321,32 @@ test("room feedback makes deliberate microphone capture visible", () => {
   assert.match(markup, /width:55%/);
 });
 
+test("room feedback keeps contextual answer phases compact and content-free", () => {
+  for (const [state, title] of [
+    ["transcribing", "Transcribing."],
+    ["thinking", "Thinking."],
+    ["speaking", "Speaking."],
+    ["completed", "Answered."],
+    ["failed", "Couldn’t answer."],
+  ]) {
+    const markup = renderToStaticMarkup(
+      createElement(RoomFeedback, {
+        connection: "connected",
+        interaction: {
+          action: "agent.interaction",
+          message: null,
+          state,
+        },
+        lighting: { activeScenes: [], status: "available" },
+      }),
+    );
+
+    assert.match(markup, /Cortex Home \/ Voice answer/);
+    assert.match(markup, new RegExp(title.replace(".", "\\.")));
+    assert.doesNotMatch(markup, /transcript|requestId|answer text/i);
+  }
+});
+
 test("Music fullscreen keeps microphone feedback without room chrome", () => {
   const markup = renderToStaticMarkup(
     createElement(RoomFeedback, {
@@ -342,6 +368,30 @@ test("Music fullscreen keeps microphone feedback without room chrome", () => {
   );
 
   assert.match(markup, /Cortex Home \/ Microphone/);
+  assert.doesNotMatch(markup, /Coordinator offline · Reconnecting/);
+  assert.doesNotMatch(markup, /Warm active/);
+});
+
+test("Music fullscreen keeps contextual answer feedback without room chrome", () => {
+  const markup = renderToStaticMarkup(
+    createElement(RoomFeedback, {
+      connection: "disconnected",
+      interaction: {
+        action: "agent.interaction",
+        message: null,
+        state: "speaking",
+      },
+      lighting: {
+        activeScenes: ["Warm"],
+        status: "available",
+      },
+      showLightingStatus: true,
+      voiceOnly: true,
+    }),
+  );
+
+  assert.match(markup, /Cortex Home \/ Voice answer/);
+  assert.match(markup, /Speaking\./);
   assert.doesNotMatch(markup, /Coordinator offline · Reconnecting/);
   assert.doesNotMatch(markup, /Warm active/);
 });
