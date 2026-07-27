@@ -1,3 +1,9 @@
+import http.client
+import json
+import socket
+import subprocess
+import tempfile
+import time
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -6,6 +12,117 @@ from pathlib import Path
 PROVISION_HOST = Path(__file__).parents[1] / "provision-host"
 ENDPOINT_DIR = PROVISION_HOST.parent
 FILES = ENDPOINT_DIR / "files"
+
+
+@unittest.skipUnless(
+    Path("/usr/bin/nc").is_file(),
+    "OpenBSD netcat is not installed in the test environment.",
+)
+class AirPlayControlTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        temporary_path = Path(self.temporary_directory.name)
+        self.origin = "http://coordinator.test:8080"
+        coordinator_url = temporary_path / "coordinator-url"
+        coordinator_url.write_text(f"{self.origin}\n")
+        state_file = temporary_path / "state"
+        state_file.write_text("off\n")
+        helper = temporary_path / "airplay-helper"
+        helper.write_text(
+            "#!/bin/sh\n"
+            "set -eu\n"
+            f"state_file={state_file}\n"
+            'case "$1" in\n'
+            '  status) sed -n "1p" "$state_file" ;;\n'
+            '  receiver-on) printf "on\\n" > "$state_file" ;;\n'
+            '  receiver-off) printf "off\\n" > "$state_file" ;;\n'
+            "  *) exit 1 ;;\n"
+            "esac\n"
+        )
+        helper.chmod(0o755)
+
+        with socket.socket() as available_port:
+            available_port.bind(("127.0.0.1", 0))
+            self.port = available_port.getsockname()[1]
+
+        control = temporary_path / "cortex-airplay-control"
+        control.write_text(
+            (FILES / "cortex-airplay-control")
+            .read_text()
+            .replace(
+                "coordinator_url_file=/etc/cortex-endpoint/coordinator-url",
+                f"coordinator_url_file={coordinator_url}",
+            )
+            .replace(
+                "airplay_helper=/usr/local/bin/cortex-endpoint-airplay",
+                f"airplay_helper={helper}",
+            )
+            .replace(
+                "127.0.0.1 38019",
+                f"127.0.0.1 {self.port}",
+            )
+        )
+        control.chmod(0o755)
+        self.process = subprocess.Popen(
+            [control],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.addCleanup(self.stop_control)
+
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            try:
+                status, _ = self.request("GET", "/status")
+                if status == 200:
+                    return
+            except OSError:
+                time.sleep(0.02)
+
+        self.process.terminate()
+        _, error = self.process.communicate(timeout=2)
+        self.fail(f"The AirPlay control test server did not start: {error}")
+
+    def stop_control(self):
+        if self.process.poll() is None:
+            self.process.terminate()
+            self.process.wait(timeout=2)
+        self.process.stderr.close()
+
+    def request(self, method, path, origin=None):
+        for attempt in range(10):
+            connection = http.client.HTTPConnection(
+                "127.0.0.1",
+                self.port,
+                timeout=2,
+            )
+            self.addCleanup(connection.close)
+            try:
+                connection.request(
+                    method,
+                    path,
+                    headers={"Origin": origin or self.origin},
+                )
+                response = connection.getresponse()
+                body = response.read()
+                payload = json.loads(body) if body else None
+                return response.status, payload
+            except ConnectionRefusedError:
+                if attempt == 9:
+                    raise
+                time.sleep(0.01)
+
+    def test_controls_receiver_and_rejects_another_origin(self):
+        self.assertEqual(self.request("GET", "/status"), (200, {"state": "off"}))
+        self.assertEqual(self.request("POST", "/on"), (200, {"state": "on"}))
+        self.assertEqual(self.request("GET", "/status"), (200, {"state": "on"}))
+        self.assertEqual(self.request("POST", "/off"), (200, {"state": "off"}))
+        self.assertEqual(
+            self.request("POST", "/on", "http://untrusted.test"),
+            (403, {"error": "Origin not allowed."}),
+        )
 
 
 class ProvisioningTests(unittest.TestCase):
@@ -195,9 +312,14 @@ class ProvisioningTests(unittest.TestCase):
             self.assertIn("gstreamer1.0-plugins-good", script)
             self.assertIn("gstreamer1.0-pulseaudio", script)
             self.assertIn("gstreamer1.0-x", script)
+            self.assertIn("netcat-openbsd", script)
             self.assertIn("uxplay", script)
             self.assertIn(
                 "/usr/local/bin/cortex-endpoint-airplay",
+                script,
+            )
+            self.assertIn(
+                "/usr/local/bin/cortex-airplay-control",
                 script,
             )
             self.assertNotIn("xcompmgr", script)
@@ -207,13 +329,17 @@ class ProvisioningTests(unittest.TestCase):
             '"$script_dir/files/cortex-endpoint-airplay"',
             deploy_script,
         )
+        self.assertIn(
+            '"$script_dir/files/cortex-airplay-control"',
+            deploy_script,
+        )
 
     def test_airplay_helper_is_ephemeral_and_passwordless(self):
         helper = (FILES / "cortex-endpoint-airplay").read_text()
         session = (FILES / "cortex-endpoint-session").read_text()
 
         self.assertIn("/usr/bin/uxplay", helper)
-        self.assertIn('-n "Cortex AirPlay"', helper)
+        self.assertIn('-n "Skärmen"', helper)
         self.assertIn("-fs", helper)
         self.assertIn("-as pulsesink", helper)
         self.assertNotIn("-pin", helper)
@@ -223,7 +349,6 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn('"$coordinator_url/api/actions"', helper)
         self.assertIn("--max-time 5", helper)
         self.assertIn("post_channel airplay", helper)
-        self.assertIn("post_channel today", helper)
         self.assertIn('post_channel "$mode"', helper)
         self.assertIn('kill -INT "$airplay_pid"', helper)
         self.assertIn('kill -TERM "$airplay_pid"', helper)
@@ -236,6 +361,21 @@ class ProvisioningTests(unittest.TestCase):
             "/usr/local/bin/cortex-endpoint-airplay stop-local",
             session,
         )
+        self.assertIn("/usr/local/bin/cortex-airplay-control &", session)
+        self.assertIn('kill "$airplay_control_pid"', session)
+
+    def test_airplay_control_is_loopback_only_and_origin_bound(self):
+        control = (FILES / "cortex-airplay-control").read_text()
+
+        self.assertIn("/usr/bin/nc -l -N 127.0.0.1 38019", control)
+        self.assertNotIn("0.0.0.0", control)
+        self.assertIn('if [[ $origin != "$coordinator_url" ]]', control)
+        self.assertIn("Access-Control-Allow-Private-Network: true", control)
+        self.assertIn("GET && $path == /status", control)
+        self.assertIn("POST && $path == /on", control)
+        self.assertIn("POST && $path == /off", control)
+        self.assertIn('"$airplay_helper" receiver-on', control)
+        self.assertIn('"$airplay_helper" receiver-off', control)
 
     def test_openbox_controls_airplay_and_raises_each_mirror_window(self):
         openbox = ET.parse(FILES / "openbox-rc.xml")
@@ -253,7 +393,7 @@ class ProvisioningTests(unittest.TestCase):
 
         self.assertEqual(
             bindings["C-A-4"],
-            "/usr/local/bin/cortex-endpoint-airplay toggle",
+            "/usr/local/bin/cortex-endpoint-airplay airplay",
         )
         self.assertEqual(
             {
@@ -275,7 +415,7 @@ class ProvisioningTests(unittest.TestCase):
             application
             for application in applications
             if application.attrib == {
-                "name": "Cortex AirPlay",
+                "name": "Skärmen",
                 "class": "GStreamer",
             }
         )

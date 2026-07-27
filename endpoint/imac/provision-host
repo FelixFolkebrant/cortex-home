@@ -72,6 +72,7 @@ apt-get install --yes --no-install-recommends \
   gstreamer1.0-pulseaudio \
   gstreamer1.0-x \
   lightdm \
+  netcat-openbsd \
   openbox \
   pulseaudio \
   unclutter \
@@ -109,6 +110,9 @@ install -D --mode=755 \
 install -D --mode=755 \
   "$source_dir/files/cortex-endpoint-airplay" \
   /usr/local/bin/cortex-endpoint-airplay
+install -D --mode=755 \
+  "$source_dir/files/cortex-airplay-control" \
+  /usr/local/bin/cortex-airplay-control
 install -D --mode=755 \
   "$source_dir/files/cortex-endpoint-headphone-volume" \
   /usr/local/bin/cortex-endpoint-headphone-volume

@@ -1,0 +1,131 @@
+#!/bin/bash
+
+set -uo pipefail
+
+if [[ $# -ne 0 ]]; then
+  echo "Usage: $0" >&2
+  exit 1
+fi
+
+coordinator_url_file=/etc/cortex-endpoint/coordinator-url
+airplay_helper=/usr/local/bin/cortex-endpoint-airplay
+connection_pid=
+
+if [[ ! -r $coordinator_url_file ]]; then
+  echo "The endpoint coordinator URL is not configured." >&2
+  exit 1
+fi
+
+mapfile -t coordinator_url_lines < "$coordinator_url_file"
+
+if [[ ${#coordinator_url_lines[@]} -ne 1 ]]; then
+  echo "The endpoint coordinator URL must contain exactly one line." >&2
+  exit 1
+fi
+
+coordinator_url=${coordinator_url_lines[0]%/}
+
+if [[ ! $coordinator_url =~ ^http://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]]; then
+  echo "The endpoint coordinator URL must be a local HTTP origin." >&2
+  exit 1
+fi
+
+if [[ ! -x $airplay_helper ]]; then
+  echo "The endpoint AirPlay helper is not installed." >&2
+  exit 1
+fi
+
+if [[ ! -x /usr/bin/nc ]]; then
+  echo "OpenBSD netcat is not installed." >&2
+  exit 1
+fi
+
+cleanup() {
+  if [[ -n $connection_pid ]]; then
+    kill "$connection_pid" 2>/dev/null || true
+  fi
+}
+
+trap cleanup EXIT
+trap 'exit 0' HUP INT TERM
+
+send_response() {
+  local status=$1
+  local body=$2
+
+  printf \
+    'HTTP/1.1 %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: %s\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Private-Network: true\r\nVary: Origin\r\nConnection: close\r\n\r\n%s' \
+    "$status" \
+    "${#body}" \
+    "$coordinator_url" \
+    "$body" \
+    >&"$response_fd"
+}
+
+while true; do
+  coproc AIRPLAY_CONNECTION {
+    /usr/bin/nc -l -N 127.0.0.1 38019
+  }
+  connection_pid=$AIRPLAY_CONNECTION_PID
+  request_fd=${AIRPLAY_CONNECTION[0]}
+  response_fd=${AIRPLAY_CONNECTION[1]}
+  method=
+  path=
+  protocol=
+  origin=
+
+  if IFS=' ' read -r -t 5 method path protocol <&"$request_fd"; then
+    header_count=0
+    while IFS= read -r -t 5 header <&"$request_fd"; do
+      header=${header%$'\r'}
+
+      if [[ -z $header ]]; then
+        break
+      fi
+
+      header_count=$((header_count + 1))
+      if [[ $header_count -gt 64 ]]; then
+        break
+      fi
+
+      header_name=${header%%:*}
+      if [[ ${header_name,,} == origin ]]; then
+        origin=${header#*:}
+        origin=${origin#"${origin%%[![:space:]]*}"}
+      fi
+    done
+
+    if [[ $origin != "$coordinator_url" ]]; then
+      send_response "403 Forbidden" '{"error":"Origin not allowed."}'
+    elif [[ $method == OPTIONS ]]; then
+      send_response "204 No Content" ""
+    elif [[ $method == GET && $path == /status ]]; then
+      state=$("$airplay_helper" status)
+      send_response "200 OK" "{\"state\":\"$state\"}"
+    elif [[ $method == POST && $path == /on ]]; then
+      if "$airplay_helper" receiver-on >/dev/null 2>&1; then
+        send_response "200 OK" '{"state":"on"}'
+      else
+        send_response "500 Internal Server Error" \
+          '{"error":"AirPlay could not start."}'
+      fi
+    elif [[ $method == POST && $path == /off ]]; then
+      if "$airplay_helper" receiver-off >/dev/null 2>&1; then
+        send_response "200 OK" '{"state":"off"}'
+      else
+        send_response "500 Internal Server Error" \
+          '{"error":"AirPlay could not stop."}'
+      fi
+    else
+      send_response "404 Not Found" '{"error":"Route not found."}'
+    fi
+  fi
+
+  exec {request_fd}<&-
+  exec {response_fd}>&-
+  if ! wait "$connection_pid" 2>/dev/null; then
+    echo "The AirPlay control listener failed." >&2
+    exit 1
+  fi
+  connection_pid=
+done

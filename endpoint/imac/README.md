@@ -128,25 +128,33 @@ built-in analog PulseAudio sink rather than writing beneath PulseAudio through
 ALSA, so increases and decreases apply coherently to both Raspotify and speech
 playback without selecting the Anker output or changing microphone input.
 
-`Control`+`Option`+`4` starts AirPlay and selects its waiting view. Open Screen
-Mirroring on the iPhone and choose `Cortex AirPlay`. The receiver deliberately
-does not request a PIN or retain a pairing key, so there is no password to
-display or enter. Any device on the same trusted LAN can connect while this
-mode is active. Press the same shortcut again—even while the native mirror has
-focus—to stop UxPlay, remove its temporary HOME, restore the audio route, and
-return to Today. Selecting Today, Music, or Camera with its global shortcut
-also stops UxPlay before changing views.
+`Control`+`Option`+`4` selects the AirPlay view without starting UxPlay. The
+screen contains only the AirPlay mark, title, and an Apple-style switch. Turn
+the switch on to start the receiver; it shows a loader during startup, then
+`Select tv Skärmen to cast screen`. Turn it off to stop UxPlay while remaining
+on the AirPlay view. Open Screen Mirroring on the iPhone and choose `Skärmen`.
+The receiver deliberately does not request a PIN or retain a pairing key, so
+there is no password to display or enter. Any device on the same trusted LAN
+can connect while the switch is on. Selecting Today, Music, or Camera with its
+global shortcut also stops UxPlay before changing views.
+
+The browser calls an origin-bound control bridge at
+`http://127.0.0.1:38019`. The bridge listens only on loopback, accepts only the
+configured coordinator origin, and exposes status, on, and off operations. It
+uses the already-installed OpenBSD netcat and a shell process rather than
+another browser runtime. The measured netcat listener used approximately
+2 MiB resident memory and 0% sampled idle CPU; the supervising shell adds only
+a few more MiB.
 
 UxPlay creates its native GStreamer window only after a client begins
 mirroring. Openbox makes every matching window borderless, fullscreen, focused,
 and above Chromium. The native mirror therefore replaces the browser while
 connected; this design intentionally has no browser HUD, compositor, or
-per-pixel transparency. Stopping mirroring reveals the AirPlay waiting view
-again while leaving UxPlay ready for a reconnect. UxPlay itself runs only
-between the two AirPlay shortcut presses. A prior moving-mirror sample observed
-approximately 16–56% UxPlay CPU and 87–90 MiB resident memory; a more static
-sample observed approximately 132 MiB. Those measurements are indicative, not
-resource limits.
+per-pixel transparency. Stopping mirroring reveals the AirPlay control view
+again while leaving UxPlay ready for a reconnect until the switch is turned
+off. A prior moving-mirror sample observed approximately 16–56% UxPlay CPU and
+87–90 MiB resident memory; a more static sample observed approximately 132 MiB.
+Those measurements are indicative, not resource limits.
 
 ## Playback Diagnostics
 

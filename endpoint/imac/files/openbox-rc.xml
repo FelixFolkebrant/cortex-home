@@ -33,12 +33,12 @@
     </keybind>
     <keybind key="C-A-4">
       <action name="Execute">
-        <command>/usr/local/bin/cortex-endpoint-airplay toggle</command>
+        <command>/usr/local/bin/cortex-endpoint-airplay airplay</command>
       </action>
     </keybind>
   </keyboard>
   <applications>
-    <application name="Cortex AirPlay" class="GStreamer">
+    <application name="Skärmen" class="GStreamer">
       <decor>no</decor>
       <focus>yes</focus>
       <layer>above</layer>

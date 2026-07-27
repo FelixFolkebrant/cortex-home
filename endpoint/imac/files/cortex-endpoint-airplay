@@ -3,16 +3,16 @@
 set -eu
 
 if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 <airplay|camera|music|start|stop|stop-local|today|toggle>" >&2
+  echo "Usage: $0 <airplay|camera|music|receiver-off|receiver-on|status|stop-local|today>" >&2
   exit 1
 fi
 
 mode=$1
 
 case "$mode" in
-  airplay | camera | music | start | stop | stop-local | today | toggle) ;;
+  airplay | camera | music | receiver-off | receiver-on | status | stop-local | today) ;;
   *)
-    echo "Usage: $0 <airplay|camera|music|start|stop|stop-local|today|toggle>" >&2
+    echo "Usage: $0 <airplay|camera|music|receiver-off|receiver-on|status|stop-local|today>" >&2
     exit 1
     ;;
 esac
@@ -34,17 +34,6 @@ lock_dir=$state_dir/lock
 
 mkdir -p -m 700 "$state_dir"
 
-if ! mkdir "$lock_dir" 2>/dev/null; then
-  exit 0
-fi
-
-cleanup_lock() {
-  rmdir "$lock_dir"
-}
-
-trap cleanup_lock EXIT
-trap 'exit 1' HUP INT TERM
-
 receiver_running() {
   airplay_pid=
 
@@ -62,6 +51,27 @@ receiver_running() {
     [ "$(sed -n '1p' "/proc/$airplay_pid/comm")" = uxplay ] &&
     kill -0 "$airplay_pid" 2>/dev/null
 }
+
+if [ "$mode" = status ]; then
+  if receiver_running; then
+    echo on
+  else
+    echo off
+  fi
+  exit 0
+fi
+
+if ! mkdir "$lock_dir" 2>/dev/null; then
+  echo "Another AirPlay operation is already running." >&2
+  exit 1
+fi
+
+cleanup_lock() {
+  rmdir "$lock_dir"
+}
+
+trap cleanup_lock EXIT
+trap 'exit 1' HUP INT TERM
 
 post_channel() {
   channel=$1
@@ -155,7 +165,7 @@ start_receiver() {
 
   HOME=$home_dir \
     /usr/bin/uxplay \
-    -n "Cortex AirPlay" \
+    -n "Skärmen" \
     -nh \
     -fs \
     -s 1920x1200 \
@@ -172,36 +182,25 @@ start_receiver() {
     stop_receiver
     return 1
   fi
-
-  if ! post_channel airplay; then
-    stop_receiver
-    return 1
-  fi
 }
 
 case "$mode" in
-  airplay | start)
+  airplay)
+    post_channel airplay
+    ;;
+  receiver-on)
     if ! receiver_running; then
       start_receiver
     fi
+    ;;
+  receiver-off)
+    stop_receiver
     ;;
   camera | music | today)
     stop_receiver
     post_channel "$mode"
     ;;
-  stop)
-    stop_receiver
-    post_channel today
-    ;;
   stop-local)
     stop_receiver
-    ;;
-  toggle)
-    if receiver_running; then
-      stop_receiver
-      post_channel today
-    else
-      start_receiver
-    fi
     ;;
 esac
