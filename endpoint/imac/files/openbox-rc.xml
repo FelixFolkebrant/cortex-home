@@ -6,6 +6,21 @@
         <command>xterm -fa monospace -fs 18</command>
       </action>
     </keybind>
+    <keybind key="C-A-1">
+      <action name="Execute">
+        <command>/usr/local/bin/cortex-endpoint-airplay today</command>
+      </action>
+    </keybind>
+    <keybind key="C-A-2">
+      <action name="Execute">
+        <command>/usr/local/bin/cortex-endpoint-airplay music</command>
+      </action>
+    </keybind>
+    <keybind key="C-A-3">
+      <action name="Execute">
+        <command>/usr/local/bin/cortex-endpoint-airplay camera</command>
+      </action>
+    </keybind>
     <keybind key="C-A-Up">
       <action name="Execute">
         <command>/usr/local/bin/cortex-endpoint-headphone-volume up</command>
@@ -16,5 +31,18 @@
         <command>/usr/local/bin/cortex-endpoint-headphone-volume down</command>
       </action>
     </keybind>
+    <keybind key="C-A-4">
+      <action name="Execute">
+        <command>/usr/local/bin/cortex-endpoint-airplay toggle</command>
+      </action>
+    </keybind>
   </keyboard>
+  <applications>
+    <application name="Cortex AirPlay" class="GStreamer">
+      <decor>no</decor>
+      <focus>yes</focus>
+      <layer>above</layer>
+      <fullscreen>yes</fullscreen>
+    </application>
+  </applications>
 </openbox_config>

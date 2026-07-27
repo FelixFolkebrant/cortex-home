@@ -1,0 +1,207 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  echo "Usage: $0 <airplay|camera|music|start|stop|stop-local|today|toggle>" >&2
+  exit 1
+fi
+
+mode=$1
+
+case "$mode" in
+  airplay | camera | music | start | stop | stop-local | today | toggle) ;;
+  *)
+    echo "Usage: $0 <airplay|camera|music|start|stop|stop-local|today|toggle>" >&2
+    exit 1
+    ;;
+esac
+
+runtime_dir=${XDG_RUNTIME_DIR:-}
+
+case "$runtime_dir" in
+  /run/user/[0-9]*) ;;
+  *)
+    echo "AirPlay requires the graphical user runtime directory." >&2
+    exit 1
+    ;;
+esac
+
+state_dir=$runtime_dir/cortex-airplay
+home_dir=$state_dir/home
+pid_file=$state_dir/uxplay.pid
+lock_dir=$state_dir/lock
+
+mkdir -p -m 700 "$state_dir"
+
+if ! mkdir "$lock_dir" 2>/dev/null; then
+  exit 0
+fi
+
+cleanup_lock() {
+  rmdir "$lock_dir"
+}
+
+trap cleanup_lock EXIT
+trap 'exit 1' HUP INT TERM
+
+receiver_running() {
+  airplay_pid=
+
+  if [ ! -r "$pid_file" ]; then
+    return 1
+  fi
+
+  IFS= read -r airplay_pid < "$pid_file"
+
+  case "$airplay_pid" in
+    "" | *[!0-9]*) return 1 ;;
+  esac
+
+  [ -r "/proc/$airplay_pid/comm" ] &&
+    [ "$(sed -n '1p' "/proc/$airplay_pid/comm")" = uxplay ] &&
+    kill -0 "$airplay_pid" 2>/dev/null
+}
+
+post_channel() {
+  channel=$1
+  coordinator_url_file=/etc/cortex-endpoint/coordinator-url
+
+  if [ ! -r "$coordinator_url_file" ]; then
+    echo "The endpoint coordinator URL is not configured." >&2
+    return 1
+  fi
+
+  IFS= read -r coordinator_url < "$coordinator_url_file"
+
+  case "$coordinator_url" in
+    http://*) ;;
+    *)
+      echo "The endpoint coordinator URL is invalid." >&2
+      return 1
+      ;;
+  esac
+
+  if [ -n "$(sed -n '2p' "$coordinator_url_file")" ]; then
+    echo "The endpoint coordinator URL must contain exactly one line." >&2
+    return 1
+  fi
+
+  request_id="airplay-$channel-$(date +%s)-$$"
+  payload=$(
+    printf \
+      '{"requestId":"%s","action":"channel.select","channel":"%s"}' \
+      "$request_id" \
+      "$channel"
+  )
+
+  /usr/bin/curl \
+    --fail \
+    --silent \
+    --show-error \
+    --max-time 5 \
+    --output /dev/null \
+    --header "Content-Type: application/json" \
+    --data "$payload" \
+    "$coordinator_url/api/actions"
+}
+
+remove_runtime_home() {
+  if [ -d "$home_dir" ]; then
+    find "$home_dir" -mindepth 1 -delete
+    rmdir "$home_dir"
+  fi
+}
+
+stop_receiver() {
+  if receiver_running; then
+    kill -INT "$airplay_pid"
+
+    attempts=0
+    while receiver_running && [ "$attempts" -lt 20 ]; do
+      sleep 0.1
+      attempts=$((attempts + 1))
+    done
+
+    if receiver_running; then
+      kill -TERM "$airplay_pid"
+    fi
+
+    attempts=0
+    while receiver_running && [ "$attempts" -lt 10 ]; do
+      sleep 0.1
+      attempts=$((attempts + 1))
+    done
+
+    if receiver_running; then
+      kill -KILL "$airplay_pid"
+    fi
+  fi
+
+  rm -f "$pid_file"
+  remove_runtime_home
+  /usr/local/bin/cortex-endpoint-audio-route >/dev/null
+}
+
+start_receiver() {
+  if [ ! -x /usr/bin/uxplay ]; then
+    echo "UxPlay is not installed." >&2
+    return 1
+  fi
+
+  rm -f "$pid_file"
+  remove_runtime_home
+  mkdir -m 700 "$home_dir"
+
+  HOME=$home_dir \
+    /usr/bin/uxplay \
+    -n "Cortex AirPlay" \
+    -nh \
+    -fs \
+    -s 1920x1200 \
+    -as pulsesink \
+    </dev/null \
+    >/dev/null \
+    2>&1 &
+  airplay_pid=$!
+  printf '%s\n' "$airplay_pid" > "$pid_file"
+
+  sleep 1
+
+  if ! receiver_running; then
+    stop_receiver
+    return 1
+  fi
+
+  if ! post_channel airplay; then
+    stop_receiver
+    return 1
+  fi
+}
+
+case "$mode" in
+  airplay | start)
+    if ! receiver_running; then
+      start_receiver
+    fi
+    ;;
+  camera | music | today)
+    stop_receiver
+    post_channel "$mode"
+    ;;
+  stop)
+    stop_receiver
+    post_channel today
+    ;;
+  stop-local)
+    stop_receiver
+    ;;
+  toggle)
+    if receiver_running; then
+      stop_receiver
+      post_channel today
+    else
+      start_receiver
+    fi
+    ;;
+esac

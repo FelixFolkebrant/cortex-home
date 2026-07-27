@@ -56,29 +56,35 @@ not contain a wildcard, global all-media permission, or a committed deployment
 hostname. Chromium must restart before the secure-context override takes
 effect.
 
-On an already provisioned endpoint, install only that policy and restart the
-kiosk with:
+On an already provisioned endpoint, install the media policy, AirPlay runtime,
+and repository-owned media helpers, then restart the kiosk with:
 
 ```sh
 ./endpoint/imac/provision-media
 ```
 
 The focused command reads the endpoint's existing coordinator URL and asks only
-for the existing `imac` account's sudo password. It does not change packages,
-Wi-Fi or unrelated endpoint configuration. It restores the qualified room
-mixer baseline—Master 80% and unmuted, built-in Speaker muted, rear Headphone
-60% and unmuted—and pins room output to the single built-in PCI analog
-PulseAudio sink used by the Sonos line-in. It applies the ALSA baseline after
-the kiosk and Raspotify sessions restart; the Pulse route selects and unmutes
-the sink but never changes its volume. Microphone sources are neither selected
-nor disabled. Kiosk startup, Raspotify, and speech qualification all apply that
-same output route so a USB microphone with its own speaker cannot become the
-room output. The command also installs argument-free speech qualification
-helpers and command-specific sudo rules. The capture helper emits a fixed
-15-second, 16 kHz mono PCM WAV from the Anker to standard output. The
-playback helper reads WAV from standard input and targets the existing
-`cortex-endpoint` PulseAudio session instead of the SSH account's null sink.
-Neither stores audio or starts a service.
+for the existing `imac` account's sudo password. It does not change Wi-Fi or
+unrelated endpoint configuration. It installs Ubuntu's UxPlay and the required
+GStreamer runtime packages, but no AirPlay service, compositor, or window
+watcher. On the stripped iMac baseline, the simulated install adds 135 packages
+for codecs and runtime libraries. These packages use disk space but no CPU or
+RAM while AirPlay is stopped.
+
+The command restores the qualified room mixer baseline—Master 80% and unmuted,
+built-in Speaker muted, rear Headphone 60% and unmuted—and pins room output to
+the single built-in PCI analog PulseAudio sink used by the Sonos line-in. It
+applies the ALSA baseline after the kiosk and Raspotify sessions restart; the
+Pulse route selects and unmutes the sink but never changes its volume.
+Microphone sources are neither selected nor disabled. Kiosk startup,
+Raspotify, speech qualification, and AirPlay shutdown all apply that same
+output route so a USB microphone with its own speaker cannot become the room
+output. The command also installs argument-free speech qualification helpers
+and command-specific sudo rules. The capture helper emits a fixed 15-second,
+16 kHz mono PCM WAV from the Anker to standard output. The playback helper
+reads WAV from standard input and targets the existing `cortex-endpoint`
+PulseAudio session instead of the SSH account's null sink. Neither stores audio
+or starts a service.
 
 After provisioning, confirm the rendered policy without printing other endpoint
 configuration:
@@ -121,6 +127,26 @@ these endpoint-global bindings. The helper adjusts the explicitly selected
 built-in analog PulseAudio sink rather than writing beneath PulseAudio through
 ALSA, so increases and decreases apply coherently to both Raspotify and speech
 playback without selecting the Anker output or changing microphone input.
+
+`Control`+`Option`+`4` starts AirPlay and selects its waiting view. Open Screen
+Mirroring on the iPhone and choose `Cortex AirPlay`. The receiver deliberately
+does not request a PIN or retain a pairing key, so there is no password to
+display or enter. Any device on the same trusted LAN can connect while this
+mode is active. Press the same shortcut again—even while the native mirror has
+focus—to stop UxPlay, remove its temporary HOME, restore the audio route, and
+return to Today. Selecting Today, Music, or Camera with its global shortcut
+also stops UxPlay before changing views.
+
+UxPlay creates its native GStreamer window only after a client begins
+mirroring. Openbox makes every matching window borderless, fullscreen, focused,
+and above Chromium. The native mirror therefore replaces the browser while
+connected; this design intentionally has no browser HUD, compositor, or
+per-pixel transparency. Stopping mirroring reveals the AirPlay waiting view
+again while leaving UxPlay ready for a reconnect. UxPlay itself runs only
+between the two AirPlay shortcut presses. A prior moving-mirror sample observed
+approximately 16–56% UxPlay CPU and 87–90 MiB resident memory; a more static
+sample observed approximately 132 MiB. Those measurements are indicative, not
+resource limits.
 
 ## Playback Diagnostics
 

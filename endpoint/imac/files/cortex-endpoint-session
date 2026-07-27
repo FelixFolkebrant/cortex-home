@@ -41,6 +41,10 @@ unclutter -idle 0.5 -root &
 unclutter_pid=$!
 
 cleanup() {
+  if [ -x /usr/local/bin/cortex-endpoint-airplay ]; then
+    /usr/local/bin/cortex-endpoint-airplay stop-local || true
+  fi
+
   kill \
     "$openbox_pid" \
     "$unclutter_pid" \

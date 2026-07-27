@@ -4,6 +4,8 @@ from pathlib import Path
 
 
 PROVISION_HOST = Path(__file__).parents[1] / "provision-host"
+ENDPOINT_DIR = PROVISION_HOST.parent
+FILES = ENDPOINT_DIR / "files"
 
 
 class ProvisioningTests(unittest.TestCase):
@@ -47,9 +49,7 @@ class ProvisioningTests(unittest.TestCase):
         self.assertNotIn('"VideoCaptureAllowed": true', policy_template)
 
     def test_focused_media_provision_uses_existing_exact_origin(self):
-        focused_script = (
-            PROVISION_HOST.parent / "provision-media-host"
-        ).read_text()
+        focused_script = (ENDPOINT_DIR / "provision-media-host").read_text()
 
         self.assertIn(
             "coordinator_url_file=/etc/cortex-endpoint/coordinator-url",
@@ -72,15 +72,14 @@ class ProvisioningTests(unittest.TestCase):
         self.assertNotIn("netplan", focused_script)
 
     def test_qualification_playback_is_limited_to_the_kiosk_audio_session(self):
-        files = PROVISION_HOST.parent / "files"
         helper = (
-            files / "cortex-speech-qualification-playback"
+            FILES / "cortex-speech-qualification-playback"
         ).read_text()
         capture = (
-            files / "cortex-speech-qualification-capture"
+            FILES / "cortex-speech-qualification-capture"
         ).read_text()
         sudoers = (
-            files / "cortex-speech-qualification-playback.sudoers"
+            FILES / "cortex-speech-qualification-playback.sudoers"
         ).read_text()
 
         self.assertIn('if [ "$#" -ne 0 ]', helper)
@@ -107,10 +106,9 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("--file-type=wav", capture)
 
     def test_output_route_selects_only_the_pci_analog_sink(self):
-        files = PROVISION_HOST.parent / "files"
-        route = (files / "cortex-endpoint-audio-route").read_text()
-        session = (files / "cortex-endpoint-session").read_text()
-        raspotify = (files / "cortex-raspotify").read_text()
+        route = (FILES / "cortex-endpoint-audio-route").read_text()
+        session = (FILES / "cortex-endpoint-session").read_text()
+        raspotify = (FILES / "cortex-raspotify").read_text()
 
         self.assertIn(
             "/^alsa_output\\.pci-.*\\.analog-stereo$/",
@@ -131,9 +129,7 @@ class ProvisioningTests(unittest.TestCase):
         )
 
     def test_focused_media_provision_restores_the_room_mixer_baseline(self):
-        focused_script = (
-            PROVISION_HOST.parent / "provision-media-host"
-        ).read_text()
+        focused_script = (ENDPOINT_DIR / "provision-media-host").read_text()
 
         self.assertIn("amixer -c 0 sset Master 80% unmute", self.script)
         self.assertIn("amixer -c 0 sset Master 80% unmute", focused_script)
@@ -153,9 +149,8 @@ class ProvisioningTests(unittest.TestCase):
         )
 
     def test_openbox_binds_fixed_headphone_volume_steps(self):
-        files = PROVISION_HOST.parent / "files"
-        helper = (files / "cortex-endpoint-headphone-volume").read_text()
-        openbox = ET.parse(files / "openbox-rc.xml")
+        helper = (FILES / "cortex-endpoint-headphone-volume").read_text()
+        openbox = ET.parse(FILES / "openbox-rc.xml")
         namespace = {"openbox": "http://openbox.org/3.4/rc"}
         bindings = {
             binding.attrib["key"]: binding.findtext(
@@ -189,6 +184,113 @@ class ProvisioningTests(unittest.TestCase):
         self.assertNotIn("amixer", helper)
         self.assertNotIn("Master", helper)
         self.assertNotIn("S330", helper)
+
+    def test_airplay_runtime_is_installed_without_a_compositor(self):
+        focused_script = (ENDPOINT_DIR / "provision-media-host").read_text()
+        deploy_script = (ENDPOINT_DIR / "provision-media").read_text()
+
+        for script in (self.script, focused_script):
+            self.assertIn("gstreamer1.0-plugins-bad", script)
+            self.assertIn("gstreamer1.0-plugins-base", script)
+            self.assertIn("gstreamer1.0-plugins-good", script)
+            self.assertIn("gstreamer1.0-pulseaudio", script)
+            self.assertIn("gstreamer1.0-x", script)
+            self.assertIn("uxplay", script)
+            self.assertIn(
+                "/usr/local/bin/cortex-endpoint-airplay",
+                script,
+            )
+            self.assertNotIn("xcompmgr", script)
+            self.assertNotIn("wmctrl", script)
+
+        self.assertIn(
+            '"$script_dir/files/cortex-endpoint-airplay"',
+            deploy_script,
+        )
+
+    def test_airplay_helper_is_ephemeral_and_passwordless(self):
+        helper = (FILES / "cortex-endpoint-airplay").read_text()
+        session = (FILES / "cortex-endpoint-session").read_text()
+
+        self.assertIn("/usr/bin/uxplay", helper)
+        self.assertIn('-n "Cortex AirPlay"', helper)
+        self.assertIn("-fs", helper)
+        self.assertIn("-as pulsesink", helper)
+        self.assertNotIn("-pin", helper)
+        self.assertNotIn("-reg", helper)
+        self.assertIn("HOME=$home_dir", helper)
+        self.assertIn('remove_runtime_home', helper)
+        self.assertIn('"$coordinator_url/api/actions"', helper)
+        self.assertIn("--max-time 5", helper)
+        self.assertIn("post_channel airplay", helper)
+        self.assertIn("post_channel today", helper)
+        self.assertIn('post_channel "$mode"', helper)
+        self.assertIn('kill -INT "$airplay_pid"', helper)
+        self.assertIn('kill -TERM "$airplay_pid"', helper)
+        self.assertIn('kill -KILL "$airplay_pid"', helper)
+        self.assertIn(
+            "/usr/local/bin/cortex-endpoint-audio-route >/dev/null",
+            helper,
+        )
+        self.assertIn(
+            "/usr/local/bin/cortex-endpoint-airplay stop-local",
+            session,
+        )
+
+    def test_openbox_controls_airplay_and_raises_each_mirror_window(self):
+        openbox = ET.parse(FILES / "openbox-rc.xml")
+        namespace = {"openbox": "http://openbox.org/3.4/rc"}
+        bindings = {
+            binding.attrib["key"]: binding.findtext(
+                "openbox:action/openbox:command",
+                namespaces=namespace,
+            )
+            for binding in openbox.findall(
+                "openbox:keyboard/openbox:keybind",
+                namespace,
+            )
+        }
+
+        self.assertEqual(
+            bindings["C-A-4"],
+            "/usr/local/bin/cortex-endpoint-airplay toggle",
+        )
+        self.assertEqual(
+            {
+                key: bindings[key]
+                for key in ("C-A-1", "C-A-2", "C-A-3")
+            },
+            {
+                "C-A-1": "/usr/local/bin/cortex-endpoint-airplay today",
+                "C-A-2": "/usr/local/bin/cortex-endpoint-airplay music",
+                "C-A-3": "/usr/local/bin/cortex-endpoint-airplay camera",
+            },
+        )
+
+        applications = openbox.findall(
+            "openbox:applications/openbox:application",
+            namespace,
+        )
+        airplay = next(
+            application
+            for application in applications
+            if application.attrib == {
+                "name": "Cortex AirPlay",
+                "class": "GStreamer",
+            }
+        )
+        self.assertEqual(
+            {
+                child.tag.rsplit("}", 1)[-1]: child.text
+                for child in airplay
+            },
+            {
+                "decor": "no",
+                "focus": "yes",
+                "layer": "above",
+                "fullscreen": "yes",
+            },
+        )
 
 
 if __name__ == "__main__":
