@@ -423,6 +423,7 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("The alarm file does not contain an MP3 header.", installer)
         self.assertIn("wake-alarm.mp3", installer)
         self.assertIn("sudo mv", installer)
+        self.assertIn("ssh -tt imac", installer)
 
     def test_rtc_suspend_helper_is_the_only_privileged_power_boundary(self):
         helper = (FILES / "cortex-endpoint-rtc-suspend").read_text()
@@ -446,6 +447,8 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn('"$script_dir/files/cortex-endpoint-alarm"', deploy)
         self.assertIn('"$script_dir/files/cortex-endpoint-rtc-suspend"', deploy)
         self.assertIn('"$script_dir/files/cortex-airplay-control"', deploy)
+        self.assertIn('"$script_dir/provision-alarm-host"', deploy)
+        self.assertTrue((ENDPOINT_DIR / "provision-alarm-host").stat().st_mode & 0o111)
         self.assertIn("mpg123", host)
         self.assertIn("cortex-endpoint-rtc-suspend.sudoers", host)
         self.assertIn("systemctl restart lightdm.service", host)
