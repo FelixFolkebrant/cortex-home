@@ -8,6 +8,7 @@ import queue
 import re
 import secrets
 import threading
+import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -301,7 +302,8 @@ class Coordinator:
 
         return pending.http_status, pending.payload()
 
-    def interact(self, endpoint_token, request_id, audio_data):
+    def interact(self, endpoint_token, request_id, audio_data, metrics=None):
+        metrics = metrics if isinstance(metrics, dict) else {}
         self._validate_request_id(request_id)
         with self.lock:
             self._require_endpoint_locked(endpoint_token)
@@ -340,8 +342,11 @@ class Coordinator:
                     "invalid_audio",
                     "The captured audio is invalid.",
                 )
+            metrics["captureBytes"] = len(audio.data)
+            metrics["captureDurationMs"] = audio.duration_ms
 
             self._ensure_interaction_current(interaction)
+            started = time.perf_counter()
             try:
                 transcript = self.recognizer.transcribe(audio)
             except SpeechError:
@@ -351,6 +356,9 @@ class Coordinator:
                     "transcription_failed",
                     "Speech transcription failed.",
                 )
+            finally:
+                metrics["sttMs"] = elapsed_ms(started)
+            metrics["transcriptCharacters"] = len(transcript)
 
             with self.lock:
                 self._require_interaction_current_locked(interaction)
@@ -362,6 +370,7 @@ class Coordinator:
                 interaction.phase = "thinking"
                 self._publish_interaction_locked(interaction)
 
+            started = time.perf_counter()
             try:
                 answer = self.agent.answer(
                     request_id,
@@ -382,8 +391,12 @@ class Coordinator:
                     error.code,
                     "The voice agent could not answer.",
                 )
+            finally:
+                metrics["llmMs"] = elapsed_ms(started)
+            metrics["answerCharacters"] = len(answer)
 
             self._ensure_interaction_current(interaction)
+            started = time.perf_counter()
             try:
                 synthesized = self.synthesizer.synthesize(answer)
                 audio = read_synthesis(synthesized.data)
@@ -394,6 +407,10 @@ class Coordinator:
                     "synthesis_failed",
                     "Speech synthesis failed.",
                 )
+            finally:
+                metrics["ttsMs"] = elapsed_ms(started)
+            metrics["answerBytes"] = len(audio.data)
+            metrics["answerDurationMs"] = audio.duration_ms
 
             with self.lock:
                 self._require_interaction_current_locked(interaction)
@@ -884,6 +901,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        debug_metrics = None
         try:
             interaction_match = re.fullmatch(
                 r"/api/agent/interactions/([^/]+)",
@@ -893,14 +911,18 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                 request_id = interaction_match.group(1)
                 self._validate_request_path(request_id)
                 endpoint_token = self.headers.get("X-Endpoint-Token")
+                debug_metrics = {}
+                started = time.perf_counter()
                 audio = self._read_audio()
+                debug_metrics["uploadMs"] = elapsed_ms(started)
                 result = self.server.coordinator.interact(
                     endpoint_token,
                     request_id,
                     audio,
+                    debug_metrics,
                 )
                 try:
-                    self._send_audio(result)
+                    self._send_audio(result, debug_metrics)
                 except (BrokenPipeError, ConnectionResetError):
                     self.server.coordinator.cancel_interaction(
                         endpoint_token,
@@ -959,7 +981,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
 
             raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
         except ApiError as error:
-            self._send_error(error)
+            self._send_error(error, debug_metrics)
 
     def do_DELETE(self):
         path = urlparse(self.path).path
@@ -1151,28 +1173,38 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                 "The request path contains an invalid request ID.",
             )
 
-    def _send_error(self, error):
+    def _send_error(self, error, debug_metrics=None):
         self._send_json(
             error.status,
             {"status": "error", "code": error.code, "error": error.message},
+            debug_metrics,
         )
 
-    def _send_json(self, status, payload):
+    def _send_json(self, status, payload, debug_metrics=None):
         body = json.dumps(payload, separators=(",", ":")).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self._send_debug_metrics(debug_metrics)
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_audio(self, body):
+    def _send_audio(self, body, debug_metrics=None):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "audio/wav")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self._send_debug_metrics(debug_metrics)
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_debug_metrics(self, metrics):
+        if metrics:
+            self.send_header(
+                "X-Cortex-Debug-Metrics",
+                json.dumps(metrics, separators=(",", ":")),
+            )
 
     def log_message(self, format, *args):
         pass
@@ -1299,6 +1331,10 @@ def utc_timestamp():
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )
+
+
+def elapsed_ms(started):
+    return round((time.perf_counter() - started) * 1000, 1)
 
 
 def parse_args():

@@ -395,3 +395,51 @@ test("Music fullscreen keeps contextual answer feedback without room chrome", ()
   assert.doesNotMatch(markup, /Coordinator offline · Reconnecting/);
   assert.doesNotMatch(markup, /Warm active/);
 });
+
+test("voice diagnostics show only content-free timing and size metrics", () => {
+  const debug = {
+    answerBytes: 48_000,
+    answerCharacters: 72,
+    answerDurationMs: 2_000,
+    answerTransferMs: 6.4,
+    captureBytes: 64_044,
+    captureDurationMs: 2_000,
+    llmMs: 1_234.5,
+    phase: "completed",
+    playbackMs: 2_010,
+    requestId: "must-not-render",
+    sttMs: 345.6,
+    totalToAudioMs: 1_800,
+    transcriptCharacters: 31,
+    ttsMs: 210.2,
+    uploadMs: 4.2,
+  };
+  const hidden = renderToStaticMarkup(
+    createElement(RoomFeedback, {
+      connection: "connected",
+      interaction: { state: "idle" },
+      lighting: null,
+      voiceDebug: debug,
+      voiceDebugVisible: false,
+    }),
+  );
+  const visible = renderToStaticMarkup(
+    createElement(RoomFeedback, {
+      connection: "connected",
+      interaction: { state: "idle" },
+      lighting: null,
+      voiceDebug: debug,
+      voiceDebugVisible: true,
+      voiceOnly: true,
+    }),
+  );
+
+  assert.doesNotMatch(hidden, /Voice diagnostics/);
+  assert.match(visible, /Voice diagnostics/);
+  assert.match(visible, /LLM round trip/);
+  assert.match(visible, /1,235 ms/);
+  assert.match(visible, /2\.00 s · 62\.5 KiB/);
+  assert.match(visible, /72 characters/);
+  assert.doesNotMatch(visible, /must-not-render/);
+  assert.doesNotMatch(visible, /Coordinator offline|Scenes unavailable/);
+});

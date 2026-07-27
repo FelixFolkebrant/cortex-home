@@ -1,17 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AGENT_INTERACTION_ACTION, SpokenInteraction } from "./agent-interaction.js";
+import {
+  AGENT_INTERACTION_ACTION,
+  isVoiceDebugShortcut,
+  parseDebugMetrics,
+  SpokenInteraction,
+} from "./agent-interaction.js";
 
 function response({
   body = new Blob([new Uint8Array(45)], { type: "audio/wav" }),
   contentType = "audio/wav",
+  debugMetrics,
   json = {},
   ok = true,
   status = 200,
 } = {}) {
   return {
     blob: async () => body,
-    headers: { get: (name) => (name === "Content-Type" ? contentType : null) },
+    headers: {
+      get: (name) => {
+        if (name === "Content-Type") {
+          return contentType;
+        }
+        if (name === "X-Cortex-Debug-Metrics" && debugMetrics) {
+          return JSON.stringify(debugMetrics);
+        }
+        return null;
+      },
+    },
     json: async () => json,
     ok,
     status,
@@ -81,9 +97,55 @@ test("the default fetch keeps the browser global receiver", async () => {
   }
 });
 
+test("debug headers accept only finite content-free metrics", () => {
+  const metrics = parseDebugMetrics({
+    get: () =>
+      JSON.stringify({
+        answerCharacters: 42,
+        llmMs: 123.4,
+        privateAnswer: "do not expose",
+        sttMs: -1,
+        ttsMs: "slow",
+      }),
+  });
+
+  assert.deepEqual(metrics, {
+    answerCharacters: 42,
+    llmMs: 123.4,
+  });
+  assert.deepEqual(parseDebugMetrics({ get: () => "invalid" }), {});
+});
+
+test("only exact Ctrl+Alt+D toggles voice diagnostics", () => {
+  const event = {
+    altKey: true,
+    code: "KeyD",
+    ctrlKey: true,
+    metaKey: false,
+    repeat: false,
+    shiftKey: false,
+    type: "keydown",
+  };
+
+  assert.equal(isVoiceDebugShortcut(event), true);
+  for (const changed of [
+    { code: "KeyE" },
+    { altKey: false },
+    { ctrlKey: false },
+    { metaKey: true },
+    { repeat: true },
+    { shiftKey: true },
+    { type: "keyup" },
+  ]) {
+    assert.equal(isVoiceDebugShortcut({ ...event, ...changed }), false);
+  }
+});
+
 test("one captured WAV plays and reports speaking then completion", async () => {
   const requests = [];
   const audio = new FakeAudio();
+  const debug = {};
+  const times = [0, 10, 20, 30, 40];
   let completed;
   let revoked;
   const interaction = new SpokenInteraction({
@@ -94,11 +156,25 @@ test("one captured WAV plays and reports speaking then completion", async () => 
     createObjectURL: () => "blob:answer",
     fetch: async (url, options) => {
       requests.push({ options, url });
-      return response();
+      return response({
+        debugMetrics: {
+          answerCharacters: 30,
+          answerDurationMs: 900,
+          captureBytes: 32_044,
+          captureDurationMs: 1_000,
+          llmMs: 300,
+          sttMs: 100,
+          transcriptCharacters: 20,
+          ttsMs: 200,
+          uploadMs: 4,
+        },
+      });
     },
+    now: () => times.shift(),
     onCompleted: (requestId) => {
       completed = requestId;
     },
+    onDebug: (_requestId, update) => Object.assign(debug, update),
     onFailed: (_requestId, error) => assert.fail(error),
     revokeObjectURL: (url) => {
       revoked = url;
@@ -107,7 +183,7 @@ test("one captured WAV plays and reports speaking then completion", async () => 
 
   const running = interaction.start(
     "voice-1",
-    new Blob([new Uint8Array(45)], { type: "audio/wav" }),
+    new Blob([new Uint8Array(32_044)], { type: "audio/wav" }),
     "endpoint-token",
   );
   await until(() => requests.length === 2);
@@ -133,6 +209,22 @@ test("one captured WAV plays and reports speaking then completion", async () => 
   assert.equal(audio.paused, 1);
   assert.equal(interaction.owns("voice-1"), false);
   assert.equal(AGENT_INTERACTION_ACTION, "agent.interaction");
+  assert.deepEqual(debug, {
+    answerBytes: 45,
+    answerCharacters: 30,
+    answerDurationMs: 900,
+    answerTransferMs: 10,
+    captureBytes: 32_044,
+    captureDurationMs: 1_000,
+    llmMs: 300,
+    phase: "completed",
+    playbackMs: 10,
+    sttMs: 100,
+    totalToAudioMs: 20,
+    transcriptCharacters: 20,
+    ttsMs: 200,
+    uploadMs: 4,
+  });
 });
 
 test("cancellation aborts fetch, stops playback, revokes audio, and deletes", async () => {

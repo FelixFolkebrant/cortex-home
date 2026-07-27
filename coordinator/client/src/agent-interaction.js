@@ -1,7 +1,58 @@
 export const AGENT_INTERACTION_ACTION = "agent.interaction";
+const DEBUG_HEADER = "X-Cortex-Debug-Metrics";
+const DEBUG_METRICS = new Set([
+  "answerBytes",
+  "answerCharacters",
+  "answerDurationMs",
+  "captureBytes",
+  "captureDurationMs",
+  "llmMs",
+  "sttMs",
+  "transcriptCharacters",
+  "ttsMs",
+  "uploadMs",
+]);
+
+export function isVoiceDebugShortcut(event) {
+  return (
+    event.type === "keydown" &&
+    event.code === "KeyD" &&
+    event.ctrlKey &&
+    event.altKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.repeat
+  );
+}
 
 function responseError(result, status) {
   return new Error(result?.error || `Coordinator returned ${status}.`);
+}
+
+export function parseDebugMetrics(headers) {
+  try {
+    const parsed = JSON.parse(headers.get(DEBUG_HEADER));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        ([key, value]) =>
+          DEBUG_METRICS.has(key) &&
+          typeof value === "number" &&
+          Number.isFinite(value) &&
+          value >= 0,
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function captureDuration(capturedAudio) {
+  return capturedAudio.size >= 44
+    ? Math.round(((capturedAudio.size - 44) / 2 / 16_000) * 1000 * 10) / 10
+    : 0;
 }
 
 export class SpokenInteraction {
@@ -9,14 +60,18 @@ export class SpokenInteraction {
     createAudio = (url) => new Audio(url),
     createObjectURL = (blob) => URL.createObjectURL(blob),
     fetch: request = (...arguments_) => globalThis.fetch(...arguments_),
+    now = () => performance.now(),
     onCompleted,
+    onDebug,
     onFailed,
     revokeObjectURL = (url) => URL.revokeObjectURL(url),
   }) {
     this.createAudio = createAudio;
     this.createObjectURL = createObjectURL;
     this.fetch = request;
+    this.now = now;
     this.onCompleted = onCompleted;
+    this.onDebug = onDebug;
     this.onFailed = onFailed;
     this.revokeObjectURL = revokeObjectURL;
     this.generation = 0;
@@ -37,10 +92,17 @@ export class SpokenInteraction {
       controller: new AbortController(),
       endpointToken,
       generation: ++this.generation,
+      playbackStartedAt: null,
       requestId,
+      startedAt: this.now(),
       url: null,
     };
     this.session = session;
+    this.debug(session, {
+      captureBytes: capturedAudio.size,
+      captureDurationMs: captureDuration(capturedAudio),
+      phase: "uploading",
+    });
 
     try {
       const response = await this.fetch(
@@ -55,6 +117,10 @@ export class SpokenInteraction {
           signal: session.controller.signal,
         },
       );
+      this.debug(session, {
+        ...parseDebugMetrics(response.headers),
+        phase: response.ok ? "downloading" : "failed",
+      });
       if (!response.ok) {
         throw responseError(await response.json().catch(() => null), response.status);
       }
@@ -62,13 +128,21 @@ export class SpokenInteraction {
         throw new Error("Coordinator returned invalid answer audio.");
       }
 
+      const downloadStartedAt = this.now();
       const answerAudio = await response.blob();
+      const downloadedAt = this.now();
       if (!this.isCurrent(session)) {
         return false;
       }
       if (answerAudio.size < 45) {
         throw new Error("Coordinator returned empty answer audio.");
       }
+      this.debug(session, {
+        answerBytes: answerAudio.size,
+        answerTransferMs: Math.round((downloadedAt - downloadStartedAt) * 10) / 10,
+        phase: "ready",
+        totalToAudioMs: Math.round((downloadedAt - session.startedAt) * 10) / 10,
+      });
 
       session.url = this.createObjectURL(answerAudio);
       session.audio = this.createAudio(session.url);
@@ -77,11 +151,17 @@ export class SpokenInteraction {
       if (!this.isCurrent(session)) {
         return false;
       }
+      session.playbackStartedAt = this.now();
+      this.debug(session, { phase: "speaking" });
       await this.report(session, "speaking");
       await playback;
       if (!this.isCurrent(session)) {
         return false;
       }
+      this.debug(session, {
+        phase: "completed",
+        playbackMs: Math.round((this.now() - session.playbackStartedAt) * 10) / 10,
+      });
       await this.report(session, "completed");
       this.finish(session);
       this.onCompleted?.(requestId);
@@ -92,6 +172,7 @@ export class SpokenInteraction {
       }
       const message =
         error instanceof Error ? error.message : "Voice interaction failed.";
+      this.debug(session, { phase: "failed" });
       try {
         await this.report(session, "failed");
       } catch {
@@ -109,6 +190,7 @@ export class SpokenInteraction {
       return false;
     }
 
+    this.debug(session, { phase: "cancelled" });
     this.session = null;
     this.generation += 1;
     session.controller.abort();
@@ -219,5 +301,11 @@ export class SpokenInteraction {
       session.generation === this.generation &&
       !session.controller.signal.aborted
     );
+  }
+
+  debug(session, metrics) {
+    if (this.isCurrent(session)) {
+      this.onDebug?.(session.requestId, metrics);
+    }
   }
 }

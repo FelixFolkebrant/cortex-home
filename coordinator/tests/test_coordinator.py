@@ -1148,6 +1148,31 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(response_headers["Content-Type"], "audio/wav")
         self.assertEqual(response_headers["Cache-Control"], "no-store")
         self.assertEqual(body, wave_audio().data)
+        debug = json.loads(response_headers["X-Cortex-Debug-Metrics"])
+        self.assertEqual(
+            set(debug),
+            {
+                "answerBytes",
+                "answerCharacters",
+                "answerDurationMs",
+                "captureBytes",
+                "captureDurationMs",
+                "llmMs",
+                "sttMs",
+                "transcriptCharacters",
+                "ttsMs",
+                "uploadMs",
+            },
+        )
+        self.assertEqual(debug["captureBytes"], len(wave_audio().data))
+        self.assertEqual(debug["captureDurationMs"], wave_audio().duration_ms)
+        self.assertEqual(debug["transcriptCharacters"], len(FakeRecognizer().transcript))
+        self.assertEqual(debug["answerCharacters"], len(FakeAgent().answer_text))
+        self.assertEqual(debug["answerBytes"], len(wave_audio().data))
+        self.assertEqual(debug["answerDurationMs"], wave_audio().duration_ms)
+        for stage in ["uploadMs", "sttMs", "llmMs", "ttsMs"]:
+            self.assertIsInstance(debug[stage], float)
+            self.assertGreaterEqual(debug[stage], 0)
 
         status_headers = {
             "Content-Type": "application/json",

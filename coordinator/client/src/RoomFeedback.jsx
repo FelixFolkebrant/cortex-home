@@ -214,6 +214,74 @@ function VoiceCaptureBar({ interaction }) {
   );
 }
 
+function formatMilliseconds(value) {
+  if (!Number.isFinite(value)) {
+    return "—";
+  }
+  return `${
+    value < 100 ? value.toFixed(1) : Math.round(value).toLocaleString("en-US")
+  } ms`;
+}
+
+function formatAudio(milliseconds, bytes) {
+  if (!Number.isFinite(milliseconds) || !Number.isFinite(bytes)) {
+    return "—";
+  }
+  return `${(milliseconds / 1000).toFixed(2)} s · ${(bytes / 1024).toFixed(1)} KiB`;
+}
+
+function formatCharacters(value) {
+  return Number.isFinite(value) ? `${value} characters` : "—";
+}
+
+function VoiceDebugPanel({ debug, visible }) {
+  if (!visible) {
+    return null;
+  }
+
+  const metrics = debug || {};
+  const rows = [
+    ["Upload transfer", formatMilliseconds(metrics.uploadMs)],
+    ["STT", formatMilliseconds(metrics.sttMs)],
+    ["LLM round trip", formatMilliseconds(metrics.llmMs)],
+    ["TTS", formatMilliseconds(metrics.ttsMs)],
+    ["Answer transfer", formatMilliseconds(metrics.answerTransferMs)],
+    ["Total to audio", formatMilliseconds(metrics.totalToAudioMs)],
+    ["Playback", formatMilliseconds(metrics.playbackMs)],
+    ["Capture", formatAudio(metrics.captureDurationMs, metrics.captureBytes)],
+    ["Transcript", formatCharacters(metrics.transcriptCharacters)],
+    ["Answer", formatAudio(metrics.answerDurationMs, metrics.answerBytes)],
+    ["Response", formatCharacters(metrics.answerCharacters)],
+  ];
+
+  return (
+    <aside
+      className="pointer-events-none absolute bottom-[clamp(6.5rem,12vh,10rem)] left-[clamp(1rem,3vw,3rem)] z-[60] w-[min(29rem,calc(100vw-2rem))] rounded-2xl border border-[#d6a954]/25 bg-[#0a0908]/94 p-5 font-mono text-xs text-[#d8ccb6] shadow-2xl backdrop-blur-xl"
+      aria-label="Voice diagnostics"
+    >
+      <div className="mb-4 flex items-center justify-between gap-4 border-white/10 border-b pb-3">
+        <div>
+          <p className="font-bold tracking-[0.16em] text-[#f1d18b] uppercase">
+            Voice diagnostics
+          </p>
+          <p className="mt-1 text-[#81786a]">Content-free · Ctrl Alt D to hide</p>
+        </div>
+        <span className="rounded-full bg-[#d6a954]/12 px-3 py-1 text-[#e9c77f] uppercase">
+          {metrics.phase || "idle"}
+        </span>
+      </div>
+      <dl className="grid grid-cols-[1fr_auto] gap-x-5 gap-y-2">
+        {rows.map(([label, value]) => (
+          <div className="contents" key={label}>
+            <dt className="text-[#928879]">{label}</dt>
+            <dd className="text-right text-[#f1e6d1] tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </aside>
+  );
+}
+
 function ChannelToast({ interaction }) {
   if (interaction.action !== CHANNEL_ACTION || interaction.state === "idle") {
     return null;
@@ -252,6 +320,8 @@ export function RoomFeedback({
   lighting,
   interaction,
   showLightingStatus,
+  voiceDebug,
+  voiceDebugVisible = false,
   voiceOnly = false,
 }) {
   return (
@@ -260,6 +330,7 @@ export function RoomFeedback({
       {!voiceOnly && showLightingStatus && <LightingStatus lighting={lighting} />}
       {!voiceOnly && <ChannelToast interaction={interaction} />}
       {!voiceOnly && <InteractionOverlay interaction={interaction} />}
+      <VoiceDebugPanel debug={voiceDebug} visible={voiceDebugVisible} />
       <VoiceCaptureBar interaction={interaction} />
     </>
   );

@@ -1,5 +1,9 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { AGENT_INTERACTION_ACTION, SpokenInteraction } from "./agent-interaction";
+import {
+  AGENT_INTERACTION_ACTION,
+  isVoiceDebugShortcut,
+  SpokenInteraction,
+} from "./agent-interaction";
 import { CameraChannel } from "./CameraChannel";
 import { MusicChannel, MusicFullscreen } from "./MusicChannel";
 import { RoomFeedback } from "./RoomFeedback";
@@ -97,6 +101,8 @@ async function playIdentifySound() {
 export function App() {
   const [room, dispatch] = useReducer(roomReducer, initialRoomState);
   const [musicFullscreen, setMusicFullscreen] = useState(false);
+  const [voiceDebug, setVoiceDebug] = useState(null);
+  const [voiceDebugVisible, setVoiceDebugVisible] = useState(false);
   const currentClientEntry = document
     .querySelector('script[type="module"][src]')
     ?.getAttribute("src");
@@ -137,6 +143,16 @@ export function App() {
         activeRequestId.current = null;
         showInteraction(AGENT_INTERACTION_ACTION, "completed", null, 2500);
       },
+      onDebug: (requestId, metrics) => {
+        if (voiceRequestId.current !== requestId) {
+          return;
+        }
+        setVoiceDebug((current) => ({
+          ...(current?.requestId === requestId ? current : {}),
+          ...metrics,
+          requestId,
+        }));
+      },
       onFailed: (requestId, error) => {
         if (voiceRequestId.current !== requestId) {
           return;
@@ -174,6 +190,7 @@ export function App() {
         }
         voiceRequestId.current = null;
         activeRequestId.current = null;
+        setVoiceDebug((current) => ({ ...current, phase: "failed" }));
         showInteraction(VOICE_CAPTURE_ACTION, "failed", error.message, 5000);
       },
       onLevel: (requestId, level) => {
@@ -183,6 +200,7 @@ export function App() {
       },
       onStarted: (requestId) => {
         if (voiceRequestId.current === requestId) {
+          setVoiceDebug((current) => ({ ...current, phase: "capturing" }));
           showInteraction(VOICE_CAPTURE_ACTION, "listening");
         }
       },
@@ -415,6 +433,11 @@ export function App() {
         voiceRequestId.current = null;
         activeRequestId.current = null;
       }
+      setVoiceDebug((current) =>
+        current?.requestId === message.requestId
+          ? { ...current, phase: message.phase }
+          : current,
+      );
       showInteraction(
         AGENT_INTERACTION_ACTION,
         message.phase,
@@ -482,6 +505,12 @@ export function App() {
     };
 
     async function onKeyDown(event) {
+      if (isVoiceDebugShortcut(event)) {
+        event.preventDefault();
+        setVoiceDebugVisible((current) => !current);
+        return;
+      }
+
       if (isMusicFullscreenShortcut(event, activeChannel.current)) {
         event.preventDefault();
         setMusicFullscreen((current) => !current);
@@ -517,6 +546,7 @@ export function App() {
           .slice(2, 10)}`;
         voiceRequestId.current = requestId;
         activeRequestId.current = requestId;
+        setVoiceDebug({ phase: "requesting", requestId });
         showInteraction(VOICE_CAPTURE_ACTION, "requesting");
         voiceCapture.start(requestId);
         return;
@@ -597,6 +627,8 @@ export function App() {
         lighting={room.lighting}
         interaction={room.interaction}
         showLightingStatus={channel !== "music"}
+        voiceDebug={voiceDebug}
+        voiceDebugVisible={voiceDebugVisible}
         voiceOnly={showMusicFullscreen}
       />
     </div>

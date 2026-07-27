@@ -233,6 +233,24 @@ playback before capturing again. Focus loss, endpoint disconnect, invalid
 audio, recognition, provider, synthesis, and playback failures all release the
 same interaction and show a content-free failed state.
 
+Exact non-repeating `Ctrl`+`Alt`+`D` toggles a local voice diagnostics panel.
+It is hidden by default and renders only numeric timing, duration, byte, and
+character counts:
+
+- upload transfer is the coordinator's bounded WAV body-read time;
+- STT and TTS are local coordinator stage durations;
+- LLM round trip includes child startup plus OpenRouter/provider request time;
+- answer transfer is the browser's response-body read time;
+- total to audio runs from upload start until the answer WAV is available;
+- playback is observed browser playback time;
+- capture and answer rows show audio duration and bytes, while transcript and
+  response rows show character counts.
+
+The panel never receives or renders the request ID, transcript, answer, context,
+credential, provider detail, or audio content. The coordinator returns the
+server measurements in `X-Cortex-Debug-Metrics`; the browser accepts only the
+fixed non-negative numeric allowlist and ignores every other field.
+
 With the endpoint connected, an outside caller can invoke its identify action:
 
 ```sh
