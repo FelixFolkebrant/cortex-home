@@ -18,6 +18,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from agent_runtime import AgentError, NodeAgent
+from alarm import AlarmStore, DISARMED, armed_alarm, due_state, parse_utc, utc_now
 from context import build_answer_context, build_room_context
 from hue import (
     HueAdapter,
@@ -32,7 +33,11 @@ from speech import SpeechError, load_selected_speech, read_capture, read_synthes
 ACTION = "endpoint.identify"
 SCENE_ACTION = "room.scene.activate"
 CHANNEL_ACTION = "channel.select"
-ALLOWED_ACTIONS = {ACTION, SCENE_ACTION, CHANNEL_ACTION}
+ALARM_ARM_ACTION = "alarm.arm"
+ALARM_DISARM_ACTION = "alarm.disarm"
+ALARM_DISMISS_ACTION = "alarm.dismiss"
+ALARM_ACTIONS = {ALARM_ARM_ACTION, ALARM_DISARM_ACTION, ALARM_DISMISS_ACTION}
+ALLOWED_ACTIONS = {ACTION, SCENE_ACTION, CHANNEL_ACTION, *ALARM_ACTIONS}
 CHANNELS = {"today", "music", "camera", "airplay"}
 MAX_BODY_BYTES = 4096
 MAX_AUDIO_BODY_BYTES = 44 + 16_000 * 2 * 15
@@ -133,6 +138,9 @@ class Coordinator:
         synthesizer=None,
         agent=None,
         playback_timeout=65,
+        alarm_state_path=None,
+        now=utc_now,
+        timer_factory=threading.Timer,
     ):
         self.action_timeout = action_timeout
         self.scene_activator = scene_activator
@@ -140,6 +148,8 @@ class Coordinator:
         self.synthesizer = synthesizer
         self.agent = agent
         self.playback_timeout = playback_timeout
+        self.now = now
+        self.timer_factory = timer_factory
         self.lock = threading.RLock()
         self.endpoint = None
         self.active_request_id = None
@@ -161,6 +171,10 @@ class Coordinator:
             "activeScenes": [],
             "observedAt": utc_timestamp(),
         }
+        self.alarm_store = AlarmStore(alarm_state_path)
+        self.alarm = self.alarm_store.load()
+        self.alarm_timer = None
+        self._recover_alarm_locked()
 
     def connect_endpoint(self):
         with self.lock:
@@ -179,6 +193,7 @@ class Coordinator:
             self.endpoint.send("channel.active", self.channel)
             self.endpoint.send("today.summary", self.today)
             self.endpoint.send("room.lighting", self.lighting)
+            self.endpoint.send("alarm.state", self.alarm.payload())
             return self.endpoint
 
     def disconnect_endpoint(self, token):
@@ -194,7 +209,7 @@ class Coordinator:
             )
             self._fail_endpoint_interaction_locked(token)
 
-    def submit(self, request_id, action, channel=None, scene=None):
+    def submit(self, request_id, action, channel=None, scene=None, alarm_time=None):
         self._validate_request_id(request_id)
         if action not in ALLOWED_ACTIONS:
             raise ApiError(
@@ -226,6 +241,28 @@ class Coordinator:
                 "invalid_action_arguments",
                 "The action does not accept a scene.",
             )
+        if action == ALARM_ARM_ACTION and (
+            channel is not None or scene is not None
+        ):
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_action_arguments",
+                "The action does not accept a channel or scene.",
+            )
+        if action in {ALARM_DISARM_ACTION, ALARM_DISMISS_ACTION} and (
+            channel is not None or scene is not None or alarm_time is not None
+        ):
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_action_arguments",
+                "The action does not accept arguments.",
+            )
+        if action not in ALARM_ACTIONS and alarm_time is not None:
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_action_arguments",
+                "The action does not accept an alarm time.",
+            )
 
         with self.lock:
             if action == SCENE_ACTION and (
@@ -255,6 +292,9 @@ class Coordinator:
                     "action_busy",
                     "The room is already handling an action.",
                 )
+            armed = None
+            if action in ALARM_ACTIONS:
+                armed = self._validate_alarm_action_locked(action, alarm_time)
             if action == ACTION and not self.endpoint:
                 raise ApiError(
                     HTTPStatus.SERVICE_UNAVAILABLE,
@@ -282,6 +322,10 @@ class Coordinator:
 
             if action == CHANNEL_ACTION:
                 self._report_channel_locked(channel, force=True)
+                self._finish_locked(pending, "completed", None, HTTPStatus.OK)
+                return pending.http_status, pending.payload()
+            if action in ALARM_ACTIONS:
+                self._run_alarm_action_locked(action, armed)
                 self._finish_locked(pending, "completed", None, HTTPStatus.OK)
                 return pending.http_status, pending.payload()
 
@@ -584,6 +628,9 @@ class Coordinator:
 
     def close(self):
         with self.lock:
+            if self.alarm_timer:
+                self.alarm_timer.cancel()
+                self.alarm_timer = None
             if self.active_interaction:
                 self._finish_interaction_locked(
                     self.active_interaction,
@@ -687,6 +734,84 @@ class Coordinator:
         if self.endpoint:
             self.endpoint.send("channel.active", self.channel)
         return self.channel
+
+    def _validate_alarm_action_locked(self, action, alarm_time):
+        if action == ALARM_ARM_ACTION:
+            if self.alarm.status == "armed":
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "alarm_already_armed",
+                    "The alarm is already armed.",
+                )
+            try:
+                return armed_alarm(alarm_time, self.now())
+            except ValueError as error:
+                raise ApiError(
+                    HTTPStatus.BAD_REQUEST,
+                    "invalid_alarm_time",
+                    str(error),
+                ) from error
+        if action == ALARM_DISARM_ACTION and self.alarm.status != "armed":
+            raise ApiError(
+                HTTPStatus.CONFLICT,
+                "alarm_not_armed",
+                "Only an armed alarm can be disarmed.",
+            )
+        if action == ALARM_DISMISS_ACTION and self.alarm.status != "ringing":
+            raise ApiError(
+                HTTPStatus.CONFLICT,
+                "alarm_not_ringing",
+                "Only a ringing alarm can be dismissed.",
+            )
+        return None
+
+    def _run_alarm_action_locked(self, action, armed):
+        if action == ALARM_ARM_ACTION:
+            self.alarm = armed
+        else:
+            self.alarm = DISARMED
+        self.alarm_store.save(self.alarm)
+        self._schedule_alarm_locked()
+        self._publish_alarm_locked()
+
+    def _recover_alarm_locked(self):
+        recovered = due_state(self.alarm, self.now())
+        if recovered != self.alarm:
+            self.alarm = recovered
+            self.alarm_store.save(self.alarm)
+        self._schedule_alarm_locked()
+
+    def _schedule_alarm_locked(self):
+        if self.alarm_timer:
+            self.alarm_timer.cancel()
+            self.alarm_timer = None
+        if self.alarm.status != "armed":
+            return
+        delay = (parse_utc(self.alarm.firesAt) - self.now()).total_seconds()
+        self.alarm_timer = self.timer_factory(
+            max(delay, 0),
+            self._fire_alarm,
+            args=(self.alarm.firesAt,),
+        )
+        self.alarm_timer.daemon = True
+        self.alarm_timer.start()
+
+    def _fire_alarm(self, fires_at):
+        with self.lock:
+            if self.alarm.status != "armed" or self.alarm.firesAt != fires_at:
+                return
+            fired = due_state(self.alarm, self.now())
+            if fired == self.alarm:
+                self._schedule_alarm_locked()
+                return
+            self.alarm = fired
+            self.alarm_store.save(self.alarm)
+            self._schedule_alarm_locked()
+            self._publish_alarm_locked()
+
+    def _publish_alarm_locked(self):
+        if self.endpoint:
+            self.endpoint.send("alarm.state", self.alarm.payload())
 
     def _fail_active_locked(self, endpoint_token, error, http_status):
         if not self.active_request_id:
@@ -840,7 +965,11 @@ class Coordinator:
             self.active_request_id = None
         pending.finished.set()
 
-        if pending.action in {SCENE_ACTION, CHANNEL_ACTION} and self.endpoint:
+        if pending.action in {
+            SCENE_ACTION,
+            CHANNEL_ACTION,
+            *ALARM_ACTIONS,
+        } and self.endpoint:
             self.endpoint.send("action.status", pending.payload())
         elif (
             notify_endpoint
@@ -948,13 +1077,14 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
 
             if path == "/api/actions":
                 body = self._read_json(
-                    {"requestId", "action", "channel", "scene"}
+                    {"requestId", "action", "channel", "scene", "time"}
                 )
                 status, payload = self.server.coordinator.submit(
                     body.get("requestId"),
                     body.get("action"),
                     body.get("channel"),
                     body.get("scene"),
+                    body.get("time"),
                 )
                 self._send_json(status, payload)
                 return
@@ -1357,6 +1487,11 @@ def parse_args():
         type=Path,
         default=Path("/etc/cortex-home/hue.json"),
     )
+    parser.add_argument(
+        "--alarm-state",
+        type=Path,
+        default=Path("/var/lib/cortex-home/alarm.json"),
+    )
     return parser.parse_args()
 
 
@@ -1378,6 +1513,7 @@ def main():
         agent=agent,
         recognizer=recognizer,
         synthesizer=synthesizer,
+        alarm_state_path=args.alarm_state,
     )
     hue = HueAdapter(
         args.hue_config,

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import wave
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from pathlib import Path
 from unittest.mock import patch
@@ -19,6 +20,9 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from cortex_home import (
     ACTION,
+    ALARM_ARM_ACTION,
+    ALARM_DISARM_ACTION,
+    ALARM_DISMISS_ACTION,
     AGENT_CHILD,
     AGENT_NODE,
     CHANNEL_ACTION,
@@ -138,12 +142,18 @@ class CoordinatorTests(unittest.TestCase):
 
     def initial_snapshots(self, endpoint):
         snapshots = {}
-        for _index in range(4):
+        for _index in range(5):
             event, payload = endpoint.events.get(timeout=1)
             snapshots[event] = payload
         self.assertEqual(
             set(snapshots),
-            {"music.playback", "channel.active", "today.summary", "room.lighting"},
+            {
+                "music.playback",
+                "channel.active",
+                "today.summary",
+                "room.lighting",
+                "alarm.state",
+            },
         )
         return snapshots
 
@@ -182,6 +192,122 @@ class CoordinatorTests(unittest.TestCase):
         event, payload = self.endpoint.events.get(timeout=1)
         self.assertEqual(event, "identify")
         return payload
+
+    def test_arms_persists_and_publishes_one_alarm(self):
+        class Timer:
+            def __init__(self, delay, callback, args):
+                self.delay = delay
+                self.callback = callback
+                self.args = args
+                self.daemon = False
+                self.started = False
+                self.cancelled = False
+
+            def start(self):
+                self.started = True
+
+            def cancel(self):
+                self.cancelled = True
+
+        now = datetime(2026, 7, 27, 19, 25, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "alarm.json")
+            coordinator = Coordinator(
+                alarm_state_path=path,
+                now=lambda: now,
+                timer_factory=Timer,
+            )
+            endpoint = coordinator.connect_endpoint()
+            self.initial_snapshots(endpoint)
+
+            status, payload = coordinator.submit(
+                "alarm-arm",
+                ALARM_ARM_ACTION,
+                alarm_time="21:30",
+            )
+
+            self.assertEqual(status, HTTPStatus.OK)
+            self.assertEqual(payload["status"], "completed")
+            self.assertEqual(coordinator.alarm.status, "armed")
+            self.assertEqual(coordinator.alarm.time, "21:30")
+            self.assertEqual(coordinator.alarm.firesAt, "2026-07-27T19:30:00Z")
+            self.assertTrue(coordinator.alarm_timer.started)
+            self.assertEqual(json.loads(path.read_text()), coordinator.alarm.payload())
+            self.assertEqual(endpoint.events.get(timeout=1)[0], "action.status")
+            event, snapshot = endpoint.events.get(timeout=1)
+            self.assertEqual(event, "alarm.state")
+            self.assertEqual(snapshot, coordinator.alarm.payload())
+            self.assertEqual(endpoint.events.get(timeout=1)[0], "action.status")
+            coordinator.close()
+
+    def test_rejects_invalid_duplicate_and_stale_alarm_actions(self):
+        now = datetime(2026, 7, 27, 19, 25, tzinfo=timezone.utc)
+        coordinator = Coordinator(now=lambda: now)
+
+        for action, alarm_time, code in [
+            (ALARM_ARM_ACTION, "25:00", "invalid_alarm_time"),
+            (ALARM_DISARM_ACTION, None, "alarm_not_armed"),
+            (ALARM_DISMISS_ACTION, None, "alarm_not_ringing"),
+        ]:
+            with self.subTest(action=action):
+                with self.assertRaises(ApiError) as raised:
+                    coordinator.submit("alarm-request", action, alarm_time=alarm_time)
+                self.assertEqual(raised.exception.code, code)
+                self.assertEqual(coordinator.alarm.status, "disarmed")
+
+        coordinator.submit("alarm-arm", ALARM_ARM_ACTION, alarm_time="21:30")
+        with self.assertRaises(ApiError) as raised:
+            coordinator.submit("alarm-again", ALARM_ARM_ACTION, alarm_time="21:30")
+        self.assertEqual(raised.exception.code, "alarm_already_armed")
+        with self.assertRaises(ApiError) as raised:
+            coordinator.submit("alarm-arm", ALARM_DISARM_ACTION)
+        self.assertEqual(raised.exception.code, "duplicate_request_id")
+        coordinator.close()
+
+    def test_recovers_recent_due_alarm_and_marks_old_alarm_missed(self):
+        class Timer:
+            def __init__(self, *_args, **_kwargs):
+                self.daemon = False
+
+            def start(self):
+                pass
+
+            def cancel(self):
+                pass
+
+        armed_at = datetime(2026, 7, 27, 19, 25, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "alarm.json")
+            first = Coordinator(
+                alarm_state_path=path,
+                now=lambda: armed_at,
+                timer_factory=Timer,
+            )
+            first.submit("alarm-arm", ALARM_ARM_ACTION, alarm_time="21:30")
+            first.close()
+
+            ringing = Coordinator(
+                alarm_state_path=path,
+                now=lambda: armed_at + timedelta(minutes=6),
+                timer_factory=Timer,
+            )
+            self.assertEqual(ringing.alarm.status, "ringing")
+            ringing.close()
+
+            first = Coordinator(
+                alarm_state_path=path,
+                now=lambda: armed_at,
+                timer_factory=Timer,
+            )
+            first.submit("alarm-rearm", ALARM_ARM_ACTION, alarm_time="21:30")
+            first.close()
+            missed = Coordinator(
+                alarm_state_path=path,
+                now=lambda: armed_at + timedelta(minutes=21),
+                timer_factory=Timer,
+            )
+            self.assertEqual(missed.alarm.status, "missed")
+            missed.close()
 
     def test_completes_with_the_caller_request_id(self):
         future = self.submit_in_background()
@@ -745,7 +871,7 @@ class AgentInteractionTests(unittest.TestCase):
             synthesizer=self.synthesizer,
         )
         self.endpoint = self.coordinator.connect_endpoint()
-        for _index in range(4):
+        for _index in range(5):
             self.endpoint.events.get(timeout=1)
         self.addCleanup(self.coordinator.close)
 
@@ -1038,12 +1164,18 @@ class HttpTests(unittest.TestCase):
         event, ready = self.read_event(response)
         self.assertEqual(event, "ready")
         snapshots = {}
-        for _index in range(4):
+        for _index in range(5):
             event, payload = self.read_event(response)
             snapshots[event] = payload
         self.assertEqual(
             set(snapshots),
-            {"music.playback", "channel.active", "today.summary", "room.lighting"},
+            {
+                "music.playback",
+                "channel.active",
+                "today.summary",
+                "room.lighting",
+                "alarm.state",
+            },
         )
         return ready, snapshots
 

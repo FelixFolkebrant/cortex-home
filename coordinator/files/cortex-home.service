@@ -18,6 +18,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
+StateDirectory=cortex-home
 
 [Install]
 WantedBy=multi-user.target
