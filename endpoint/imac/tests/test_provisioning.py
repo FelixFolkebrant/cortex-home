@@ -41,6 +41,16 @@ class AirPlayControlTests(unittest.TestCase):
             "esac\n"
         )
         helper.chmod(0o755)
+        alarm_helper = temporary_path / "alarm-helper"
+        alarm_helper.write_text(
+            "#!/bin/sh\n"
+            "set -eu\n"
+            'case "$1" in\n'
+            "  start|stop|status) exit 0 ;;\n"
+            "  *) exit 1 ;;\n"
+            "esac\n"
+        )
+        alarm_helper.chmod(0o755)
 
         with socket.socket() as available_port:
             available_port.bind(("127.0.0.1", 0))
@@ -57,6 +67,10 @@ class AirPlayControlTests(unittest.TestCase):
             .replace(
                 "airplay_helper=/usr/local/bin/cortex-endpoint-airplay",
                 f"airplay_helper={helper}",
+            )
+            .replace(
+                "alarm_helper=/usr/local/bin/cortex-endpoint-alarm",
+                f"alarm_helper={alarm_helper}",
             )
             .replace(
                 "127.0.0.1 38019",
@@ -387,6 +401,21 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("/usr/local/bin/cortex-airplay-control &", session)
         self.assertIn('kill "$airplay_control_pid"', session)
 
+    def test_alarm_audio_is_fixed_single_owner_and_installed_with_the_endpoint(self):
+        helper = (FILES / "cortex-endpoint-alarm").read_text()
+        installer = (ENDPOINT_DIR / "provision-alarm-audio").read_text()
+
+        self.assertIn("alarm_file=/etc/cortex-endpoint/wake-alarm.mp3", helper)
+        self.assertIn('"$runtime_dir/cortex-alarm"', helper)
+        self.assertIn("/usr/bin/mpg123 --loop -1", helper)
+        self.assertIn("kill -TERM", helper)
+        self.assertIn('"$source_dir/files/cortex-endpoint-alarm"', self.script)
+        self.assertIn("mpg123", self.script)
+        self.assertIn("The alarm file must be a regular file.", installer)
+        self.assertIn("33554432", installer)
+        self.assertIn("wake-alarm.mp3", installer)
+        self.assertIn("sudo mv", installer)
+
     def test_airplay_control_is_loopback_only_and_origin_bound(self):
         control = (FILES / "cortex-airplay-control").read_text()
 
@@ -400,6 +429,10 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("POST && $path == /off", control)
         self.assertIn('"$airplay_helper" receiver-on', control)
         self.assertIn('"$airplay_helper" receiver-off', control)
+        self.assertIn("POST && $path == /alarm/start", control)
+        self.assertIn("POST && $path == /alarm/stop", control)
+        self.assertIn('"$alarm_helper" start', control)
+        self.assertIn('"$alarm_helper" stop', control)
 
     def test_openbox_controls_airplay_and_raises_each_mirror_window(self):
         openbox = ET.parse(FILES / "openbox-rc.xml")

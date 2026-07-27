@@ -10,6 +10,7 @@ fi
 
 coordinator_url_file=/etc/cortex-endpoint/coordinator-url
 airplay_helper=/usr/local/bin/cortex-endpoint-airplay
+alarm_helper=/usr/local/bin/cortex-endpoint-alarm
 connection_pid=
 previous_cpu_idle=
 previous_cpu_total=
@@ -35,6 +36,11 @@ fi
 
 if [[ ! -x $airplay_helper ]]; then
   echo "The endpoint AirPlay helper is not installed." >&2
+  exit 1
+fi
+
+if [[ ! -x $alarm_helper ]]; then
+  echo "The endpoint alarm helper is not installed." >&2
   exit 1
 fi
 
@@ -210,6 +216,20 @@ while true; do
       else
         send_response "500 Internal Server Error" \
           '{"error":"AirPlay could not stop."}'
+      fi
+    elif [[ $method == POST && $path == /alarm/start ]]; then
+      if "$alarm_helper" start >/dev/null 2>&1; then
+        send_response "200 OK" '{"state":"playing"}'
+      else
+        send_response "500 Internal Server Error" \
+          '{"error":"Alarm audio could not start."}'
+      fi
+    elif [[ $method == POST && $path == /alarm/stop ]]; then
+      if "$alarm_helper" stop >/dev/null 2>&1; then
+        send_response "200 OK" '{"state":"stopped"}'
+      else
+        send_response "500 Internal Server Error" \
+          '{"error":"Alarm audio could not stop."}'
       fi
     else
       send_response "404 Not Found" '{"error":"Route not found."}'

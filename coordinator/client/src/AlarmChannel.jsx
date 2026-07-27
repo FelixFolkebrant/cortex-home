@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useState } from "react";
 import {
   alarmKeyboardAction,
   alarmTime,
@@ -41,12 +41,34 @@ function dateLabel(firesAt) {
   }).format(new Date(firesAt));
 }
 
+export async function requestAlarm(path, fetcher = fetch) {
+  const response = await fetcher(`http://127.0.0.1:38019${path}`, {
+    method: "POST",
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !["playing", "stopped"].includes(result.state)) {
+    throw new Error(result.error || "Alarm audio is unavailable.");
+  }
+  return result.state;
+}
+
 export function AlarmChannel({ onAction, snapshot }) {
+  const alarmStatus = snapshot?.status;
   const [editor, dispatch] = useReducer(
     reduceAlarmEditor,
     snapshot,
     initialAlarmEditor,
   );
+  const [audioError, setAudioError] = useState(null);
+
+  useEffect(() => {
+    if (!alarmStatus) {
+      return;
+    }
+    requestAlarm(alarmStatus === "ringing" ? "/alarm/start" : "/alarm/stop")
+      .then(() => setAudioError(null))
+      .catch((error) => setAudioError(error.message));
+  }, [alarmStatus]);
 
   useEffect(() => {
     dispatch({ type: "reset", snapshot });
@@ -94,8 +116,10 @@ export function AlarmChannel({ onAction, snapshot }) {
         <p aria-live="polite" className="mt-12 text-xl text-[#f8f0dc]/75">
           Press Enter to dismiss.
         </p>
-        {snapshot.error ? (
-          <p className="mt-4 text-base text-[#ff6961]">{snapshot.error}</p>
+        {snapshot.error || audioError ? (
+          <p className="mt-4 text-base text-[#ff6961]">
+            {snapshot.error || audioError}
+          </p>
         ) : null}
       </main>
     );

@@ -72,6 +72,7 @@ apt-get install --yes --no-install-recommends \
   gstreamer1.0-pulseaudio \
   gstreamer1.0-x \
   lightdm \
+  mpg123 \
   netcat-openbsd \
   openbox \
   pulseaudio \
@@ -110,6 +111,9 @@ install -D --mode=755 \
 install -D --mode=755 \
   "$source_dir/files/cortex-endpoint-airplay" \
   /usr/local/bin/cortex-endpoint-airplay
+install -D --mode=755 \
+  "$source_dir/files/cortex-endpoint-alarm" \
+  /usr/local/bin/cortex-endpoint-alarm
 install -D --mode=755 \
   "$source_dir/files/cortex-airplay-control" \
   /usr/local/bin/cortex-airplay-control

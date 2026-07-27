@@ -1,0 +1,59 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [[ $# -ne 1 || ! $1 =~ ^(start|stop|status)$ ]]; then
+  echo "Usage: $0 <start|stop|status>" >&2
+  exit 1
+fi
+
+alarm_file=/etc/cortex-endpoint/wake-alarm.mp3
+runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+state_dir="$runtime_dir/cortex-alarm"
+pid_file="$state_dir/player.pid"
+
+player_pid() {
+  if [[ ! -r $pid_file ]]; then
+    return 1
+  fi
+  local pid
+  IFS= read -r pid < "$pid_file"
+  if [[ ! $pid =~ ^[1-9][0-9]*$ ]] || ! kill -0 "$pid" 2>/dev/null; then
+    rm -f -- "$pid_file"
+    return 1
+  fi
+  printf '%s\n' "$pid"
+}
+
+case $1 in
+  status)
+    if [[ ! -r $alarm_file ]]; then
+      printf 'missing\n'
+    elif player_pid >/dev/null; then
+      printf 'playing\n'
+    else
+      printf 'stopped\n'
+    fi
+    ;;
+  start)
+    if [[ ! -r $alarm_file ]]; then
+      echo "The fixed alarm file is not readable." >&2
+      exit 1
+    fi
+    if player_pid >/dev/null; then
+      exit 0
+    fi
+    install -d --mode=700 "$state_dir"
+    sink_name=$(/usr/local/bin/cortex-endpoint-audio-route)
+    XDG_RUNTIME_DIR="$runtime_dir" \
+      PULSE_SINK="$sink_name" \
+      /usr/bin/mpg123 --loop -1 --quiet "$alarm_file" >/dev/null 2>&1 &
+    printf '%s\n' "$!" > "$pid_file"
+    ;;
+  stop)
+    if pid=$(player_pid); then
+      kill -TERM "$pid" 2>/dev/null || true
+      rm -f -- "$pid_file"
+    fi
+    ;;
+esac

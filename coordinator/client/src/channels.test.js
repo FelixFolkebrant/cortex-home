@@ -24,7 +24,9 @@ const { TodayChannel } = await vite.ssrLoadModule("/src/TodayChannel.jsx");
 const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
   "/src/CameraChannel.jsx",
 );
-const { AlarmChannel } = await vite.ssrLoadModule("/src/AlarmChannel.jsx");
+const { AlarmChannel, requestAlarm } = await vite.ssrLoadModule(
+  "/src/AlarmChannel.jsx",
+);
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 after(() => vite.close());
@@ -281,6 +283,29 @@ test("Ringing Alarm replaces the editor with a dominant live clock", () => {
   assert.match(markup, /aria-label="Ringing alarm"/);
   assert.match(markup, /Press Enter to dismiss/);
   assert.doesNotMatch(markup, /Press Ctrl\+Enter to sleep/);
+});
+
+test("Alarm audio calls only the loopback start and stop routes", async () => {
+  const calls = [];
+  const state = await requestAlarm("/alarm/start", async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ state: "playing" }) };
+  });
+
+  assert.equal(state, "playing");
+  assert.deepEqual(calls, [
+    {
+      url: "http://127.0.0.1:38019/alarm/start",
+      options: { method: "POST" },
+    },
+  ]);
+  await assert.rejects(
+    requestAlarm("/alarm/stop", async () => ({
+      ok: true,
+      json: async () => ({ state: "unknown" }),
+    })),
+    /Alarm audio is unavailable/,
+  );
 });
 
 test("Music channel owns loaded playback and artwork fallback presentation", () => {
