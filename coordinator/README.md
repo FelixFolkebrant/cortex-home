@@ -293,18 +293,22 @@ curl \
   http://<server-host>:8080/api/actions
 ```
 
-The only accepted channel values are `today`, `music`, and `camera`. The
+The only accepted channel values are `today`, `music`, `camera`, and
+`airplay`. The
 coordinator starts on Today, publishes the selected `channel.active` snapshot
 to every endpoint connection, and returns completion after it publishes that
-state. On the room display, `Ctrl`+`Alt`+`1` selects Today,
-`Ctrl`+`Alt`+`2` selects Music, and `Ctrl`+`Alt`+`3` selects the local Camera
-mirror through that same action. `Ctrl`+`Alt`+`S` activates the next detected
-room scene in case-insensitive name order and wraps after the last scene. While
-Music is active, `Ctrl`+`M` locally toggles its fullscreen artwork presentation
-without sending a coordinator action. Leaving Music resets that presentation.
-Other key combinations and repeated key presses do nothing. The Hue remote
-remains exclusively native to Hue; Cortex Home does not subscribe to its button
-events.
+state. On the iMac endpoint, Openbox owns all four channel chords globally:
+`Ctrl`+`Alt`+`1` selects Today, `Ctrl`+`Alt`+`2` selects Music, and
+`Ctrl`+`Alt`+`3` selects the local Camera mirror after ensuring UxPlay is
+stopped. `Ctrl`+`Alt`+`4` starts the native AirPlay receiver before selecting
+the AirPlay view, or stops the receiver and returns to Today. Browser-only
+environments map the same chords directly to their views without controlling a
+receiver. `Ctrl`+`Alt`+`S` activates the next detected room scene in
+case-insensitive name order and wraps after the last scene. While Music is
+active, `Ctrl`+`M` locally toggles its fullscreen artwork presentation without
+sending a coordinator action. Leaving Music resets that presentation. Other
+key combinations and repeated key presses do nothing. The Hue remote remains
+exclusively native to Hue; Cortex Home does not subscribe to its button events.
 
 For a focused deployed check, use the repository-owned verifier with one exact
 detected scene name. It checks safe health, generates a unique request ID, and

@@ -148,6 +148,7 @@ export function keyboardAction(event, lighting) {
     Digit1: "today",
     Digit2: "music",
     Digit3: "camera",
+    Digit4: "airplay",
   }[event.code];
   if (channel) {
     return { action: CHANNEL_ACTION, channel };

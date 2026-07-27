@@ -11,6 +11,7 @@ const vite = await createServer({
 });
 const { MusicChannel, MusicFullscreen, updateFullscreenTracks } =
   await vite.ssrLoadModule("/src/MusicChannel.jsx");
+const { AirPlayChannel } = await vite.ssrLoadModule("/src/AirPlayChannel.jsx");
 const { RoomFeedback } = await vite.ssrLoadModule("/src/RoomFeedback.jsx");
 const { TodayChannel } = await vite.ssrLoadModule("/src/TodayChannel.jsx");
 const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
@@ -19,6 +20,17 @@ const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 after(() => vite.close());
+
+test("AirPlay channel shows passwordless mirroring and global exit guidance", () => {
+  const markup = renderToStaticMarkup(createElement(AirPlayChannel));
+
+  assert.match(markup, /Cortex Home \/ AirPlay/);
+  assert.match(markup, /Ready to mirror\./);
+  assert.match(markup, /choose Cortex AirPlay/);
+  assert.match(markup, /No code required/);
+  assert.match(markup, /Ctrl \+ Alt \+ 4 stops AirPlay/);
+  assert.doesNotMatch(markup, /PIN|password/i);
+});
 
 test("Today channel owns available weather and attribution presentation", () => {
   const markup = renderToStaticMarkup(

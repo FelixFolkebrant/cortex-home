@@ -205,6 +205,10 @@ test("only fixed Ctrl+Alt channel shortcuts are accepted", () => {
     action: "channel.select",
     channel: "camera",
   });
+  assert.deepEqual(keyboardAction({ ...keyboardEvent, code: "Digit4" }), {
+    action: "channel.select",
+    channel: "airplay",
+  });
   assert.equal(keyboardAction({ ...keyboardEvent, repeat: true }), null);
   assert.equal(keyboardAction({ ...keyboardEvent, shiftKey: true }), null);
   assert.equal(keyboardAction({ ...keyboardEvent, metaKey: true }), null);
