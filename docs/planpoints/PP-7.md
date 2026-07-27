@@ -59,7 +59,7 @@ alarm audio, and recovery as one observable morning flow.
   and derive one in-process timer on startup or update.
 - Why: The ThinkPad is already the always-on state and action authority. The
   browser and iMac deliberately stop executing during suspend.
-- Status: open
+- Status: decided
 
 ### C2 - Endpoint Sleep And Wake Boundary
 
@@ -77,7 +77,7 @@ alarm audio, and recovery as one observable morning flow.
   `wakealarm` interface, installed `rtcwake`, UTC hardware clock, and
   synchronized time. A physical suspend/resume qualification still decides
   whether the observed capability is reliable.
-- Status: open
+- Status: decided
 
 ### C3 - Automatic Room Action Boundary
 
@@ -91,7 +91,7 @@ alarm audio, and recovery as one observable morning flow.
   completion used by human and agent scene requests.
 - Why: The requested wake behavior needs one predictable light change and does
   not justify configurable automation.
-- Status: open
+- Status: decided
 
 ### C4 - Alarm Audio Ownership
 
@@ -109,7 +109,7 @@ alarm audio, and recovery as one observable morning flow.
   exact-origin endpoint bridge.
 - Why: The sound can start locally after resume and can be replaced without
   application deployment or a new media catalog.
-- Status: open
+- Status: decided
 
 ## Plumbing
 
