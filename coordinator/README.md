@@ -302,8 +302,9 @@ state. On the iMac endpoint, Openbox owns all four channel chords globally:
 `Ctrl`+`Alt`+`3` selects the local Camera mirror after ensuring UxPlay is
 stopped. `Ctrl`+`Alt`+`4` selects the AirPlay control view without starting the
 receiver. Its on-screen switch controls the receiver through an origin-bound
-loopback bridge on the iMac. Browser-only environments can render the view but
-cannot control a local receiver. `Ctrl`+`Alt`+`S` activates the next detected
+loopback bridge on the iMac; plain `Enter` toggles it while AirPlay is active.
+Browser-only environments can render the view but cannot control a local
+receiver. `Ctrl`+`Alt`+`S` activates the next detected
 room scene in
 case-insensitive name order and wraps after the last scene. While Music is
 active, `Ctrl`+`M` locally toggles its fullscreen artwork presentation without

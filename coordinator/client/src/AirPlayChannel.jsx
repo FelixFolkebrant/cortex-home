@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 const AIRPLAY_CONTROL_URL = "http://127.0.0.1:38019";
+const AIRPLAY_RETRY_DELAY_MS = 75;
 
 function AirPlayLogo({ className = "" }) {
   return (
@@ -35,10 +36,41 @@ function AppleTvLogo() {
   );
 }
 
-export async function requestAirPlay(path, fetcher = fetch) {
-  const response = await fetcher(`${AIRPLAY_CONTROL_URL}${path}`, {
-    method: path === "/status" ? "GET" : "POST",
-  });
+export function isAirPlayToggleShortcut(event) {
+  return (
+    event.key === "Enter" &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.repeat
+  );
+}
+
+export async function requestAirPlay(
+  path,
+  fetcher = fetch,
+  wait = (duration) =>
+    new Promise((resolve) => {
+      window.setTimeout(resolve, duration);
+    }),
+) {
+  let response;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      response = await fetcher(`${AIRPLAY_CONTROL_URL}${path}`, {
+        method: path === "/status" ? "GET" : "POST",
+      });
+      break;
+    } catch {
+      if (attempt === 1) {
+        throw new Error("AirPlay control is unavailable.");
+      }
+      await wait(AIRPLAY_RETRY_DELAY_MS);
+    }
+  }
+
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
@@ -120,10 +152,28 @@ export function AirPlayChannel() {
     }
   }
 
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (
+        working ||
+        !isAirPlayToggleShortcut(event) ||
+        event.target?.closest?.('[role="switch"]')
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      toggle();
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
   return (
     <main
       aria-label="AirPlay screen mirror"
-      className="absolute inset-0 z-10 grid place-content-center bg-[#080808] px-[8vw] text-center text-white"
+      className="relative z-10 grid min-h-screen place-content-center bg-[#080808] px-[8vw] text-center text-white"
     >
       <div className="flex items-center justify-center gap-5">
         <AirPlayLogo className="h-14 w-14" />
@@ -132,6 +182,7 @@ export function AirPlayChannel() {
 
       <button
         aria-checked={enabled}
+        aria-keyshortcuts="Enter"
         aria-label="AirPlay receiver"
         className={`relative mx-auto mt-16 h-[4.25rem] w-[7.5rem] rounded-full p-1.5 shadow-inner transition-colors duration-300 focus-visible:outline-4 focus-visible:outline-offset-8 focus-visible:outline-white ${
           enabled ? "bg-[#30d158]" : "bg-[#3a3a3c]"
