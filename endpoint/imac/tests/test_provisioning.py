@@ -420,6 +420,7 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("mpg123", self.script)
         self.assertIn("The alarm file must be a regular file.", installer)
         self.assertIn("33554432", installer)
+        self.assertIn("The alarm file does not contain an MP3 header.", installer)
         self.assertIn("wake-alarm.mp3", installer)
         self.assertIn("sudo mv", installer)
 

@@ -83,6 +83,8 @@ SPOTIFY_URI_PATTERN = re.compile(
     r"^spotify:(?P<type>track|episode):[A-Za-z0-9]{1,64}$"
 )
 WAKE_SCENE = "Warm low"
+MIN_SLEEP_DELAY_SECONDS = 60
+MAX_SLEEP_DELAY_SECONDS = 93_600
 
 
 class ApiError(Exception):
@@ -799,6 +801,14 @@ class Coordinator:
                 "alarm_not_armed",
                 "Only an observed armed alarm can request sleep.",
             )
+        if action == ALARM_SLEEP_ACTION:
+            delay = (parse_utc(self.alarm.firesAt) - self.now()).total_seconds()
+            if not MIN_SLEEP_DELAY_SECONDS <= delay <= MAX_SLEEP_DELAY_SECONDS:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "alarm_wake_out_of_range",
+                    "The armed alarm is not far enough ahead to sleep.",
+                )
         return None
 
     def _run_alarm_action_locked(self, action, armed):

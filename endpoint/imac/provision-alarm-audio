@@ -28,6 +28,15 @@ if [ "$size" -lt 1 ] || [ "$size" -gt 33554432 ]; then
   exit 1
 fi
 
+magic=$(dd if="$source_file" bs=1 count=3 2>/dev/null | od -An -tx1 | tr -d ' \n')
+case "$magic" in
+  494433 | fff2 | fff3 | fffa | fffb | ffe2 | ffe3) ;;
+  *)
+    echo "The alarm file does not contain an MP3 header." >&2
+    exit 1
+    ;;
+esac
+
 remote_file=$(ssh imac mktemp /tmp/cortex-alarm.XXXXXX)
 
 case "$remote_file" in

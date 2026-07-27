@@ -350,6 +350,23 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(coordinator.alarm.error, "sleep_failed")
         coordinator.close()
 
+    def test_rejects_a_sleep_request_that_cannot_reach_the_endpoint_bound(self):
+        now = datetime(2026, 7, 27, 19, 29, 30, tzinfo=timezone.utc)
+        coordinator = Coordinator(now=lambda: now)
+        coordinator.submit("alarm-arm", ALARM_ARM_ACTION, alarm_time="21:30")
+        coordinator.alarm = coordinator.alarm.__class__(
+            "armed",
+            "21:30",
+            "2026-07-27T19:30:15Z",
+            None,
+        )
+
+        with self.assertRaises(ApiError) as raised:
+            coordinator.submit("alarm-sleep", ALARM_SLEEP_ACTION)
+
+        self.assertEqual(raised.exception.code, "alarm_wake_out_of_range")
+        coordinator.close()
+
     def test_ringing_alarm_selects_its_channel_and_activates_only_warm_low(self):
         class Timer:
             def __init__(self, *_args, **_kwargs):
