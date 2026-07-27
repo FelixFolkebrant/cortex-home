@@ -141,11 +141,13 @@ cp \
   "$script_dir/agent/package.json" \
   "$script_dir/agent/pnpm-lock.yaml" \
   /opt/cortex-home/agent/
-COREPACK_HOME="$build_dir/corepack" \
+PATH=/opt/cortex-home/node/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  COREPACK_HOME="$build_dir/corepack" \
   /opt/cortex-home/node/bin/corepack install \
   --global \
   pnpm@10.18.2
-COREPACK_HOME="$build_dir/corepack" \
+PATH=/opt/cortex-home/node/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  COREPACK_HOME="$build_dir/corepack" \
   /opt/cortex-home/node/bin/corepack pnpm \
   --dir /opt/cortex-home/agent \
   install \

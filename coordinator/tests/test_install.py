@@ -59,6 +59,12 @@ class InstallTests(unittest.TestCase):
             install_host,
         )
         self.assertIn("pnpm@10.18.2", install_host)
+        self.assertEqual(
+            install_host.count(
+                "PATH=/opt/cortex-home/node/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ),
+            2,
+        )
         self.assertIn("--frozen-lockfile", install_host)
         self.assertIn("pocket-tts==2.1.0", requirements)
         self.assertIn("vosk==0.3.45", requirements)
