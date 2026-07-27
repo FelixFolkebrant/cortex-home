@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "react";
+import { AirPlayChannel } from "./AirPlayChannel";
 import {
   AGENT_INTERACTION_ACTION,
   isVoiceDebugShortcut,
@@ -593,7 +594,9 @@ export function App() {
   const channel = room.channel?.active || "today";
   const showMusicFullscreen = channel === "music" && musicFullscreen;
   let channelPresentation;
-  if (channel === "music") {
+  if (channel === "airplay") {
+    channelPresentation = <AirPlayChannel />;
+  } else if (channel === "music") {
     channelPresentation = (
       <MusicChannel playback={room.playback} connection={room.connection} />
     );
@@ -622,15 +625,17 @@ export function App() {
         </>
       )}
 
-      <RoomFeedback
-        connection={room.connection}
-        lighting={room.lighting}
-        interaction={room.interaction}
-        showLightingStatus={channel !== "music"}
-        voiceDebug={voiceDebug}
-        voiceDebugVisible={voiceDebugVisible}
-        voiceOnly={showMusicFullscreen}
-      />
+      {channel !== "airplay" ? (
+        <RoomFeedback
+          connection={room.connection}
+          lighting={room.lighting}
+          interaction={room.interaction}
+          showLightingStatus={channel !== "music"}
+          voiceDebug={voiceDebug}
+          voiceDebugVisible={voiceDebugVisible}
+          voiceOnly={showMusicFullscreen}
+        />
+      ) : null}
     </div>
   );
 }

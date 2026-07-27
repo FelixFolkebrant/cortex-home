@@ -39,8 +39,23 @@ openbox --sm-disable &
 openbox_pid=$!
 unclutter -idle 0.5 -root &
 unclutter_pid=$!
+/usr/local/bin/cortex-airplay-control &
+airplay_control_pid=$!
+
+sleep 0.1
+
+if ! kill -0 "$airplay_control_pid" 2>/dev/null; then
+  echo "The local AirPlay control bridge did not start." >&2
+  exit 1
+fi
 
 cleanup() {
+  kill "$airplay_control_pid" 2>/dev/null || true
+
+  if [ -x /usr/local/bin/cortex-endpoint-airplay ]; then
+    /usr/local/bin/cortex-endpoint-airplay stop-local || true
+  fi
+
   kill \
     "$openbox_pid" \
     "$unclutter_pid" \

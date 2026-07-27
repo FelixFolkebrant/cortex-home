@@ -11,6 +11,8 @@ const vite = await createServer({
 });
 const { MusicChannel, MusicFullscreen, updateFullscreenTracks } =
   await vite.ssrLoadModule("/src/MusicChannel.jsx");
+const { AirPlayChannel, AirPlayStatus, isAirPlayToggleShortcut, requestAirPlay } =
+  await vite.ssrLoadModule("/src/AirPlayChannel.jsx");
 const { RoomFeedback } = await vite.ssrLoadModule("/src/RoomFeedback.jsx");
 const { TodayChannel } = await vite.ssrLoadModule("/src/TodayChannel.jsx");
 const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
@@ -19,6 +21,108 @@ const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 after(() => vite.close());
+
+test("AirPlay channel is only a logo, switch, and conditional status region", () => {
+  const markup = renderToStaticMarkup(createElement(AirPlayChannel));
+
+  assert.match(markup, />AirPlay</);
+  assert.match(markup, /role="switch"/);
+  assert.match(markup, /aria-checked="false"/);
+  assert.match(markup, /aria-keyshortcuts="Enter"/);
+  assert.match(markup, /min-h-screen/);
+  assert.doesNotMatch(markup, /absolute inset-0/);
+  assert.doesNotMatch(markup, /Ready to mirror|No code required|Ctrl/);
+  assert.doesNotMatch(markup, /Select|Skärmen|PIN|password/i);
+});
+
+test("AirPlay shows only a loader while starting and Skärmen when on", () => {
+  const starting = renderToStaticMarkup(
+    createElement(AirPlayStatus, { state: "starting" }),
+  );
+  const on = renderToStaticMarkup(createElement(AirPlayStatus, { state: "on" }));
+
+  assert.match(starting, /Starting AirPlay/);
+  assert.doesNotMatch(starting, /Select|Skärmen/);
+  assert.match(on, /Select/);
+  assert.match(on, /Apple TV/);
+  assert.match(on, /Skärmen/);
+  assert.match(on, /to cast screen/);
+});
+
+test("AirPlay control uses the loopback bridge and validates its state", async () => {
+  const calls = [];
+  const state = await requestAirPlay("/on", async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      json: async () => ({ state: "on" }),
+    };
+  });
+
+  assert.equal(state, "on");
+  assert.deepEqual(calls, [
+    {
+      url: "http://127.0.0.1:38019/on",
+      options: { method: "POST" },
+    },
+  ]);
+  await assert.rejects(
+    requestAirPlay("/status", async () => ({
+      ok: true,
+      json: async () => ({ state: "starting" }),
+    })),
+    /invalid state/,
+  );
+});
+
+test("AirPlay retries the one-shot listener gap and hides raw fetch errors", async () => {
+  let attempts = 0;
+  const waits = [];
+  const state = await requestAirPlay(
+    "/status",
+    async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new TypeError("Failed to fetch");
+      }
+      return {
+        ok: true,
+        json: async () => ({ state: "off" }),
+      };
+    },
+    async (duration) => waits.push(duration),
+  );
+
+  assert.equal(state, "off");
+  assert.equal(attempts, 2);
+  assert.deepEqual(waits, [75]);
+  await assert.rejects(
+    requestAirPlay(
+      "/status",
+      async () => {
+        throw new TypeError("Failed to fetch");
+      },
+      async () => {},
+    ),
+    /AirPlay control is unavailable/,
+  );
+});
+
+test("plain non-repeating Enter is the AirPlay toggle shortcut", () => {
+  const enter = {
+    key: "Enter",
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    repeat: false,
+  };
+
+  assert.equal(isAirPlayToggleShortcut(enter), true);
+  assert.equal(isAirPlayToggleShortcut({ ...enter, repeat: true }), false);
+  assert.equal(isAirPlayToggleShortcut({ ...enter, ctrlKey: true }), false);
+  assert.equal(isAirPlayToggleShortcut({ ...enter, key: " " }), false);
+});
 
 test("Today channel owns available weather and attribution presentation", () => {
   const markup = renderToStaticMarkup(

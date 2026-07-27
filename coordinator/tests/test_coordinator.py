@@ -513,6 +513,20 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(event, "action.status")
         self.assertEqual(completed, payload)
 
+    def test_accepts_airplay_as_the_fourth_fixed_channel(self):
+        status, payload = self.coordinator.submit(
+            "today-to-airplay",
+            CHANNEL_ACTION,
+            "airplay",
+        )
+
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(payload["status"], "completed")
+        self.endpoint.events.get(timeout=1)
+        event, channel = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "channel.active")
+        self.assertEqual(channel, {"active": "airplay"})
+
     def test_context_tracks_active_channel_and_isolates_nested_values(self):
         self.coordinator.report_playback(PLAYING_OBSERVATION)
         self.endpoint.events.get(timeout=1)
@@ -542,7 +556,7 @@ class CoordinatorTests(unittest.TestCase):
 
     def test_selects_a_channel_without_an_endpoint_and_rejects_invalid_values(self):
         self.coordinator.disconnect_endpoint(self.endpoint.token)
-        self.assertEqual(CHANNELS, {"today", "music", "camera"})
+        self.assertEqual(CHANNELS, {"today", "music", "camera", "airplay"})
 
         status, payload = self.coordinator.submit(
             "select-without-endpoint",
@@ -1368,7 +1382,7 @@ class HttpTests(unittest.TestCase):
             response.getheader("Content-Security-Policy"),
         )
         self.assertIn(
-            "connect-src 'self'",
+            "connect-src 'self' http://127.0.0.1:38019",
             response.getheader("Content-Security-Policy"),
         )
 

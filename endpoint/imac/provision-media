@@ -21,7 +21,9 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
 scp -q \
+  "$script_dir/files/cortex-airplay-control" \
   "$script_dir/files/cortex-endpoint-audio-route" \
+  "$script_dir/files/cortex-endpoint-airplay" \
   "$script_dir/files/cortex-endpoint-headphone-volume" \
   "$script_dir/files/cortex-endpoint-session" \
   "$script_dir/files/cortex-raspotify" \

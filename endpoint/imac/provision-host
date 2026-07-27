@@ -66,10 +66,17 @@ apt-get install --yes --no-install-recommends \
   chromium-browser \
   curl \
   dbus-x11 \
+  gstreamer1.0-plugins-bad \
+  gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good \
+  gstreamer1.0-pulseaudio \
+  gstreamer1.0-x \
   lightdm \
+  netcat-openbsd \
   openbox \
   pulseaudio \
   unclutter \
+  uxplay \
   wpasupplicant \
   x11-xserver-utils \
   xinit \
@@ -100,6 +107,12 @@ install -D --mode=755 \
 install -D --mode=755 \
   "$source_dir/files/cortex-endpoint-audio-route" \
   /usr/local/bin/cortex-endpoint-audio-route
+install -D --mode=755 \
+  "$source_dir/files/cortex-endpoint-airplay" \
+  /usr/local/bin/cortex-endpoint-airplay
+install -D --mode=755 \
+  "$source_dir/files/cortex-airplay-control" \
+  /usr/local/bin/cortex-airplay-control
 install -D --mode=755 \
   "$source_dir/files/cortex-endpoint-headphone-volume" \
   /usr/local/bin/cortex-endpoint-headphone-volume
