@@ -112,7 +112,7 @@ behavior, layering limits, input and notification implications, and the
 smallest credible follow-up slice. It does not select or deploy a permanent
 receiver yet.
 
-### [7 PROPOSED - Wake-Up Alarm](../planpoints/PP-7.md)
+### [7 ACCEPTED - Wake-Up Alarm](../planpoints/PP-7.md)
 
 One keyboard-set, one-shot alarm persists on the ThinkPad, deliberately
 suspends the iMac until its hardware RTC wake, then shows the current time

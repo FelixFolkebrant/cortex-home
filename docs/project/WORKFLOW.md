@@ -143,13 +143,19 @@ execution seam, and focused voice-action lifecycle tests. GH-020 owns the
 observed channel transition boundary in `App.jsx`, its transition styles, and
 focused transition tests.
 
-GH-021 is now the proposed Planpoint 7 wake-alarm slice. Its worktree may own
-planning while GH-018 and GH-020 proceed, but implementation waits until PP-7
-is accepted and both issues merge. GH-021 then rebases their shared
-coordinator scene-execution and application-shell boundaries before it changes
-alarm state and actions, `App.jsx`, the fixed channel set, keyboard mapping,
-endpoint loopback control, RTC suspend provisioning, audio ownership, and
-focused tests.
+GH-021 is the accepted Planpoint 7 wake-alarm slice. Its revision-0 worktree
+owns the accepted planning baseline. Create the implementation worktree from
+the updated `main`:
+
+```sh
+git worktree add ../cortex-home-GH-021-1 -b felixf/GH-021/1 main
+```
+
+Implementation still waits until GH-018 and GH-020 merge. GH-021 then rebases
+their shared coordinator scene-execution and application-shell boundaries
+before it changes alarm state and actions, `App.jsx`, the fixed channel set,
+keyboard mapping, endpoint loopback control, RTC suspend provisioning, audio
+ownership, and focused tests.
 
 Code and automated tests for GH-018 and GH-020 may proceed independently.
 GH-021 physical sleep/wake work and every integrated deployment remain
