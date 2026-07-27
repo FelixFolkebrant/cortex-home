@@ -147,6 +147,22 @@ another browser runtime. The measured netcat listener used approximately
 2 MiB resident memory and 0% sampled idle CPU; together with its supervising
 shell, the bridge is approximately 6 MiB.
 
+The same bridge exposes `GET /stats` for the `Control`+`Option`+`M` performance
+overview. It returns only current aggregate CPU, memory, temperature, one-minute
+load, and uptime values. The browser polls only while the overview is visible;
+the endpoint retains no samples or host identity.
+
+The bridge accepts one connection at a time. Chromium may send a private-network
+preflight immediately before the real request, which can land in the listener's
+short replacement gap. Browser calls to this bridge must therefore use
+`coordinator/client/src/endpoint-control.js`: it retries one network failure
+after 75 ms, then lets the calling feature show its own clear unavailable
+message. Do not turn this into background retrying or additional polling.
+
+The browser cannot add a bridge route by itself. Before deploying a browser
+release that uses `/stats`, run `./endpoint/imac/provision-media` so the iMac
+receives the current bridge; this restarts the kiosk session.
+
 UxPlay creates its native GStreamer window only after a client begins
 mirroring. Openbox makes every matching window borderless, fullscreen, focused,
 and above Chromium. The native mirror therefore replaces the browser while

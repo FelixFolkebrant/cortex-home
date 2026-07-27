@@ -124,6 +124,29 @@ class AirPlayControlTests(unittest.TestCase):
             (403, {"error": "Origin not allowed."}),
         )
 
+    def test_reports_bounded_local_system_stats(self):
+        status, stats = self.request("GET", "/stats")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            set(stats),
+            {
+                "cpuPercent",
+                "loadOne",
+                "memoryPercent",
+                "memoryTotalMiB",
+                "memoryUsedMiB",
+                "temperatureC",
+                "uptimeSeconds",
+            },
+        )
+        self.assertGreaterEqual(stats["cpuPercent"], 0)
+        self.assertLessEqual(stats["cpuPercent"], 100)
+        self.assertGreater(stats["memoryTotalMiB"], 0)
+        self.assertGreaterEqual(stats["memoryUsedMiB"], 0)
+        self.assertLessEqual(stats["memoryUsedMiB"], stats["memoryTotalMiB"])
+        self.assertGreaterEqual(stats["uptimeSeconds"], 0)
+
 
 class ProvisioningTests(unittest.TestCase):
     @classmethod
@@ -372,6 +395,7 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn('if [[ $origin != "$coordinator_url" ]]', control)
         self.assertIn("Access-Control-Allow-Private-Network: true", control)
         self.assertIn("GET && $path == /status", control)
+        self.assertIn("GET && $path == /stats", control)
         self.assertIn("POST && $path == /on", control)
         self.assertIn("POST && $path == /off", control)
         self.assertIn('"$airplay_helper" receiver-on', control)

@@ -17,6 +17,11 @@ import {
   roomReducer,
   SCENE_ACTION,
 } from "./room-state";
+import {
+  isSystemStatsDismissShortcut,
+  isSystemStatsShortcut,
+  SystemStats,
+} from "./SystemStats";
 import { TodayChannel } from "./TodayChannel";
 import {
   VOICE_CAPTURE_ACTION,
@@ -102,6 +107,7 @@ async function playIdentifySound() {
 export function App() {
   const [room, dispatch] = useReducer(roomReducer, initialRoomState);
   const [musicFullscreen, setMusicFullscreen] = useState(false);
+  const [systemStatsVisible, setSystemStatsVisible] = useState(false);
   const [voiceDebug, setVoiceDebug] = useState(null);
   const [voiceDebugVisible, setVoiceDebugVisible] = useState(false);
   const currentClientEntry = document
@@ -113,6 +119,7 @@ export function App() {
   const actionGeneration = useRef(0);
   const interactionTimer = useRef(null);
   const activeChannel = useRef("today");
+  const systemStatsVisibleRef = useRef(false);
   const voiceRequestId = useRef(null);
 
   useEffect(() => {
@@ -506,6 +513,23 @@ export function App() {
     };
 
     async function onKeyDown(event) {
+      if (isSystemStatsShortcut(event)) {
+        event.preventDefault();
+        setSystemStatsVisible((current) => {
+          const next = !current;
+          systemStatsVisibleRef.current = next;
+          return next;
+        });
+        return;
+      }
+
+      if (systemStatsVisibleRef.current && isSystemStatsDismissShortcut(event)) {
+        event.preventDefault();
+        systemStatsVisibleRef.current = false;
+        setSystemStatsVisible(false);
+        return;
+      }
+
       if (isVoiceDebugShortcut(event)) {
         event.preventDefault();
         setVoiceDebugVisible((current) => !current);
@@ -553,7 +577,7 @@ export function App() {
         return;
       }
 
-      const request = keyboardAction(event, lighting.current);
+      const request = keyboardAction(event, lighting.current, activeChannel.current);
       if (!request || activeRequestId.current) {
         return;
       }
@@ -636,6 +660,14 @@ export function App() {
           voiceOnly={showMusicFullscreen}
         />
       ) : null}
+
+      <SystemStats
+        onDismiss={() => {
+          systemStatsVisibleRef.current = false;
+          setSystemStatsVisible(false);
+        }}
+        visible={systemStatsVisible}
+      />
     </div>
   );
 }

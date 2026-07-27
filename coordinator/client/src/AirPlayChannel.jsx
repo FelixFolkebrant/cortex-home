@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-
-const AIRPLAY_CONTROL_URL = "http://127.0.0.1:38019";
-const AIRPLAY_RETRY_DELAY_MS = 75;
+import { requestEndpointControl } from "./endpoint-control";
 
 function AirPlayLogo({ className = "" }) {
   return (
@@ -47,28 +45,18 @@ export function isAirPlayToggleShortcut(event) {
   );
 }
 
-export async function requestAirPlay(
-  path,
-  fetcher = fetch,
-  wait = (duration) =>
-    new Promise((resolve) => {
-      window.setTimeout(resolve, duration);
-    }),
-) {
+export async function requestAirPlay(path, fetcher = fetch, wait) {
   let response;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      response = await fetcher(`${AIRPLAY_CONTROL_URL}${path}`, {
-        method: path === "/status" ? "GET" : "POST",
-      });
-      break;
-    } catch {
-      if (attempt === 1) {
-        throw new Error("AirPlay control is unavailable.");
-      }
-      await wait(AIRPLAY_RETRY_DELAY_MS);
-    }
+  try {
+    response = await requestEndpointControl(
+      path,
+      { method: path === "/status" ? "GET" : "POST" },
+      fetcher,
+      wait,
+    );
+  } catch {
+    throw new Error("AirPlay control is unavailable.");
   }
 
   const result = await response.json().catch(() => ({}));
