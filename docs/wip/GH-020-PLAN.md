@@ -19,7 +19,7 @@
   transition libraries, or a general animation framework.
 - Holding a live Camera stream behind another view or capturing Camera frames
   for animation.
-- Redesigning the Home/Today screen; GH-021 owns that presentation.
+- Redesigning channel content or the Home/Today screen.
 
 ## Deferred
 
