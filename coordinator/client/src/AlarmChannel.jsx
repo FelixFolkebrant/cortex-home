@@ -6,6 +6,30 @@ import {
   reduceAlarmEditor,
 } from "./alarm-editor";
 
+function stockholmTime(now = new Date()) {
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: "Europe/Stockholm",
+  }).format(now);
+}
+
+export function AlarmClock() {
+  const [now, setNow] = useReducer(() => new Date(), new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(setNow, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <p className="mt-8 font-mono text-[clamp(6rem,23vw,18rem)] font-semibold leading-none tracking-[-0.09em]">
+      {stockholmTime(now)}
+    </p>
+  );
+}
+
 function dateLabel(firesAt) {
   if (!firesAt) {
     return null;
@@ -57,6 +81,23 @@ export function AlarmChannel({ onAction, snapshot }) {
   const selectedValue = editor.selected === "hours" ? time.slice(0, 2) : time.slice(3);
   const display = editor.digits.length === 1 ? `${editor.digits}_` : selectedValue;
 
+  if (snapshot?.status === "ringing") {
+    return (
+      <main
+        aria-label="Ringing alarm"
+        className="relative z-10 grid min-h-screen place-content-center px-8 text-center"
+      >
+        <p className="text-sm font-semibold uppercase tracking-[0.35em] text-[#f3d18a]">
+          Alarm
+        </p>
+        <AlarmClock />
+        <p aria-live="polite" className="mt-12 text-xl text-[#f8f0dc]/75">
+          Press Enter to dismiss.
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main
       aria-label="Alarm clock"
@@ -87,8 +128,6 @@ export function AlarmChannel({ onAction, snapshot }) {
             <p className="mt-3 text-[#f3d18a]">Press Ctrl+Enter to sleep.</p>
             <p className="mt-2 text-base">Escape returns to editing.</p>
           </>
-        ) : snapshot?.status === "ringing" ? (
-          <p>Alarm ringing. Press Enter to dismiss.</p>
         ) : snapshot?.status === "missed" ? (
           <p>This alarm was missed. Set a new wake time.</p>
         ) : snapshot?.status === "failed" ? (

@@ -24,6 +24,7 @@ const { TodayChannel } = await vite.ssrLoadModule("/src/TodayChannel.jsx");
 const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
   "/src/CameraChannel.jsx",
 );
+const { AlarmChannel } = await vite.ssrLoadModule("/src/AlarmChannel.jsx");
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 after(() => vite.close());
@@ -267,6 +268,19 @@ test("Today channel owns available weather and attribution presentation", () => 
   assert.match(markup, /20°/);
   assert.match(markup, /Clear/);
   assert.match(markup, /Weather data: MET Norway · CC BY 4.0/);
+});
+
+test("Ringing Alarm replaces the editor with a dominant live clock", () => {
+  const markup = renderToStaticMarkup(
+    createElement(AlarmChannel, {
+      onAction: () => {},
+      snapshot: { status: "ringing", time: "07:30", firesAt: null },
+    }),
+  );
+
+  assert.match(markup, /aria-label="Ringing alarm"/);
+  assert.match(markup, /Press Enter to dismiss/);
+  assert.doesNotMatch(markup, /Press Ctrl\+Enter to sleep/);
 });
 
 test("Music channel owns loaded playback and artwork fallback presentation", () => {
