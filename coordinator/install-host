@@ -46,11 +46,17 @@ install --owner=root --group=root --mode=755 \
   "$script_dir/cortex_home.py" \
   /opt/cortex-home/cortex_home.py
 install --owner=root --group=root --mode=644 \
+  "$script_dir/agent_runtime.py" \
+  /opt/cortex-home/agent_runtime.py
+install --owner=root --group=root --mode=644 \
   "$script_dir/context.py" \
   /opt/cortex-home/context.py
 install --owner=root --group=root --mode=644 \
   "$script_dir/hue.py" \
   /opt/cortex-home/hue.py
+install --owner=root --group=root --mode=644 \
+  "$script_dir/speech.py" \
+  /opt/cortex-home/speech.py
 install --owner=root --group=root --mode=644 \
   "$script_dir/today.py" \
   /opt/cortex-home/today.py
