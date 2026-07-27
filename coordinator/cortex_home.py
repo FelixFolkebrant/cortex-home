@@ -3,10 +3,12 @@
 import argparse
 import json
 import mimetypes
+import os
 import queue
 import re
 import secrets
 import threading
+import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -15,7 +17,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from context import build_room_context
+from agent_runtime import AgentError, NodeAgent
+from context import build_answer_context, build_room_context
 from hue import (
     HueAdapter,
     HueSceneError,
@@ -23,6 +26,7 @@ from hue import (
     HueSceneUnavailable,
 )
 from today import TodayAdapter, unavailable_summary
+from speech import SpeechError, load_selected_speech, read_capture, read_synthesis
 
 
 ACTION = "endpoint.identify"
@@ -31,6 +35,7 @@ CHANNEL_ACTION = "channel.select"
 ALLOWED_ACTIONS = {ACTION, SCENE_ACTION, CHANNEL_ACTION}
 CHANNELS = {"today", "music", "camera"}
 MAX_BODY_BYTES = 4096
+MAX_AUDIO_BODY_BYTES = 44 + 16_000 * 2 * 15
 MAX_COLLECTION_LENGTH = 512
 MAX_CREATORS = 16
 MAX_CREATOR_LENGTH = 256
@@ -52,6 +57,9 @@ PLAYBACK_KEYS = {"item", "positionMs", "status"}
 PLAYBACK_STATUSES = {"paused", "playing", "stopped", "unavailable"}
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 CLIENT_ENTRY_PATTERN = re.compile(r'<script\b[^>]*\bsrc="(?P<src>/assets/[^"]+)"')
+AGENT_NODE = Path("/opt/cortex-home/node/bin/node")
+AGENT_CHILD = Path("/opt/cortex-home/agent/answer-child.js")
+VOSK_MODEL = Path("/opt/cortex-home/models/vosk-model-small-en-us-0.15")
 SPOTIFY_URI_PATTERN = re.compile(
     r"^spotify:(?P<type>track|episode):[A-Za-z0-9]{1,64}$"
 )
@@ -104,14 +112,40 @@ class EndpointConnection:
         self.events.put(None)
 
 
+@dataclass
+class AgentInteraction:
+    request_id: str
+    endpoint_token: str
+    phase: str = "transcribing"
+    cancelled: threading.Event = field(default_factory=threading.Event)
+    playback_timer: threading.Timer | None = None
+
+    def payload(self):
+        return {"requestId": self.request_id, "phase": self.phase}
+
+
 class Coordinator:
-    def __init__(self, action_timeout=10, scene_activator=None):
+    def __init__(
+        self,
+        action_timeout=10,
+        scene_activator=None,
+        recognizer=None,
+        synthesizer=None,
+        agent=None,
+        playback_timeout=65,
+    ):
         self.action_timeout = action_timeout
         self.scene_activator = scene_activator
+        self.recognizer = recognizer
+        self.synthesizer = synthesizer
+        self.agent = agent
+        self.playback_timeout = playback_timeout
         self.lock = threading.RLock()
         self.endpoint = None
         self.active_request_id = None
         self.requests = OrderedDict()
+        self.active_interaction = None
+        self.interactions = OrderedDict()
         self.playback = {
             "status": "unavailable",
             "item": None,
@@ -137,6 +171,7 @@ class Coordinator:
                     "endpoint connection was replaced",
                     HTTPStatus.SERVICE_UNAVAILABLE,
                 )
+                self._fail_endpoint_interaction_locked(previous.token)
                 previous.close()
 
             self.endpoint = EndpointConnection()
@@ -157,6 +192,7 @@ class Coordinator:
                 "endpoint disconnected",
                 HTTPStatus.SERVICE_UNAVAILABLE,
             )
+            self._fail_endpoint_interaction_locked(token)
 
     def submit(self, request_id, action, channel=None, scene=None):
         self._validate_request_id(request_id)
@@ -207,7 +243,13 @@ class Coordinator:
                     "duplicate_request_id",
                     "The request ID has already been used.",
                 )
-            if self.active_request_id:
+            if request_id in self.interactions:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "duplicate_request_id",
+                    "The request ID has already been used.",
+                )
+            if self.active_request_id or self.active_interaction:
                 raise ApiError(
                     HTTPStatus.CONFLICT,
                     "action_busy",
@@ -259,6 +301,212 @@ class Coordinator:
                     )
 
         return pending.http_status, pending.payload()
+
+    def interact(self, endpoint_token, request_id, audio_data, metrics=None):
+        metrics = metrics if isinstance(metrics, dict) else {}
+        self._validate_request_id(request_id)
+        with self.lock:
+            self._require_endpoint_locked(endpoint_token)
+            if request_id in self.requests or request_id in self.interactions:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "duplicate_request_id",
+                    "The request ID has already been used.",
+                )
+            if self.active_request_id or self.active_interaction:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "interaction_busy",
+                    "The room is already handling an interaction.",
+                )
+            if not self.recognizer or not self.synthesizer or not self.agent:
+                raise ApiError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "agent_unavailable",
+                    "The voice agent is unavailable.",
+                )
+
+            interaction = AgentInteraction(request_id, endpoint_token)
+            self.interactions[request_id] = interaction
+            self.active_interaction = interaction
+            self._trim_interactions_locked()
+            self._publish_interaction_locked(interaction)
+
+        try:
+            try:
+                audio = read_capture(audio_data)
+            except SpeechError:
+                self._raise_interaction_error(
+                    interaction,
+                    HTTPStatus.BAD_REQUEST,
+                    "invalid_audio",
+                    "The captured audio is invalid.",
+                )
+            metrics["captureBytes"] = len(audio.data)
+            metrics["captureDurationMs"] = audio.duration_ms
+
+            self._ensure_interaction_current(interaction)
+            started = time.perf_counter()
+            try:
+                transcript = self.recognizer.transcribe(audio)
+            except SpeechError:
+                self._raise_interaction_error(
+                    interaction,
+                    HTTPStatus.BAD_GATEWAY,
+                    "transcription_failed",
+                    "Speech transcription failed.",
+                )
+            finally:
+                metrics["sttMs"] = elapsed_ms(started)
+            metrics["transcriptCharacters"] = len(transcript)
+
+            with self.lock:
+                self._require_interaction_current_locked(interaction)
+                context = build_answer_context(
+                    self.channel.get("active"),
+                    self.today,
+                    self.playback,
+                )
+                interaction.phase = "thinking"
+                self._publish_interaction_locked(interaction)
+
+            started = time.perf_counter()
+            try:
+                answer = self.agent.answer(
+                    request_id,
+                    transcript,
+                    context,
+                    interaction.cancelled,
+                )
+            except AgentError as error:
+                if error.code == "cancelled":
+                    self._ensure_interaction_current(interaction)
+                self._raise_interaction_error(
+                    interaction,
+                    (
+                        HTTPStatus.GATEWAY_TIMEOUT
+                        if error.code == "agent_timeout"
+                        else HTTPStatus.BAD_GATEWAY
+                    ),
+                    error.code,
+                    "The voice agent could not answer.",
+                )
+            finally:
+                metrics["llmMs"] = elapsed_ms(started)
+            metrics["answerCharacters"] = len(answer)
+
+            self._ensure_interaction_current(interaction)
+            started = time.perf_counter()
+            try:
+                synthesized = self.synthesizer.synthesize(answer)
+                audio = read_synthesis(synthesized.data)
+            except (AttributeError, SpeechError):
+                self._raise_interaction_error(
+                    interaction,
+                    HTTPStatus.BAD_GATEWAY,
+                    "synthesis_failed",
+                    "Speech synthesis failed.",
+                )
+            finally:
+                metrics["ttsMs"] = elapsed_ms(started)
+            metrics["answerBytes"] = len(audio.data)
+            metrics["answerDurationMs"] = audio.duration_ms
+
+            with self.lock:
+                self._require_interaction_current_locked(interaction)
+                timer = threading.Timer(
+                    self.playback_timeout,
+                    self._expire_interaction,
+                    args=(request_id, endpoint_token),
+                )
+                timer.daemon = True
+                interaction.playback_timer = timer
+                timer.start()
+            return audio.data
+        except ApiError:
+            raise
+        except Exception:
+            self._raise_interaction_error(
+                interaction,
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "interaction_failed",
+                "The voice interaction failed.",
+            )
+
+    def cancel_interaction(self, endpoint_token, request_id):
+        self._validate_request_id(request_id)
+        with self.lock:
+            self._require_endpoint_locked(endpoint_token)
+            interaction = self.interactions.get(request_id)
+            if not interaction:
+                if request_id in self.requests:
+                    raise ApiError(
+                        HTTPStatus.NOT_FOUND,
+                        "unknown_interaction",
+                        "No interaction matches this endpoint and request ID.",
+                    )
+                interaction = AgentInteraction(
+                    request_id,
+                    endpoint_token,
+                    phase="failed",
+                )
+                interaction.cancelled.set()
+                self.interactions[request_id] = interaction
+                self._trim_interactions_locked()
+                self._publish_interaction_locked(interaction)
+                return interaction.payload()
+            if interaction.endpoint_token != endpoint_token:
+                raise ApiError(
+                    HTTPStatus.NOT_FOUND,
+                    "unknown_interaction",
+                    "No interaction matches this endpoint and request ID.",
+                )
+            if interaction.phase in {"completed", "failed"}:
+                return interaction.payload()
+            self._finish_interaction_locked(interaction, "failed")
+            return interaction.payload()
+
+    def update_interaction(self, endpoint_token, request_id, phase):
+        self._validate_request_id(request_id)
+        if phase not in {"speaking", "completed", "failed"}:
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_interaction_phase",
+                "The endpoint reported an invalid interaction phase.",
+            )
+        with self.lock:
+            self._require_endpoint_locked(endpoint_token)
+            interaction = self.interactions.get(request_id)
+            if not interaction or interaction.endpoint_token != endpoint_token:
+                raise ApiError(
+                    HTTPStatus.NOT_FOUND,
+                    "unknown_interaction",
+                    "No interaction matches this endpoint and request ID.",
+                )
+            if interaction.phase in {"completed", "failed"}:
+                if phase == interaction.phase:
+                    return interaction.payload()
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "interaction_finished",
+                    "The interaction already reached a terminal phase.",
+                )
+
+            if phase == "speaking" and interaction.phase == "thinking":
+                interaction.phase = phase
+                self._publish_interaction_locked(interaction)
+            elif phase in {"completed", "failed"} and (
+                interaction.phase == "speaking"
+                or (phase == "failed" and interaction.phase == "thinking")
+            ):
+                self._finish_interaction_locked(interaction, phase)
+            else:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "invalid_interaction_transition",
+                    f"Cannot change {interaction.phase} to {phase}.",
+                )
+            return interaction.payload()
 
     def update(self, endpoint_token, request_id, status, error=None):
         if not endpoint_token:
@@ -333,6 +581,17 @@ class Coordinator:
                 self.playback,
                 self.lighting,
             )
+
+    def close(self):
+        with self.lock:
+            if self.active_interaction:
+                self._finish_interaction_locked(
+                    self.active_interaction,
+                    "failed",
+                )
+        close_agent = getattr(self.agent, "close", None)
+        if close_agent:
+            close_agent()
 
     def set_hue_status(self, status):
         with self.lock:
@@ -436,6 +695,94 @@ class Coordinator:
         pending = self.requests[self.active_request_id]
         if pending.endpoint_token == endpoint_token and not pending.finished.is_set():
             self._finish_locked(pending, "failed", error, http_status)
+
+    def _require_endpoint_locked(self, endpoint_token):
+        if not endpoint_token:
+            raise ApiError(
+                HTTPStatus.UNAUTHORIZED,
+                "missing_endpoint_token",
+                "The endpoint token is required.",
+            )
+        if not self.endpoint or self.endpoint.token != endpoint_token:
+            raise ApiError(
+                HTTPStatus.CONFLICT,
+                "stale_endpoint",
+                "The endpoint connection is no longer active.",
+            )
+
+    def _require_interaction_current_locked(self, interaction):
+        if (
+            self.active_interaction is not interaction
+            or interaction.cancelled.is_set()
+        ):
+            raise ApiError(
+                HTTPStatus.CONFLICT,
+                "interaction_cancelled",
+                "The interaction was cancelled.",
+            )
+
+    def _ensure_interaction_current(self, interaction):
+        with self.lock:
+            self._require_interaction_current_locked(interaction)
+
+    def _raise_interaction_error(
+        self,
+        interaction,
+        status,
+        code,
+        message,
+    ):
+        with self.lock:
+            if self.active_interaction is interaction:
+                self._finish_interaction_locked(interaction, "failed")
+            elif interaction.cancelled.is_set():
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "interaction_cancelled",
+                    "The interaction was cancelled.",
+                )
+        raise ApiError(status, code, message)
+
+    def _publish_interaction_locked(self, interaction):
+        if (
+            self.endpoint
+            and self.endpoint.token == interaction.endpoint_token
+        ):
+            self.endpoint.send("agent.interaction", interaction.payload())
+
+    def _finish_interaction_locked(self, interaction, phase):
+        if interaction.phase in {"completed", "failed"}:
+            return
+        interaction.cancelled.set()
+        if interaction.playback_timer:
+            interaction.playback_timer.cancel()
+            interaction.playback_timer = None
+        interaction.phase = phase
+        if self.active_interaction is interaction:
+            self.active_interaction = None
+        self._publish_interaction_locked(interaction)
+
+    def _fail_endpoint_interaction_locked(self, endpoint_token):
+        interaction = self.active_interaction
+        if interaction and interaction.endpoint_token == endpoint_token:
+            self._finish_interaction_locked(interaction, "failed")
+
+    def _expire_interaction(self, request_id, endpoint_token):
+        with self.lock:
+            interaction = self.interactions.get(request_id)
+            if (
+                interaction
+                and interaction.endpoint_token == endpoint_token
+                and self.active_interaction is interaction
+            ):
+                self._finish_interaction_locked(interaction, "failed")
+
+    def _trim_interactions_locked(self):
+        while len(self.interactions) > MAX_REQUESTS:
+            oldest_id, oldest = next(iter(self.interactions.items()))
+            if oldest.phase not in {"completed", "failed"}:
+                break
+            del self.interactions[oldest_id]
 
     def _activate_scene(self, pending):
         try:
@@ -554,7 +901,51 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        debug_metrics = None
         try:
+            interaction_match = re.fullmatch(
+                r"/api/agent/interactions/([^/]+)",
+                path,
+            )
+            if interaction_match:
+                request_id = interaction_match.group(1)
+                self._validate_request_path(request_id)
+                endpoint_token = self.headers.get("X-Endpoint-Token")
+                debug_metrics = {}
+                started = time.perf_counter()
+                audio = self._read_audio()
+                debug_metrics["uploadMs"] = elapsed_ms(started)
+                result = self.server.coordinator.interact(
+                    endpoint_token,
+                    request_id,
+                    audio,
+                    debug_metrics,
+                )
+                try:
+                    self._send_audio(result, debug_metrics)
+                except (BrokenPipeError, ConnectionResetError):
+                    self.server.coordinator.cancel_interaction(
+                        endpoint_token,
+                        request_id,
+                    )
+                return
+
+            interaction_status_match = re.fullmatch(
+                r"/api/agent/interactions/([^/]+)/status",
+                path,
+            )
+            if interaction_status_match:
+                request_id = interaction_status_match.group(1)
+                self._validate_request_path(request_id)
+                body = self._read_json({"phase"})
+                payload = self.server.coordinator.update_interaction(
+                    self.headers.get("X-Endpoint-Token"),
+                    request_id,
+                    body.get("phase"),
+                )
+                self._send_json(HTTPStatus.OK, payload)
+                return
+
             if path == "/api/actions":
                 body = self._read_json(
                     {"requestId", "action", "channel", "scene"}
@@ -578,12 +969,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
             if match:
                 body = self._read_json({"status", "error"})
                 request_id = match.group(1)
-                if not REQUEST_ID_PATTERN.fullmatch(request_id):
-                    raise ApiError(
-                        HTTPStatus.BAD_REQUEST,
-                        "invalid_request_id",
-                        "The request path contains an invalid request ID.",
-                    )
+                self._validate_request_path(request_id)
                 payload = self.server.coordinator.update(
                     self.headers.get("X-Endpoint-Token"),
                     request_id,
@@ -594,6 +980,26 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                 return
 
             raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
+        except ApiError as error:
+            self._send_error(error, debug_metrics)
+
+    def do_DELETE(self):
+        path = urlparse(self.path).path
+        try:
+            match = re.fullmatch(r"/api/agent/interactions/([^/]+)", path)
+            if not match:
+                raise ApiError(
+                    HTTPStatus.NOT_FOUND,
+                    "not_found",
+                    "Route not found.",
+                )
+            request_id = match.group(1)
+            self._validate_request_path(request_id)
+            payload = self.server.coordinator.cancel_interaction(
+                self.headers.get("X-Endpoint-Token"),
+                request_id,
+            )
+            self._send_json(HTTPStatus.OK, payload)
         except ApiError as error:
             self._send_error(error)
 
@@ -734,20 +1140,71 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
             )
         return body
 
-    def _send_error(self, error):
+    def _read_audio(self):
+        if self.headers.get_content_type() != "audio/wav":
+            raise ApiError(
+                HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+                "invalid_content_type",
+                "Content-Type must be audio/wav.",
+            )
+        content_length = self.headers.get("Content-Length")
+        try:
+            length = int(content_length)
+        except (TypeError, ValueError):
+            raise ApiError(
+                HTTPStatus.LENGTH_REQUIRED,
+                "missing_content_length",
+                "A valid Content-Length is required.",
+            )
+        if length < 1 or length > MAX_AUDIO_BODY_BYTES:
+            raise ApiError(
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                "invalid_body_size",
+                f"Audio bodies must be 1-{MAX_AUDIO_BODY_BYTES} bytes.",
+            )
+        return self.rfile.read(length)
+
+    @staticmethod
+    def _validate_request_path(request_id):
+        if not REQUEST_ID_PATTERN.fullmatch(request_id):
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_request_id",
+                "The request path contains an invalid request ID.",
+            )
+
+    def _send_error(self, error, debug_metrics=None):
         self._send_json(
             error.status,
             {"status": "error", "code": error.code, "error": error.message},
+            debug_metrics,
         )
 
-    def _send_json(self, status, payload):
+    def _send_json(self, status, payload, debug_metrics=None):
         body = json.dumps(payload, separators=(",", ":")).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self._send_debug_metrics(debug_metrics)
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_audio(self, body, debug_metrics=None):
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self._send_debug_metrics(debug_metrics)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_debug_metrics(self, metrics):
+        if metrics:
+            self.send_header(
+                "X-Cortex-Debug-Metrics",
+                json.dumps(metrics, separators=(",", ":")),
+            )
 
     def log_message(self, format, *args):
         pass
@@ -876,6 +1333,10 @@ def utc_timestamp():
     )
 
 
+def elapsed_ms(started):
+    return round((time.perf_counter() - started) * 1000, 1)
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="0.0.0.0")
@@ -899,9 +1360,25 @@ def parse_args():
     return parser.parse_args()
 
 
+def load_interaction_runtime():
+    agent = NodeAgent(
+        AGENT_NODE,
+        AGENT_CHILD,
+        os.environ.get("OPENROUTER_API_KEY"),
+    )
+    recognizer, synthesizer = load_selected_speech(VOSK_MODEL)
+    return agent, recognizer, synthesizer
+
+
 def main():
     args = parse_args()
-    coordinator = Coordinator(action_timeout=args.action_timeout)
+    agent, recognizer, synthesizer = load_interaction_runtime()
+    coordinator = Coordinator(
+        action_timeout=args.action_timeout,
+        agent=agent,
+        recognizer=recognizer,
+        synthesizer=synthesizer,
+    )
     hue = HueAdapter(
         args.hue_config,
         coordinator.set_hue_status,
@@ -922,6 +1399,7 @@ def main():
         pass
     finally:
         server.server_close()
+        coordinator.close()
         today.stop()
         hue.stop()
 

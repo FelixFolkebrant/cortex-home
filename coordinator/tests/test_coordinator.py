@@ -1,12 +1,16 @@
 import http.client
+import io
 import json
+import os
 import queue
 import threading
 import tempfile
 import unittest
+import wave
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from pathlib import Path
+from unittest.mock import patch
 
 import sys
 
@@ -15,14 +19,20 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from cortex_home import (
     ACTION,
+    AGENT_CHILD,
+    AGENT_NODE,
     CHANNEL_ACTION,
     CHANNELS,
     SCENE_ACTION,
     ApiError,
     Coordinator,
     CortexHomeServer,
+    VOSK_MODEL,
+    load_interaction_runtime,
 )
+from agent_runtime import AgentError
 from hue import HueSceneError, HueSceneTimeout, HueSceneUnavailable
+from speech import WaveAudio
 
 
 PLAYING_OBSERVATION = {
@@ -43,6 +53,79 @@ AVAILABLE_LIGHTING = {
     "scenes": ["Bright", "Relax", "Warm"],
     "activeScenes": ["Warm"],
 }
+
+
+def wave_audio(samples=b"\0\0" * 160):
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16_000)
+        wav.writeframes(samples)
+    data = output.getvalue()
+    return WaveAudio(data, 16_000, len(samples) // 2)
+
+
+class FakeRecognizer:
+    def __init__(self, transcript="What is on screen?"):
+        self.transcript = transcript
+        self.audio = None
+
+    def transcribe(self, audio):
+        self.audio = audio
+        return self.transcript
+
+
+class FakeSynthesizer:
+    def __init__(self):
+        self.text = None
+
+    def synthesize(self, text):
+        self.text = text
+        return wave_audio()
+
+
+class FakeAgent:
+    def __init__(self, answer="It is clear and 21 degrees."):
+        self.answer_text = answer
+        self.request = None
+
+    def answer(self, request_id, transcript, context, cancelled):
+        self.request = (request_id, transcript, context)
+        if cancelled.is_set():
+            raise AgentError("cancelled")
+        return self.answer_text
+
+
+class RuntimeConfigurationTests(unittest.TestCase):
+    def test_loads_only_the_fixed_production_runtime(self):
+        with (
+            patch.dict(os.environ, {"OPENROUTER_API_KEY": "private-key"}, clear=True),
+            patch("cortex_home.NodeAgent", return_value="agent") as node_agent,
+            patch(
+                "cortex_home.load_selected_speech",
+                return_value=("recognizer", "synthesizer"),
+            ) as selected_speech,
+        ):
+            runtime = load_interaction_runtime()
+
+        self.assertEqual(runtime, ("agent", "recognizer", "synthesizer"))
+        node_agent.assert_called_once_with(
+            AGENT_NODE,
+            AGENT_CHILD,
+            "private-key",
+        )
+        selected_speech.assert_called_once_with(VOSK_MODEL)
+
+    def test_missing_agent_key_fails_before_loading_speech(self):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("cortex_home.load_selected_speech") as selected_speech,
+            self.assertRaises(AgentError),
+        ):
+            load_interaction_runtime()
+
+        selected_speech.assert_not_called()
 
 
 class CoordinatorTests(unittest.TestCase):
@@ -635,6 +718,250 @@ class CoordinatorTests(unittest.TestCase):
                 self.assertEqual(self.coordinator.playback, accepted)
 
 
+class AgentInteractionTests(unittest.TestCase):
+    def setUp(self):
+        self.recognizer = FakeRecognizer()
+        self.synthesizer = FakeSynthesizer()
+        self.agent = FakeAgent()
+        self.coordinator = Coordinator(
+            action_timeout=0.1,
+            agent=self.agent,
+            playback_timeout=0.05,
+            recognizer=self.recognizer,
+            synthesizer=self.synthesizer,
+        )
+        self.endpoint = self.coordinator.connect_endpoint()
+        for _index in range(4):
+            self.endpoint.events.get(timeout=1)
+        self.addCleanup(self.coordinator.close)
+
+    def next_phase(self, phase):
+        event, payload = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "agent.interaction")
+        self.assertEqual(payload["phase"], phase)
+        return payload
+
+    def test_runs_one_ephemeral_contextual_answer_and_playback_lifecycle(self):
+        audio = self.coordinator.interact(
+            self.endpoint.token,
+            "voice-1",
+            wave_audio().data,
+        )
+
+        self.assertEqual(audio, wave_audio().data)
+        self.assertIsNotNone(self.recognizer.audio)
+        self.assertEqual(self.synthesizer.text, self.agent.answer_text)
+        request_id, transcript, context = self.agent.request
+        self.assertEqual(request_id, "voice-1")
+        self.assertEqual(transcript, self.recognizer.transcript)
+        self.assertEqual(context["activeChannel"], "today")
+        self.assertEqual(set(context), {"activeChannel", "channel"})
+        self.next_phase("transcribing")
+        self.next_phase("thinking")
+
+        speaking = self.coordinator.update_interaction(
+            self.endpoint.token,
+            "voice-1",
+            "speaking",
+        )
+        self.assertEqual(speaking["phase"], "speaking")
+        self.next_phase("speaking")
+        completed = self.coordinator.update_interaction(
+            self.endpoint.token,
+            "voice-1",
+            "completed",
+        )
+        self.assertEqual(completed["phase"], "completed")
+        self.next_phase("completed")
+        self.assertIsNone(self.coordinator.active_interaction)
+
+    def test_rejects_invalid_audio_with_content_free_failed_phase(self):
+        with self.assertRaises(ApiError) as raised:
+            self.coordinator.interact(
+                self.endpoint.token,
+                "voice-invalid",
+                b"not audio",
+            )
+
+        self.assertEqual(raised.exception.code, "invalid_audio")
+        self.next_phase("transcribing")
+        failure = self.next_phase("failed")
+        self.assertEqual(set(failure), {"phase", "requestId"})
+        self.assertIsNone(self.agent.request)
+
+    def test_requires_the_current_endpoint_token(self):
+        for token, code in [(None, "missing_endpoint_token"), ("stale", "stale_endpoint")]:
+            with self.subTest(code=code):
+                with self.assertRaises(ApiError) as raised:
+                    self.coordinator.interact(
+                        token,
+                        f"voice-{code}",
+                        wave_audio().data,
+                    )
+                self.assertEqual(raised.exception.code, code)
+
+    def test_cancellation_aborts_the_child_and_discards_late_results(self):
+        started = threading.Event()
+
+        class BlockingAgent:
+            def answer(_self, _request_id, _transcript, _context, cancelled):
+                started.set()
+                cancelled.wait(1)
+                raise AgentError("cancelled")
+
+        self.coordinator.agent = BlockingAgent()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            result = executor.submit(
+                self.coordinator.interact,
+                self.endpoint.token,
+                "voice-cancel",
+                wave_audio().data,
+            )
+            self.assertTrue(started.wait(1))
+            self.next_phase("transcribing")
+            self.next_phase("thinking")
+            cancelled = self.coordinator.cancel_interaction(
+                self.endpoint.token,
+                "voice-cancel",
+            )
+            self.assertEqual(cancelled["phase"], "failed")
+            self.next_phase("failed")
+            with self.assertRaises(ApiError) as raised:
+                result.result(timeout=1)
+
+        self.assertEqual(raised.exception.code, "interaction_cancelled")
+        self.assertIsNone(self.synthesizer.text)
+
+    def test_cancellation_before_upload_reserves_the_request_id(self):
+        cancelled = self.coordinator.cancel_interaction(
+            self.endpoint.token,
+            "voice-early-cancel",
+        )
+
+        self.assertEqual(cancelled["phase"], "failed")
+        self.next_phase("failed")
+        with self.assertRaises(ApiError) as raised:
+            self.coordinator.interact(
+                self.endpoint.token,
+                "voice-early-cancel",
+                wave_audio().data,
+            )
+
+        self.assertEqual(raised.exception.code, "duplicate_request_id")
+        self.assertIsNone(self.agent.request)
+
+    def test_disconnect_cancels_only_the_owning_interaction(self):
+        started = threading.Event()
+
+        class BlockingRecognizer:
+            def transcribe(_self, _audio):
+                started.set()
+                threading.Event().wait(0.05)
+                return "late transcript"
+
+        self.coordinator.recognizer = BlockingRecognizer()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            result = executor.submit(
+                self.coordinator.interact,
+                self.endpoint.token,
+                "voice-disconnect",
+                wave_audio().data,
+            )
+            self.assertTrue(started.wait(1))
+            self.next_phase("transcribing")
+            self.coordinator.disconnect_endpoint(self.endpoint.token)
+            with self.assertRaises(ApiError) as raised:
+                result.result(timeout=1)
+
+        self.assertEqual(raised.exception.code, "interaction_cancelled")
+        self.assertTrue(
+            self.coordinator.interactions["voice-disconnect"].cancelled.is_set()
+        )
+
+    def test_playback_timeout_fails_and_releases_the_room(self):
+        self.coordinator.interact(
+            self.endpoint.token,
+            "voice-timeout",
+            wave_audio().data,
+        )
+        self.next_phase("transcribing")
+        self.next_phase("thinking")
+        self.next_phase("failed")
+
+        self.assertIsNone(self.coordinator.active_interaction)
+        self.assertEqual(
+            self.coordinator.interactions["voice-timeout"].phase,
+            "failed",
+        )
+
+    def test_terminal_updates_are_idempotent_but_other_transitions_fail(self):
+        self.coordinator.interact(
+            self.endpoint.token,
+            "voice-terminal",
+            wave_audio().data,
+        )
+        self.next_phase("transcribing")
+        self.next_phase("thinking")
+        self.coordinator.update_interaction(
+            self.endpoint.token,
+            "voice-terminal",
+            "speaking",
+        )
+        self.next_phase("speaking")
+        self.coordinator.update_interaction(
+            self.endpoint.token,
+            "voice-terminal",
+            "completed",
+        )
+        self.next_phase("completed")
+
+        repeated = self.coordinator.update_interaction(
+            self.endpoint.token,
+            "voice-terminal",
+            "completed",
+        )
+        self.assertEqual(repeated["phase"], "completed")
+        with self.assertRaises(ApiError) as raised:
+            self.coordinator.update_interaction(
+                self.endpoint.token,
+                "voice-terminal",
+                "failed",
+            )
+        self.assertEqual(raised.exception.code, "interaction_finished")
+
+    def test_voice_and_room_actions_share_one_busy_boundary(self):
+        started = threading.Event()
+
+        class BlockingRecognizer:
+            def transcribe(_self, _audio):
+                started.set()
+                threading.Event().wait(0.05)
+                return "Question"
+
+        self.coordinator.recognizer = BlockingRecognizer()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            interaction = executor.submit(
+                self.coordinator.interact,
+                self.endpoint.token,
+                "voice-busy",
+                wave_audio().data,
+            )
+            self.assertTrue(started.wait(1))
+            with self.assertRaises(ApiError) as raised:
+                self.coordinator.submit(
+                    "action-during-voice",
+                    CHANNEL_ACTION,
+                    "music",
+                )
+            self.assertEqual(raised.exception.code, "action_busy")
+            self.coordinator.cancel_interaction(
+                self.endpoint.token,
+                "voice-busy",
+            )
+            with self.assertRaises(ApiError):
+                interaction.result(timeout=1)
+
+
 class HttpTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -648,7 +975,13 @@ class HttpTests(unittest.TestCase):
         client_path.joinpath("assets", "app.js").write_text("const ready = true;")
         cls.server = CortexHomeServer(
             ("127.0.0.1", 0),
-            Coordinator(action_timeout=0.05),
+            Coordinator(
+                action_timeout=0.05,
+                agent=FakeAgent(),
+                playback_timeout=1,
+                recognizer=FakeRecognizer(),
+                synthesizer=FakeSynthesizer(),
+            ),
             client_path,
         )
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
@@ -663,12 +996,22 @@ class HttpTests(unittest.TestCase):
         cls.client_directory.cleanup()
 
     def request(self, method, path, body=None, headers=None):
+        status, _headers, body = self.request_raw(
+            method,
+            path,
+            body=body,
+            headers=headers,
+        )
+        return status, json.loads(body)
+
+    def request_raw(self, method, path, body=None, headers=None):
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=1)
         self.addCleanup(connection.close)
         connection.request(method, path, body=body, headers=headers or {})
         response = connection.getresponse()
-        payload = json.loads(response.read())
-        return response.status, payload
+        response_headers = dict(response.getheaders())
+        payload = response.read()
+        return response.status, response_headers, payload
 
     @staticmethod
     def read_event(response):
@@ -766,6 +1109,183 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(payload["status"], "completed")
 
         self.server.coordinator.disconnect_endpoint(endpoint_token)
+
+    def test_completes_an_agent_interaction_over_http(self):
+        events_connection = http.client.HTTPConnection(
+            "127.0.0.1",
+            self.port,
+            timeout=1,
+        )
+        self.addCleanup(events_connection.close)
+        events_connection.request("GET", "/api/events")
+        events_response = events_connection.getresponse()
+        ready, _snapshots = self.read_initial_events(events_response)
+        headers = {
+            "Content-Type": "audio/wav",
+            "X-Endpoint-Token": ready["endpointToken"],
+        }
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            result = executor.submit(
+                self.request_raw,
+                "POST",
+                "/api/agent/interactions/http-voice",
+                wave_audio().data,
+                headers,
+            )
+            event, transcribing = self.read_event(events_response)
+            self.assertEqual(event, "agent.interaction")
+            self.assertEqual(transcribing, {
+                "requestId": "http-voice",
+                "phase": "transcribing",
+            })
+            event, thinking = self.read_event(events_response)
+            self.assertEqual(event, "agent.interaction")
+            self.assertEqual(thinking["phase"], "thinking")
+            status, response_headers, body = result.result(timeout=1)
+
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(response_headers["Content-Type"], "audio/wav")
+        self.assertEqual(response_headers["Cache-Control"], "no-store")
+        self.assertEqual(body, wave_audio().data)
+        debug = json.loads(response_headers["X-Cortex-Debug-Metrics"])
+        self.assertEqual(
+            set(debug),
+            {
+                "answerBytes",
+                "answerCharacters",
+                "answerDurationMs",
+                "captureBytes",
+                "captureDurationMs",
+                "llmMs",
+                "sttMs",
+                "transcriptCharacters",
+                "ttsMs",
+                "uploadMs",
+            },
+        )
+        self.assertEqual(debug["captureBytes"], len(wave_audio().data))
+        self.assertEqual(debug["captureDurationMs"], wave_audio().duration_ms)
+        self.assertEqual(debug["transcriptCharacters"], len(FakeRecognizer().transcript))
+        self.assertEqual(debug["answerCharacters"], len(FakeAgent().answer_text))
+        self.assertEqual(debug["answerBytes"], len(wave_audio().data))
+        self.assertEqual(debug["answerDurationMs"], wave_audio().duration_ms)
+        for stage in ["uploadMs", "sttMs", "llmMs", "ttsMs"]:
+            self.assertIsInstance(debug[stage], float)
+            self.assertGreaterEqual(debug[stage], 0)
+
+        status_headers = {
+            "Content-Type": "application/json",
+            "X-Endpoint-Token": ready["endpointToken"],
+        }
+        status, payload = self.request(
+            "POST",
+            "/api/agent/interactions/http-voice/status",
+            body=json.dumps({"phase": "speaking"}),
+            headers=status_headers,
+        )
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(payload["phase"], "speaking")
+        event, speaking = self.read_event(events_response)
+        self.assertEqual(event, "agent.interaction")
+        self.assertEqual(speaking["phase"], "speaking")
+
+        status, payload = self.request(
+            "POST",
+            "/api/agent/interactions/http-voice/status",
+            body=json.dumps({"phase": "completed"}),
+            headers=status_headers,
+        )
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(payload["phase"], "completed")
+        event, completed = self.read_event(events_response)
+        self.assertEqual(event, "agent.interaction")
+        self.assertEqual(completed["phase"], "completed")
+        self.server.coordinator.disconnect_endpoint(ready["endpointToken"])
+
+    def test_agent_http_boundary_requires_auth_and_exact_audio(self):
+        status, payload = self.request(
+            "POST",
+            "/api/agent/interactions/http-no-token",
+            body=wave_audio().data,
+            headers={"Content-Type": "audio/wav"},
+        )
+        self.assertEqual(status, HTTPStatus.UNAUTHORIZED)
+        self.assertEqual(payload["code"], "missing_endpoint_token")
+
+        status, payload = self.request(
+            "POST",
+            "/api/agent/interactions/http-wrong-type",
+            body=b"{}",
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(status, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+        self.assertEqual(payload["code"], "invalid_content_type")
+
+        status, payload = self.request(
+            "POST",
+            "/api/agent/interactions/http-too-large",
+            body=b"x" * (480_045),
+            headers={"Content-Type": "audio/wav"},
+        )
+        self.assertEqual(status, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        self.assertEqual(payload["code"], "invalid_body_size")
+
+    def test_cancels_an_agent_interaction_over_http(self):
+        events_connection = http.client.HTTPConnection(
+            "127.0.0.1",
+            self.port,
+            timeout=1,
+        )
+        self.addCleanup(events_connection.close)
+        events_connection.request("GET", "/api/events")
+        events_response = events_connection.getresponse()
+        ready, _snapshots = self.read_initial_events(events_response)
+        started = threading.Event()
+
+        class BlockingAgent:
+            def answer(_self, _request_id, _transcript, _context, cancelled):
+                started.set()
+                cancelled.wait(1)
+                raise AgentError("cancelled")
+
+        previous = self.server.coordinator.agent
+        self.server.coordinator.agent = BlockingAgent()
+        self.addCleanup(setattr, self.server.coordinator, "agent", previous)
+        token_header = {"X-Endpoint-Token": ready["endpointToken"]}
+
+        def submit_interaction():
+            return self.request_raw(
+                "POST",
+                "/api/agent/interactions/http-cancel",
+                body=wave_audio().data,
+                headers={
+                    **token_header,
+                    "Content-Type": "audio/wav",
+                },
+            )
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            result = executor.submit(submit_interaction)
+            self.assertTrue(started.wait(1))
+            self.read_event(events_response)
+            self.read_event(events_response)
+            status, payload = self.request(
+                "DELETE",
+                "/api/agent/interactions/http-cancel",
+                headers=token_header,
+            )
+            self.assertEqual(status, HTTPStatus.OK)
+            self.assertEqual(payload["phase"], "failed")
+            event, failed = self.read_event(events_response)
+            self.assertEqual(event, "agent.interaction")
+            self.assertEqual(failed["phase"], "failed")
+            status, response_headers, body = result.result(timeout=1)
+
+        self.assertEqual(status, HTTPStatus.CONFLICT)
+        self.assertEqual(response_headers["Content-Type"], "application/json")
+        self.assertEqual(json.loads(body)["code"], "interaction_cancelled")
+        self.server.coordinator.disconnect_endpoint(ready["endpointToken"])
 
     def test_completes_a_scene_action_over_http(self):
         self.server.coordinator.report_lighting(AVAILABLE_LIGHTING)

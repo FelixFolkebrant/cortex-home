@@ -6,6 +6,12 @@ PLAYBACK_STATES = {"paused", "playing", "stopped", "unavailable"}
 
 
 def build_room_context(active_channel, today, music, lighting):
+    context = build_answer_context(active_channel, today, music)
+    context["lighting"] = project_lighting(lighting)
+    return context
+
+
+def build_answer_context(active_channel, today, music):
     if active_channel not in CHANNELS:
         active_channel = TODAY_CHANNEL
 
@@ -16,7 +22,6 @@ def build_room_context(active_channel, today, music, lighting):
             if active_channel == TODAY_CHANNEL
             else project_music(music)
         ),
-        "lighting": project_lighting(lighting),
     }
 
 

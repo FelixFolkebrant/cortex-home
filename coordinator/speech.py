@@ -250,3 +250,19 @@ class PocketTtsSynthesizer:
         except (OverflowError, TypeError, ValueError, wave.Error) as error:
             raise SpeechError("Pocket TTS synthesis failed.") from error
         return read_synthesis(output.getvalue())
+
+
+def load_selected_speech(vosk_model, pocket_voice="alba"):
+    try:
+        from pocket_tts import TTSModel
+        from vosk import Model
+    except ImportError as error:
+        raise SpeechError("Selected speech engines are not installed.") from error
+
+    try:
+        recognizer = VoskRecognizer(Model(str(vosk_model)))
+        model = TTSModel.load_model()
+        voice_state = model.get_state_for_audio_prompt(pocket_voice)
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        raise SpeechError("Selected speech engines could not be loaded.") from error
+    return recognizer, PocketTtsSynthesizer(model, voice_state)

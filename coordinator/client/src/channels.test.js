@@ -321,6 +321,32 @@ test("room feedback makes deliberate microphone capture visible", () => {
   assert.match(markup, /width:55%/);
 });
 
+test("room feedback keeps contextual answer phases compact and content-free", () => {
+  for (const [state, title] of [
+    ["transcribing", "Transcribing."],
+    ["thinking", "Thinking."],
+    ["speaking", "Speaking."],
+    ["completed", "Answered."],
+    ["failed", "Couldn’t answer."],
+  ]) {
+    const markup = renderToStaticMarkup(
+      createElement(RoomFeedback, {
+        connection: "connected",
+        interaction: {
+          action: "agent.interaction",
+          message: null,
+          state,
+        },
+        lighting: { activeScenes: [], status: "available" },
+      }),
+    );
+
+    assert.match(markup, /Cortex Home \/ Voice answer/);
+    assert.match(markup, new RegExp(title.replace(".", "\\.")));
+    assert.doesNotMatch(markup, /transcript|requestId|answer text/i);
+  }
+});
+
 test("Music fullscreen keeps microphone feedback without room chrome", () => {
   const markup = renderToStaticMarkup(
     createElement(RoomFeedback, {
@@ -344,4 +370,76 @@ test("Music fullscreen keeps microphone feedback without room chrome", () => {
   assert.match(markup, /Cortex Home \/ Microphone/);
   assert.doesNotMatch(markup, /Coordinator offline · Reconnecting/);
   assert.doesNotMatch(markup, /Warm active/);
+});
+
+test("Music fullscreen keeps contextual answer feedback without room chrome", () => {
+  const markup = renderToStaticMarkup(
+    createElement(RoomFeedback, {
+      connection: "disconnected",
+      interaction: {
+        action: "agent.interaction",
+        message: null,
+        state: "speaking",
+      },
+      lighting: {
+        activeScenes: ["Warm"],
+        status: "available",
+      },
+      showLightingStatus: true,
+      voiceOnly: true,
+    }),
+  );
+
+  assert.match(markup, /Cortex Home \/ Voice answer/);
+  assert.match(markup, /Speaking\./);
+  assert.doesNotMatch(markup, /Coordinator offline · Reconnecting/);
+  assert.doesNotMatch(markup, /Warm active/);
+});
+
+test("voice diagnostics show only content-free timing and size metrics", () => {
+  const debug = {
+    answerBytes: 48_000,
+    answerCharacters: 72,
+    answerDurationMs: 2_000,
+    answerTransferMs: 6.4,
+    captureBytes: 64_044,
+    captureDurationMs: 2_000,
+    llmMs: 1_234.5,
+    phase: "completed",
+    playbackMs: 2_010,
+    requestId: "must-not-render",
+    sttMs: 345.6,
+    totalToAudioMs: 1_800,
+    transcriptCharacters: 31,
+    ttsMs: 210.2,
+    uploadMs: 4.2,
+  };
+  const hidden = renderToStaticMarkup(
+    createElement(RoomFeedback, {
+      connection: "connected",
+      interaction: { state: "idle" },
+      lighting: null,
+      voiceDebug: debug,
+      voiceDebugVisible: false,
+    }),
+  );
+  const visible = renderToStaticMarkup(
+    createElement(RoomFeedback, {
+      connection: "connected",
+      interaction: { state: "idle" },
+      lighting: null,
+      voiceDebug: debug,
+      voiceDebugVisible: true,
+      voiceOnly: true,
+    }),
+  );
+
+  assert.doesNotMatch(hidden, /Voice diagnostics/);
+  assert.match(visible, /Voice diagnostics/);
+  assert.match(visible, /LLM round trip/);
+  assert.match(visible, /1,235 ms/);
+  assert.match(visible, /2\.00 s · 62\.5 KiB/);
+  assert.match(visible, /72 characters/);
+  assert.doesNotMatch(visible, /must-not-render/);
+  assert.doesNotMatch(visible, /Coordinator offline|Scenes unavailable/);
 });

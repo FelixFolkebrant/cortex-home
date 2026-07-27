@@ -1,4 +1,5 @@
 import { cva } from "class-variance-authority";
+import { AGENT_INTERACTION_ACTION } from "./agent-interaction";
 import { cn } from "./classes";
 import { CHANNEL_ACTION, IDENTIFY_ACTION, SCENE_ACTION } from "./room-state";
 import { VOICE_CAPTURE_ACTION } from "./voice-capture";
@@ -19,6 +20,13 @@ const interactionCopy = {
     listening: ["Listening.", "Keep holding Control, Alt, and Space."],
     captured: ["Captured.", "The bounded utterance was released."],
     failed: ["Couldn’t capture.", "The microphone request failed."],
+  },
+  [AGENT_INTERACTION_ACTION]: {
+    transcribing: ["Transcribing.", "Turning the bounded utterance into text."],
+    thinking: ["Thinking.", "Using the current room context."],
+    speaking: ["Speaking.", "Playing one short answer."],
+    completed: ["Answered.", "The contextual answer completed."],
+    failed: ["Couldn’t answer.", "The voice interaction failed."],
   },
 };
 
@@ -85,7 +93,8 @@ function InteractionOverlay({ interaction }) {
   if (
     interaction.state === "idle" ||
     interaction.action === CHANNEL_ACTION ||
-    interaction.action === VOICE_CAPTURE_ACTION
+    interaction.action === VOICE_CAPTURE_ACTION ||
+    interaction.action === AGENT_INTERACTION_ACTION
   ) {
     return null;
   }
@@ -132,11 +141,14 @@ function InteractionOverlay({ interaction }) {
 }
 
 function VoiceCaptureBar({ interaction }) {
-  if (interaction.action !== VOICE_CAPTURE_ACTION || interaction.state === "idle") {
+  if (
+    ![AGENT_INTERACTION_ACTION, VOICE_CAPTURE_ACTION].includes(interaction.action) ||
+    interaction.state === "idle"
+  ) {
     return null;
   }
 
-  const copy = interactionCopy[VOICE_CAPTURE_ACTION][interaction.state];
+  const copy = interactionCopy[interaction.action][interaction.state];
   if (!copy) {
     return null;
   }
@@ -144,15 +156,26 @@ function VoiceCaptureBar({ interaction }) {
   const level = Math.max(0, Math.min(1, interaction.level || 0));
   const width = {
     captured: 55,
+    completed: 100,
     failed: 100,
     listening: 10 + level * 90,
     requesting: 18,
+    speaking: 90,
+    thinking: 66,
+    transcribing: 40,
   }[interaction.state];
   const tone = {
     captured: "bg-[#92d6a1] shadow-[0_0_1.5rem_rgb(146_214_161_/_55%)]",
+    completed: "bg-[#92d6a1] shadow-[0_0_1.5rem_rgb(146_214_161_/_55%)]",
     failed: "bg-[#e67d6f] shadow-[0_0_1.5rem_rgb(230_125_111_/_55%)]",
     listening: "bg-[#d6a954] shadow-[0_0_1.75rem_rgb(214_169_84_/_65%)]",
     requesting:
+      "animate-pulse bg-[#d6a954] shadow-[0_0_1.5rem_rgb(214_169_84_/_55%)] motion-reduce:animate-none",
+    speaking:
+      "animate-pulse bg-[#92d6a1] shadow-[0_0_1.75rem_rgb(146_214_161_/_60%)] motion-reduce:animate-none",
+    thinking:
+      "animate-pulse bg-[#d6a954] shadow-[0_0_1.5rem_rgb(214_169_84_/_55%)] motion-reduce:animate-none",
+    transcribing:
       "animate-pulse bg-[#d6a954] shadow-[0_0_1.5rem_rgb(214_169_84_/_55%)] motion-reduce:animate-none",
   }[interaction.state];
 
@@ -162,7 +185,11 @@ function VoiceCaptureBar({ interaction }) {
         className="max-w-[min(90vw,52rem)] rounded-full border border-white/10 bg-[#0d0d0f]/88 px-5 py-2 text-center shadow-2xl backdrop-blur-xl"
         role="status"
         aria-live="assertive"
-        aria-label="Cortex Home / Microphone"
+        aria-label={
+          interaction.action === AGENT_INTERACTION_ACTION
+            ? "Cortex Home / Voice answer"
+            : "Cortex Home / Microphone"
+        }
       >
         <span className="text-xs font-bold tracking-[0.18em] text-[#f1d18b] uppercase">
           {title}
@@ -184,6 +211,74 @@ function VoiceCaptureBar({ interaction }) {
         />
       </div>
     </div>
+  );
+}
+
+function formatMilliseconds(value) {
+  if (!Number.isFinite(value)) {
+    return "—";
+  }
+  return `${
+    value < 100 ? value.toFixed(1) : Math.round(value).toLocaleString("en-US")
+  } ms`;
+}
+
+function formatAudio(milliseconds, bytes) {
+  if (!Number.isFinite(milliseconds) || !Number.isFinite(bytes)) {
+    return "—";
+  }
+  return `${(milliseconds / 1000).toFixed(2)} s · ${(bytes / 1024).toFixed(1)} KiB`;
+}
+
+function formatCharacters(value) {
+  return Number.isFinite(value) ? `${value} characters` : "—";
+}
+
+function VoiceDebugPanel({ debug, visible }) {
+  if (!visible) {
+    return null;
+  }
+
+  const metrics = debug || {};
+  const rows = [
+    ["Upload transfer", formatMilliseconds(metrics.uploadMs)],
+    ["STT", formatMilliseconds(metrics.sttMs)],
+    ["LLM round trip", formatMilliseconds(metrics.llmMs)],
+    ["TTS", formatMilliseconds(metrics.ttsMs)],
+    ["Answer transfer", formatMilliseconds(metrics.answerTransferMs)],
+    ["Total to audio", formatMilliseconds(metrics.totalToAudioMs)],
+    ["Playback", formatMilliseconds(metrics.playbackMs)],
+    ["Capture", formatAudio(metrics.captureDurationMs, metrics.captureBytes)],
+    ["Transcript", formatCharacters(metrics.transcriptCharacters)],
+    ["Answer", formatAudio(metrics.answerDurationMs, metrics.answerBytes)],
+    ["Response", formatCharacters(metrics.answerCharacters)],
+  ];
+
+  return (
+    <aside
+      className="pointer-events-none absolute bottom-[clamp(6.5rem,12vh,10rem)] left-[clamp(1rem,3vw,3rem)] z-[60] w-[min(29rem,calc(100vw-2rem))] rounded-2xl border border-[#d6a954]/25 bg-[#0a0908]/94 p-5 font-mono text-xs text-[#d8ccb6] shadow-2xl backdrop-blur-xl"
+      aria-label="Voice diagnostics"
+    >
+      <div className="mb-4 flex items-center justify-between gap-4 border-white/10 border-b pb-3">
+        <div>
+          <p className="font-bold tracking-[0.16em] text-[#f1d18b] uppercase">
+            Voice diagnostics
+          </p>
+          <p className="mt-1 text-[#81786a]">Content-free · Ctrl Alt D to hide</p>
+        </div>
+        <span className="rounded-full bg-[#d6a954]/12 px-3 py-1 text-[#e9c77f] uppercase">
+          {metrics.phase || "idle"}
+        </span>
+      </div>
+      <dl className="grid grid-cols-[1fr_auto] gap-x-5 gap-y-2">
+        {rows.map(([label, value]) => (
+          <div className="contents" key={label}>
+            <dt className="text-[#928879]">{label}</dt>
+            <dd className="text-right text-[#f1e6d1] tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </aside>
   );
 }
 
@@ -225,6 +320,8 @@ export function RoomFeedback({
   lighting,
   interaction,
   showLightingStatus,
+  voiceDebug,
+  voiceDebugVisible = false,
   voiceOnly = false,
 }) {
   return (
@@ -233,6 +330,7 @@ export function RoomFeedback({
       {!voiceOnly && showLightingStatus && <LightingStatus lighting={lighting} />}
       {!voiceOnly && <ChannelToast interaction={interaction} />}
       {!voiceOnly && <InteractionOverlay interaction={interaction} />}
+      <VoiceDebugPanel debug={voiceDebug} visible={voiceDebugVisible} />
       <VoiceCaptureBar interaction={interaction} />
     </>
   );
