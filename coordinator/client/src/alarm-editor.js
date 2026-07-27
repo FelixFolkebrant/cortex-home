@@ -88,10 +88,10 @@ export function alarmKeyboardAction(event, snapshot) {
     return { type: "select", selected: "minutes" };
   }
   if (event.key === "ArrowUp") {
-    return { type: "step", amount: -1 };
+    return { type: "step", amount: 1 };
   }
   if (event.key === "ArrowDown") {
-    return { type: "step", amount: 1 };
+    return { type: "step", amount: -1 };
   }
   if (/^\d$/.test(event.key)) {
     return { type: "digit", digit: event.key, at: Date.now() };

@@ -12,14 +12,14 @@ const armed = { status: "armed", time: "07:30" };
 
 test("Alarm editor wraps the selected field and accepts two bounded digits", () => {
   let editor = initialAlarmEditor(disarmed);
-  editor = reduceAlarmEditor(editor, { type: "step", amount: -1 });
-  assert.equal(alarmTime(editor), "06:00");
-  editor = reduceAlarmEditor(editor, { type: "select", selected: "minutes" });
   editor = reduceAlarmEditor(editor, { type: "step", amount: 1 });
-  assert.equal(alarmTime(editor), "06:01");
+  assert.equal(alarmTime(editor), "08:00");
+  editor = reduceAlarmEditor(editor, { type: "select", selected: "minutes" });
+  editor = reduceAlarmEditor(editor, { type: "step", amount: -1 });
+  assert.equal(alarmTime(editor), "08:59");
   editor = reduceAlarmEditor(editor, { type: "digit", digit: "4", at: 10 });
   editor = reduceAlarmEditor(editor, { type: "digit", digit: "5", at: 20 });
-  assert.equal(alarmTime(editor), "06:45");
+  assert.equal(alarmTime(editor), "08:45");
   editor = reduceAlarmEditor(editor, { type: "digit", digit: "9", at: 30 });
   assert.equal(
     reduceAlarmEditor(editor, { type: "digit", digit: "9", at: 40 }),
@@ -43,6 +43,14 @@ test("Alarm keyboard scope accepts only its exact editing and action keys", () =
   });
   assert.deepEqual(alarmKeyboardAction({ ...event, ctrlKey: true }, armed), {
     type: "sleep",
+  });
+  assert.deepEqual(alarmKeyboardAction({ ...event, key: "ArrowUp" }, disarmed), {
+    type: "step",
+    amount: 1,
+  });
+  assert.deepEqual(alarmKeyboardAction({ ...event, key: "ArrowDown" }, disarmed), {
+    type: "step",
+    amount: -1,
   });
   assert.equal(alarmKeyboardAction(event, armed), null);
   assert.equal(alarmKeyboardAction({ ...event, ctrlKey: true }, disarmed), null);
