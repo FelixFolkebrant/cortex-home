@@ -44,7 +44,13 @@ CHANNEL_ACTION = "channel.select"
 ALARM_ARM_ACTION = "alarm.arm"
 ALARM_DISARM_ACTION = "alarm.disarm"
 ALARM_DISMISS_ACTION = "alarm.dismiss"
-ALARM_ACTIONS = {ALARM_ARM_ACTION, ALARM_DISARM_ACTION, ALARM_DISMISS_ACTION}
+ALARM_SLEEP_ACTION = "alarm.sleep"
+ALARM_ACTIONS = {
+    ALARM_ARM_ACTION,
+    ALARM_DISARM_ACTION,
+    ALARM_DISMISS_ACTION,
+    ALARM_SLEEP_ACTION,
+}
 ALLOWED_ACTIONS = {ACTION, SCENE_ACTION, CHANNEL_ACTION, *ALARM_ACTIONS}
 CHANNELS = {"today", "music", "camera", "airplay", "alarm"}
 MAX_BODY_BYTES = 4096
@@ -258,7 +264,7 @@ class Coordinator:
                 "invalid_action_arguments",
                 "The action does not accept a channel or scene.",
             )
-        if action in {ALARM_DISARM_ACTION, ALARM_DISMISS_ACTION} and (
+        if action in {ALARM_DISARM_ACTION, ALARM_DISMISS_ACTION, ALARM_SLEEP_ACTION} and (
             channel is not None or scene is not None or alarm_time is not None
         ):
             raise ApiError(
@@ -304,7 +310,7 @@ class Coordinator:
             armed = None
             if action in ALARM_ACTIONS:
                 armed = self._validate_alarm_action_locked(action, alarm_time)
-            if action == ACTION and not self.endpoint:
+            if action in {ACTION, ALARM_SLEEP_ACTION} and not self.endpoint:
                 raise ApiError(
                     HTTPStatus.SERVICE_UNAVAILABLE,
                     "endpoint_unavailable",
@@ -312,6 +318,8 @@ class Coordinator:
                 )
 
             endpoint_token = self.endpoint.token if action == ACTION else None
+            if action == ALARM_SLEEP_ACTION:
+                endpoint_token = self.endpoint.token
             pending = PendingRequest(
                 request_id,
                 action,
@@ -334,26 +342,20 @@ class Coordinator:
                 self._finish_locked(pending, "completed", None, HTTPStatus.OK)
                 return pending.http_status, pending.payload()
             if action in ALARM_ACTIONS:
-                self._run_alarm_action_locked(action, armed)
-                self._finish_locked(pending, "completed", None, HTTPStatus.OK)
-                return pending.http_status, pending.payload()
+                if action == ALARM_SLEEP_ACTION:
+                    self.endpoint.send(
+                        "alarm.sleep",
+                        {"requestId": request_id, "firesAt": self.alarm.firesAt},
+                    )
+                else:
+                    self._run_alarm_action_locked(action, armed)
+                    self._finish_locked(pending, "completed", None, HTTPStatus.OK)
+                    return pending.http_status, pending.payload()
 
         if action == SCENE_ACTION:
             return self._activate_scene(pending)
 
-        if not pending.finished.wait(self.action_timeout):
-            with self.lock:
-                if not pending.finished.is_set():
-                    self._finish_locked(
-                        pending,
-                        "failed",
-                        "action timed out",
-                        HTTPStatus.GATEWAY_TIMEOUT,
-                        code="action_timeout",
-                        notify_endpoint=True,
-                    )
-
-        return pending.http_status, pending.payload()
+        return self._wait_for_endpoint_action(pending)
 
     def interact(self, endpoint_token, request_id, audio_data, metrics=None):
         metrics = metrics if isinstance(metrics, dict) else {}
@@ -593,7 +595,9 @@ class Coordinator:
 
             if status == "identifying" and pending.state == "accepted":
                 pending.state = status
-            elif status == "completed" and pending.state == "identifying":
+            elif status == "completed" and (
+                pending.state == "identifying" or pending.action == ALARM_SLEEP_ACTION
+            ):
                 self._finish_locked(
                     pending,
                     status,
@@ -613,6 +617,8 @@ class Coordinator:
                     error.strip()[:160],
                     HTTPStatus.BAD_GATEWAY,
                 )
+                if pending.action == ALARM_SLEEP_ACTION:
+                    self._record_alarm_error_locked("sleep_failed")
             else:
                 raise ApiError(
                     HTTPStatus.CONFLICT,
@@ -744,6 +750,21 @@ class Coordinator:
             self.endpoint.send("channel.active", self.channel)
         return self.channel
 
+    def _wait_for_endpoint_action(self, pending):
+        if not pending.finished.wait(self.action_timeout):
+            with self.lock:
+                if not pending.finished.is_set():
+                    self._finish_locked(
+                        pending,
+                        "failed",
+                        "action timed out",
+                        HTTPStatus.GATEWAY_TIMEOUT,
+                        code="action_timeout",
+                        notify_endpoint=True,
+                    )
+
+        return pending.http_status, pending.payload()
+
     def _validate_alarm_action_locked(self, action, alarm_time):
         if action == ALARM_ARM_ACTION:
             if self.alarm.status == "armed":
@@ -771,6 +792,12 @@ class Coordinator:
                 HTTPStatus.CONFLICT,
                 "alarm_not_ringing",
                 "Only a ringing alarm can be dismissed.",
+            )
+        if action == ALARM_SLEEP_ACTION and self.alarm.status != "armed":
+            raise ApiError(
+                HTTPStatus.CONFLICT,
+                "alarm_not_armed",
+                "Only an observed armed alarm can request sleep.",
             )
         return None
 
@@ -855,6 +882,16 @@ class Coordinator:
     def _publish_alarm_locked(self):
         if self.endpoint:
             self.endpoint.send("alarm.state", self.alarm.payload())
+
+    def _record_alarm_error_locked(self, error):
+        self.alarm = AlarmSnapshot(
+            self.alarm.status,
+            self.alarm.time,
+            self.alarm.firesAt,
+            error,
+        )
+        self.alarm_store.save(self.alarm)
+        self._publish_alarm_locked()
 
     def _fail_active_locked(self, endpoint_token, error, http_status):
         if not self.active_request_id:

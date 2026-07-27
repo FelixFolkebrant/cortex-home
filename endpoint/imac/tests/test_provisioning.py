@@ -51,6 +51,9 @@ class AirPlayControlTests(unittest.TestCase):
             "esac\n"
         )
         alarm_helper.chmod(0o755)
+        rtc_helper = temporary_path / "rtc-helper"
+        rtc_helper.write_text("#!/bin/sh\nexit 0\n")
+        rtc_helper.chmod(0o755)
 
         with socket.socket() as available_port:
             available_port.bind(("127.0.0.1", 0))
@@ -71,6 +74,10 @@ class AirPlayControlTests(unittest.TestCase):
             .replace(
                 "alarm_helper=/usr/local/bin/cortex-endpoint-alarm",
                 f"alarm_helper={alarm_helper}",
+            )
+            .replace(
+                "rtc_suspend_helper=/usr/local/bin/cortex-endpoint-rtc-suspend",
+                f"rtc_suspend_helper={rtc_helper}",
             )
             .replace(
                 "127.0.0.1 38019",
@@ -416,6 +423,21 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("wake-alarm.mp3", installer)
         self.assertIn("sudo mv", installer)
 
+    def test_rtc_suspend_helper_is_the_only_privileged_power_boundary(self):
+        helper = (FILES / "cortex-endpoint-rtc-suspend").read_text()
+        sudoers = (FILES / "cortex-endpoint-rtc-suspend.sudoers").read_text()
+
+        self.assertIn("$EUID -ne 0", helper)
+        self.assertIn("$# -ne 1", helper)
+        self.assertIn("93600", helper)
+        self.assertIn("/usr/sbin/rtcwake --utc --mode mem --time", helper)
+        self.assertEqual(
+            sudoers,
+            "cortex-endpoint ALL=(root) NOPASSWD: "
+            "/usr/local/bin/cortex-endpoint-rtc-suspend *\n",
+        )
+        self.assertIn("cortex-endpoint-rtc-suspend.sudoers", self.script)
+
     def test_airplay_control_is_loopback_only_and_origin_bound(self):
         control = (FILES / "cortex-airplay-control").read_text()
 
@@ -433,6 +455,8 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("POST && $path == /alarm/stop", control)
         self.assertIn('"$alarm_helper" start', control)
         self.assertIn('"$alarm_helper" stop', control)
+        self.assertIn("POST && $path =~ ^/alarm/sleep/[0-9]+$", control)
+        self.assertIn('nohup sudo -n "$rtc_suspend_helper" "$wake_epoch"', control)
 
     def test_openbox_controls_airplay_and_raises_each_mirror_window(self):
         openbox = ET.parse(FILES / "openbox-rc.xml")

@@ -52,6 +52,20 @@ export async function requestAlarm(path, fetcher = fetch) {
   return result.state;
 }
 
+export async function requestSleep(firesAt, fetcher = fetch) {
+  const epoch = Math.floor(Date.parse(firesAt) / 1000);
+  if (!Number.isSafeInteger(epoch)) {
+    throw new Error("The alarm wake time is invalid.");
+  }
+  const response = await fetcher(`http://127.0.0.1:38019/alarm/sleep/${epoch}`, {
+    method: "POST",
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.state !== "sleeping") {
+    throw new Error(result.error || "The iMac could not sleep.");
+  }
+}
+
 export function AlarmChannel({ onAction, snapshot }) {
   const alarmStatus = snapshot?.status;
   const [editor, dispatch] = useReducer(
@@ -154,6 +168,9 @@ export function AlarmChannel({ onAction, snapshot }) {
             <p>Alarm armed for {dateLabel(snapshot.firesAt)}.</p>
             <p className="mt-3 text-[#f3d18a]">Press Ctrl+Enter to sleep.</p>
             <p className="mt-2 text-base">Escape returns to editing.</p>
+            {snapshot.error ? (
+              <p className="mt-4 text-base text-[#ff6961]">{snapshot.error}</p>
+            ) : null}
           </>
         ) : snapshot?.status === "missed" ? (
           <p>This alarm was missed. Set a new wake time.</p>

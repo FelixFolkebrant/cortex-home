@@ -24,6 +24,7 @@ from cortex_home import (
     ALARM_ARM_ACTION,
     ALARM_DISARM_ACTION,
     ALARM_DISMISS_ACTION,
+    ALARM_SLEEP_ACTION,
     AGENT_CHILD,
     AGENT_NODE,
     CHANNEL_ACTION,
@@ -309,6 +310,45 @@ class CoordinatorTests(unittest.TestCase):
             )
             self.assertEqual(missed.alarm.status, "missed")
             missed.close()
+
+    def test_requests_sleep_only_for_the_observed_armed_alarm(self):
+        now = datetime(2026, 7, 27, 19, 25, tzinfo=timezone.utc)
+        coordinator = Coordinator(now=lambda: now, action_timeout=0.1)
+        endpoint = coordinator.connect_endpoint()
+        self.initial_snapshots(endpoint)
+        coordinator.submit("alarm-arm", ALARM_ARM_ACTION, alarm_time="21:30")
+        for _index in range(3):
+            endpoint.events.get(timeout=1)
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            request = executor.submit(coordinator.submit, "alarm-sleep", ALARM_SLEEP_ACTION)
+            event, accepted = endpoint.events.get(timeout=1)
+            self.assertEqual(event, "action.status")
+            self.assertEqual(accepted["action"], ALARM_SLEEP_ACTION)
+            event, sleep = endpoint.events.get(timeout=1)
+            self.assertEqual(event, "alarm.sleep")
+            self.assertEqual(sleep["requestId"], "alarm-sleep")
+            self.assertEqual(sleep["firesAt"], coordinator.alarm.firesAt)
+            coordinator.update(endpoint.token, "alarm-sleep", "completed")
+            status, payload = request.result(timeout=1)
+
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(payload["status"], "completed")
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            request = executor.submit(coordinator.submit, "alarm-sleep-fail", ALARM_SLEEP_ACTION)
+            endpoint.events.get(timeout=1)
+            endpoint.events.get(timeout=1)
+            coordinator.update(
+                endpoint.token,
+                "alarm-sleep-fail",
+                "failed",
+                "bridge unavailable",
+            )
+            status, payload = request.result(timeout=1)
+        self.assertEqual(status, HTTPStatus.BAD_GATEWAY)
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(coordinator.alarm.error, "sleep_failed")
+        coordinator.close()
 
     def test_ringing_alarm_selects_its_channel_and_activates_only_warm_low(self):
         class Timer:

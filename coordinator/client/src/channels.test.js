@@ -24,7 +24,7 @@ const { TodayChannel } = await vite.ssrLoadModule("/src/TodayChannel.jsx");
 const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
   "/src/CameraChannel.jsx",
 );
-const { AlarmChannel, requestAlarm } = await vite.ssrLoadModule(
+const { AlarmChannel, requestAlarm, requestSleep } = await vite.ssrLoadModule(
   "/src/AlarmChannel.jsx",
 );
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
@@ -42,6 +42,21 @@ test("AirPlay channel is only a logo, switch, and conditional status region", ()
   assert.doesNotMatch(markup, /absolute inset-0/);
   assert.doesNotMatch(markup, /Ready to mirror|No code required|Ctrl/);
   assert.doesNotMatch(markup, /Select|Skärmen|PIN|password/i);
+});
+
+test("Alarm sleep sends only the coordinator-resolved wake epoch", async () => {
+  const calls = [];
+  await requestSleep("2026-07-28T05:15:00Z", async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ state: "sleeping" }) };
+  });
+
+  assert.deepEqual(calls, [
+    {
+      url: "http://127.0.0.1:38019/alarm/sleep/1785215700",
+      options: { method: "POST" },
+    },
+  ]);
 });
 
 test("AirPlay shows only a loader while starting and Skärmen when on", () => {

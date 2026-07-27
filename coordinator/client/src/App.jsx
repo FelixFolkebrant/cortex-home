@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { AirPlayChannel, requestAirPlay } from "./AirPlayChannel";
-import { AlarmChannel } from "./AlarmChannel";
+import { AlarmChannel, requestSleep } from "./AlarmChannel";
 import {
   AGENT_INTERACTION_ACTION,
   isVoiceDebugShortcut,
@@ -507,6 +507,7 @@ export function App() {
           "alarm.arm",
           "alarm.disarm",
           "alarm.dismiss",
+          "alarm.sleep",
         ].includes(message.action)
       ) {
         return;
@@ -536,6 +537,22 @@ export function App() {
       if (message && !activeRequestId.current) {
         identify(message.requestId);
       }
+    });
+
+    events.addEventListener("alarm.sleep", (event) => {
+      const message = parseMessage(event);
+      if (!message?.requestId || !message.firesAt) {
+        return;
+      }
+      requestSleep(message.firesAt)
+        .then(() => postStatus(message.requestId, "completed"))
+        .catch((error) =>
+          postStatus(
+            message.requestId,
+            "failed",
+            error instanceof Error ? error.message : "The iMac could not sleep.",
+          ).catch(() => {}),
+        );
     });
 
     events.addEventListener("result", (event) => {

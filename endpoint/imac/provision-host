@@ -115,6 +115,12 @@ install -D --mode=755 \
   "$source_dir/files/cortex-endpoint-alarm" \
   /usr/local/bin/cortex-endpoint-alarm
 install -D --mode=755 \
+  "$source_dir/files/cortex-endpoint-rtc-suspend" \
+  /usr/local/bin/cortex-endpoint-rtc-suspend
+install -D --mode=440 \
+  "$source_dir/files/cortex-endpoint-rtc-suspend.sudoers" \
+  /etc/sudoers.d/cortex-endpoint-rtc-suspend
+install -D --mode=755 \
   "$source_dir/files/cortex-airplay-control" \
   /usr/local/bin/cortex-airplay-control
 install -D --mode=755 \
@@ -147,6 +153,9 @@ printf \
 /usr/sbin/visudo \
   --check \
   --file="$source_dir/files/cortex-speech-qualification-playback.sudoers"
+/usr/sbin/visudo \
+  --check \
+  --file="$source_dir/files/cortex-endpoint-rtc-suspend.sudoers"
 install --owner=root --group=root --mode=755 \
   "$source_dir/files/cortex-speech-qualification-capture" \
   /usr/local/bin/cortex-speech-qualification-capture
