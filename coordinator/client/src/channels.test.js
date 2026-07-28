@@ -24,9 +24,8 @@ const { TodayChannel } = await vite.ssrLoadModule("/src/TodayChannel.jsx");
 const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
   "/src/CameraChannel.jsx",
 );
-const { AlarmChannel, requestAlarm, requestSleep } = await vite.ssrLoadModule(
-  "/src/AlarmChannel.jsx",
-);
+const { AlarmChannel, requestAlarm, requestAlarmFiles, requestSleep, selectAlarmFile } =
+  await vite.ssrLoadModule("/src/AlarmChannel.jsx");
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 after(() => vite.close());
@@ -321,6 +320,39 @@ test("Alarm audio calls only the loopback start and stop routes", async () => {
     })),
     /Alarm audio is unavailable/,
   );
+});
+
+test("Alarm sound selector lists and applies only endpoint catalog entries", async () => {
+  const calls = [];
+  const files = await requestAlarmFiles(async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      json: async () => ({
+        files: ["birds.mp3", "wake-alarm.mp3"],
+        selected: "birds.mp3",
+      }),
+    };
+  });
+  await selectAlarmFile("wake-alarm.mp3", async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ state: "selected" }) };
+  });
+
+  assert.deepEqual(files, {
+    files: ["birds.mp3", "wake-alarm.mp3"],
+    selected: "birds.mp3",
+  });
+  assert.deepEqual(calls, [
+    {
+      url: "http://127.0.0.1:38019/alarm/files",
+      options: { method: "GET" },
+    },
+    {
+      url: "http://127.0.0.1:38019/alarm/select/wake-alarm.mp3",
+      options: { method: "POST" },
+    },
+  ]);
 });
 
 test("Music channel owns loaded playback and artwork fallback presentation", () => {

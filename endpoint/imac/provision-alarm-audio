@@ -55,4 +55,4 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
 scp -q "$source_file" "imac:$remote_file"
-ssh -tt imac "sudo install --owner=root --group=root --mode=644 '$remote_file' /etc/cortex-endpoint/.wake-alarm.mp3 && sudo mv /etc/cortex-endpoint/.wake-alarm.mp3 /etc/cortex-endpoint/wake-alarm.mp3"
+ssh -tt imac "sudo install --owner=root --group=cortex-endpoint --mode=640 '$remote_file' /var/lib/cortex-endpoint/alarm-audio/wake-alarm.mp3"

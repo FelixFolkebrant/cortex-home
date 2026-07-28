@@ -114,6 +114,12 @@ install -D --mode=755 \
 install -D --mode=755 \
   "$source_dir/files/cortex-endpoint-alarm" \
   /usr/local/bin/cortex-endpoint-alarm
+install --directory --owner=root --group=root --mode=755 \
+  /var/lib/cortex-endpoint
+install --directory --owner=imac --group=cortex-endpoint --mode=750 \
+  /var/lib/cortex-endpoint/alarm-audio
+install --directory --owner=cortex-endpoint --group=cortex-endpoint --mode=700 \
+  /home/cortex-endpoint/.config
 install -D --mode=755 \
   "$source_dir/files/cortex-endpoint-rtc-suspend" \
   /usr/local/bin/cortex-endpoint-rtc-suspend

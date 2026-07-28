@@ -46,7 +46,10 @@ class AirPlayControlTests(unittest.TestCase):
             "#!/bin/sh\n"
             "set -eu\n"
             'case "$1" in\n'
-            "  start|stop|status) exit 0 ;;\n"
+            "  list) printf 'birds.mp3\\nwake-alarm.mp3\\n' ;;\n"
+            "  selected) printf 'wake-alarm.mp3\\n' ;;\n"
+            "  select) [ \"$2\" = 'birds.mp3' ] || exit 1 ;;\n"
+            "  start|stop|status|ready) exit 0 ;;\n"
             "  *) exit 1 ;;\n"
             "esac\n"
         )
@@ -167,6 +170,20 @@ class AirPlayControlTests(unittest.TestCase):
         self.assertGreaterEqual(stats["memoryUsedMiB"], 0)
         self.assertLessEqual(stats["memoryUsedMiB"], stats["memoryTotalMiB"])
         self.assertGreaterEqual(stats["uptimeSeconds"], 0)
+
+    def test_lists_and_selects_only_endpoint_alarm_files(self):
+        self.assertEqual(
+            self.request("GET", "/alarm/files"),
+            (200, {"files": ["birds.mp3", "wake-alarm.mp3"], "selected": "wake-alarm.mp3"}),
+        )
+        self.assertEqual(
+            self.request("POST", "/alarm/select/birds.mp3"),
+            (200, {"state": "selected"}),
+        )
+        self.assertEqual(
+            self.request("POST", "/alarm/select/other.mp3"),
+            (400, {"error": "Alarm audio selection is unavailable."}),
+        )
 
 
 class ProvisioningTests(unittest.TestCase):
@@ -408,11 +425,14 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("/usr/local/bin/cortex-airplay-control &", session)
         self.assertIn('kill "$airplay_control_pid"', session)
 
-    def test_alarm_audio_is_fixed_single_owner_and_installed_with_the_endpoint(self):
+    def test_alarm_audio_catalog_is_single_owner_and_installed_with_the_endpoint(self):
         helper = (FILES / "cortex-endpoint-alarm").read_text()
         installer = (ENDPOINT_DIR / "provision-alarm-audio").read_text()
 
-        self.assertIn("alarm_file=/etc/cortex-endpoint/wake-alarm.mp3", helper)
+        self.assertIn("audio_dir=/var/lib/cortex-endpoint/alarm-audio", helper)
+        self.assertIn("selection_file=/home/cortex-endpoint/.config/cortex-alarm-file", helper)
+        self.assertIn("start|stop|status|list|select|selected|ready", helper)
+        self.assertIn("valid_file_name", helper)
         self.assertIn('"$runtime_dir/cortex-alarm"', helper)
         self.assertIn("/usr/bin/mpg123 --loop -1", helper)
         self.assertIn("kill -TERM", helper)
@@ -421,8 +441,15 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("The alarm file must be a regular file.", installer)
         self.assertIn("33554432", installer)
         self.assertIn("The alarm file does not contain an MP3 header.", installer)
-        self.assertIn("wake-alarm.mp3", installer)
-        self.assertIn("sudo mv", installer)
+        self.assertIn(
+            "/var/lib/cortex-endpoint/alarm-audio/wake-alarm.mp3",
+            installer,
+        )
+        self.assertIn("/var/lib/cortex-endpoint/alarm-audio", self.script)
+        focused_host = (ENDPOINT_DIR / "provision-alarm-host").read_text()
+        self.assertIn("/var/lib/cortex-endpoint/alarm-audio", focused_host)
+        self.assertNotIn("/home/imac/cortex-alarm-audio", helper)
+        self.assertNotIn("/home/imac/cortex-alarm-audio", installer)
         self.assertIn("ssh -tt imac", installer)
 
     def test_rtc_suspend_helper_is_the_only_privileged_power_boundary(self):
@@ -470,6 +497,10 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn('"$airplay_helper" receiver-off', control)
         self.assertIn("POST && $path == /alarm/start", control)
         self.assertIn("POST && $path == /alarm/stop", control)
+        self.assertIn("GET && $path == /alarm/files", control)
+        self.assertIn("POST && $path =~ ^/alarm/select/.+$", control)
+        self.assertIn('"$alarm_helper" list', control)
+        self.assertIn('"$alarm_helper" select "$selected_file"', control)
         self.assertIn('"$alarm_helper" start', control)
         self.assertIn('"$alarm_helper" stop', control)
         self.assertIn("POST && $path =~ ^/alarm/sleep/[0-9]+$", control)

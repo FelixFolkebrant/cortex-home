@@ -77,6 +77,15 @@ send_response() {
     >&"$response_fd"
 }
 
+alarm_files_response() {
+  local file files=() selected
+  while IFS= read -r file; do
+    files+=("\"$file\"")
+  done < <("$alarm_helper" list)
+  selected=$("$alarm_helper" selected 2>/dev/null || true)
+  printf '{"files":[%s],"selected":"%s"}' "$(IFS=,; echo "${files[*]}")" "$selected"
+}
+
 read_cpu_counters() {
   local label user nice system idle iowait irq softirq steal
 
@@ -237,6 +246,17 @@ while true; do
         send_response "500 Internal Server Error" \
           '{"error":"Alarm audio could not stop."}'
       fi
+    elif [[ $method == GET && $path == /alarm/files ]]; then
+      send_response "200 OK" "$(alarm_files_response)"
+    elif [[ $method == POST && $path =~ ^/alarm/select/.+$ ]]; then
+      selected_file=${path#/alarm/select/}
+      selected_file=${selected_file//+/ }
+      selected_file=$(printf '%b' "${selected_file//%/\\x}")
+      if "$alarm_helper" select "$selected_file" >/dev/null 2>&1; then
+        send_response "200 OK" '{"state":"selected"}'
+      else
+        send_response "400 Bad Request" '{"error":"Alarm audio selection is unavailable."}'
+      fi
     elif [[ $method == POST && $path =~ ^/alarm/sleep/[0-9]+$ ]]; then
       wake_epoch=${path##*/}
       now=$(/usr/bin/date +%s)
@@ -244,7 +264,7 @@ while true; do
         send_response "400 Bad Request" '{"error":"Wake time is out of range."}'
       elif ! "$airplay_helper" stop-local >/dev/null 2>&1; then
         send_response "500 Internal Server Error" '{"error":"AirPlay could not stop."}'
-      elif [[ ! -r /etc/cortex-endpoint/wake-alarm.mp3 ]]; then
+      elif ! "$alarm_helper" ready >/dev/null 2>&1; then
         send_response "500 Internal Server Error" '{"error":"Alarm audio is unavailable."}'
       else
         nohup sudo -n "$rtc_suspend_helper" "$wake_epoch" >/dev/null 2>&1 &
