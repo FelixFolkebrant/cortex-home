@@ -1,0 +1,315 @@
+import { useEffect, useReducer, useState } from "react";
+import {
+  alarmKeyboardAction,
+  alarmTime,
+  initialAlarmEditor,
+  reduceAlarmEditor,
+} from "./alarm-editor";
+import { requestEndpointControl } from "./endpoint-control";
+
+function stockholmTime(now = new Date()) {
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: "Europe/Stockholm",
+  }).format(now);
+}
+
+export function AlarmClock() {
+  const [now, setNow] = useReducer(() => new Date(), new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(setNow, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <p className="mt-8 font-mono text-[clamp(6rem,23vw,18rem)] font-semibold leading-none tracking-[-0.09em]">
+      {stockholmTime(now)}
+    </p>
+  );
+}
+
+function dateLabel(firesAt) {
+  if (!firesAt) {
+    return null;
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "full",
+    timeStyle: "short",
+    timeZone: "Europe/Stockholm",
+  }).format(new Date(firesAt));
+}
+
+export async function requestAlarm(path, fetcher = fetch) {
+  const response = await requestEndpointControl(
+    path,
+    {
+      method: "POST",
+    },
+    fetcher,
+  );
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !["playing", "stopped"].includes(result.state)) {
+    throw new Error(result.error || "Alarm audio is unavailable.");
+  }
+  return result.state;
+}
+
+export async function requestAlarmFiles(fetcher = fetch) {
+  const response = await requestEndpointControl(
+    "/alarm/files",
+    { method: "GET" },
+    fetcher,
+  );
+  const result = await response.json().catch(() => ({}));
+  if (
+    !response.ok ||
+    !Array.isArray(result.files) ||
+    !result.files.every((file) => typeof file === "string") ||
+    (result.selected !== null && typeof result.selected !== "string")
+  ) {
+    throw new Error(result.error || "Alarm audio files are unavailable.");
+  }
+  return result;
+}
+
+export async function selectAlarmFile(file, fetcher = fetch) {
+  const response = await requestEndpointControl(
+    `/alarm/select/${encodeURIComponent(file)}`,
+    { method: "POST" },
+    fetcher,
+  );
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.state !== "selected") {
+    throw new Error(result.error || "Alarm audio selection is unavailable.");
+  }
+}
+
+export async function requestSleep(firesAt, fetcher = fetch, wait) {
+  const epoch = Math.floor(Date.parse(firesAt) / 1000);
+  if (!Number.isSafeInteger(epoch)) {
+    throw new Error("The alarm wake time is invalid.");
+  }
+  const response = await requestEndpointControl(
+    `/alarm/sleep/${epoch}`,
+    { method: "POST" },
+    fetcher,
+    wait,
+  );
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.state !== "sleeping") {
+    throw new Error(result.error || "The iMac could not sleep.");
+  }
+}
+
+export function AlarmChannel({ onAction, snapshot }) {
+  const alarmStatus = snapshot?.status;
+  const [editor, dispatch] = useReducer(
+    reduceAlarmEditor,
+    snapshot,
+    initialAlarmEditor,
+  );
+  const [audioError, setAudioError] = useState(null);
+  const [audioFiles, setAudioFiles] = useState(null);
+  const [audioIndex, setAudioIndex] = useState(0);
+
+  useEffect(() => {
+    const path = alarmStatus === "ringing" ? "/alarm/start" : "/alarm/stop";
+    requestAlarm(path)
+      .then(() => setAudioError(null))
+      .catch((error) => setAudioError(error.message));
+    return () => {
+      if (alarmStatus === "ringing") {
+        void requestAlarm("/alarm/stop");
+      }
+    };
+  }, [alarmStatus]);
+
+  useEffect(() => {
+    dispatch({ type: "reset", snapshot });
+  }, [snapshot]);
+
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (
+        snapshot?.status === "disarmed" &&
+        event.key === "a" &&
+        !event.repeat &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey
+      ) {
+        event.preventDefault();
+        requestAlarmFiles()
+          .then((files) => {
+            setAudioFiles(files);
+            setAudioIndex(Math.max(0, files.files.indexOf(files.selected)));
+            setAudioError(null);
+          })
+          .catch((error) => setAudioError(error.message));
+        return;
+      }
+      if (audioFiles) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setAudioFiles(null);
+        } else if (
+          audioFiles.files.length &&
+          ["ArrowUp", "ArrowDown"].includes(event.key)
+        ) {
+          event.preventDefault();
+          setAudioIndex(
+            (index) =>
+              (index + (event.key === "ArrowUp" ? -1 : 1) + audioFiles.files.length) %
+              audioFiles.files.length,
+          );
+        } else if (event.key === "Enter" && audioFiles.files.length) {
+          event.preventDefault();
+          selectAlarmFile(audioFiles.files[audioIndex])
+            .then(() => {
+              setAudioFiles(null);
+              setAudioError(null);
+            })
+            .catch((error) => setAudioError(error.message));
+        }
+        return;
+      }
+      const action = alarmKeyboardAction(event, snapshot);
+      if (!action) {
+        return;
+      }
+      event.preventDefault();
+      if (["select", "step", "digit"].includes(action.type)) {
+        dispatch(action);
+      } else if (action.type === "arm") {
+        onAction("alarm.arm", alarmTime(editor));
+      } else if (action.type === "disarm") {
+        onAction("alarm.disarm");
+      } else if (action.type === "dismiss") {
+        onAction("alarm.dismiss");
+      } else {
+        onAction("alarm.sleep");
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [audioFiles, audioIndex, editor, onAction, snapshot]);
+
+  const editing = snapshot?.status === "disarmed";
+  const time = alarmTime(editor);
+  const selectedValue = editor.selected === "hours" ? time.slice(0, 2) : time.slice(3);
+  const display = editor.digits.length === 1 ? `${editor.digits}_` : selectedValue;
+
+  if (snapshot?.status === "ringing") {
+    return (
+      <main
+        aria-label="Ringing alarm"
+        className="relative z-10 grid min-h-screen place-content-center px-8 text-center"
+      >
+        <p className="text-sm font-semibold uppercase tracking-[0.35em] text-[#f3d18a]">
+          Alarm
+        </p>
+        <AlarmClock />
+        <p aria-live="polite" className="mt-12 text-xl text-[#f8f0dc]/75">
+          Press Enter to dismiss.
+        </p>
+        {snapshot.error || audioError ? (
+          <p className="mt-4 text-base text-[#ff6961]">
+            {snapshot.error || audioError}
+          </p>
+        ) : null}
+      </main>
+    );
+  }
+
+  return (
+    <main
+      aria-label="Alarm clock"
+      className="relative z-10 grid min-h-screen place-content-center px-8 text-center"
+    >
+      <p className="text-sm font-semibold uppercase tracking-[0.35em] text-[#f3d18a]">
+        Cortex Home / Alarm
+      </p>
+      <div className="mt-8 flex items-baseline justify-center font-mono text-[clamp(5rem,19vw,15rem)] font-semibold leading-none tracking-[-0.09em]">
+        <span
+          className={editing && editor.selected === "hours" ? "alarm-selected" : ""}
+        >
+          {editing && editor.selected === "hours" ? display : time.slice(0, 2)}
+        </span>
+        <span aria-hidden="true" className="mx-[0.06em] text-[#f3d18a]">
+          :
+        </span>
+        <span
+          className={editing && editor.selected === "minutes" ? "alarm-selected" : ""}
+        >
+          {editing && editor.selected === "minutes" ? display : time.slice(3)}
+        </span>
+      </div>
+      <div aria-live="polite" className="mt-10 min-h-24 text-xl text-[#f8f0dc]/75">
+        {snapshot?.status === "armed" ? (
+          <>
+            <p>Alarm armed for {dateLabel(snapshot.firesAt)}.</p>
+            <p className="mt-3 text-[#f3d18a]">Press Ctrl+Enter to sleep.</p>
+            <p className="mt-2 text-base">Escape returns to editing.</p>
+            {snapshot.error ? (
+              <p className="mt-4 text-base text-[#ff6961]">{snapshot.error}</p>
+            ) : null}
+          </>
+        ) : snapshot?.status === "missed" ? (
+          <p>This alarm was missed. Set a new wake time.</p>
+        ) : snapshot?.status === "failed" ? (
+          <p>{snapshot.error || "The alarm could not complete."}</p>
+        ) : (
+          <>
+            <p>Left / Right selects hours or minutes. Up / Down adjusts.</p>
+            <p className="mt-2 text-base">
+              Minutes change in five-minute steps. Hold Alt for one-minute steps.
+            </p>
+            <p className="mt-3 text-[#f3d18a]">Press Enter to arm.</p>
+            <p className="mt-2 text-base">Press A to choose the alarm sound.</p>
+          </>
+        )}
+        {audioFiles ? (
+          <div className="mx-auto mt-6 max-w-xl text-left">
+            <p className="text-center text-[#f3d18a]">Alarm sound</p>
+            <div
+              role="listbox"
+              aria-label="Available alarm sounds"
+              className="mt-3 rounded border border-[#f3d18a]/50 bg-[#120f0c] p-2"
+            >
+              {audioFiles.files.length ? (
+                audioFiles.files.map((file, index) => (
+                  <div
+                    key={file}
+                    role="option"
+                    tabIndex={-1}
+                    aria-selected={index === audioIndex}
+                    className={
+                      index === audioIndex
+                        ? "rounded bg-[#f3d18a] px-3 py-1 text-[#120f0c]"
+                        : "px-3 py-1"
+                    }
+                  >
+                    {file}
+                  </div>
+                ))
+              ) : (
+                <p className="px-3 py-1">No MP3 files found.</p>
+              )}
+            </div>
+            <p className="mt-3 text-center text-base">
+              Up / Down chooses. Enter applies. Escape closes.
+            </p>
+          </div>
+        ) : null}
+        {audioError ? (
+          <p className="mt-4 text-base text-[#ff6961]">{audioError}</p>
+        ) : null}
+      </div>
+    </main>
+  );
+}

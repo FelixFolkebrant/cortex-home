@@ -14,10 +14,18 @@ const { MusicChannel, MusicFullscreen, updateFullscreenTracks } =
 const { AirPlayChannel, AirPlayStatus, isAirPlayToggleShortcut, requestAirPlay } =
   await vite.ssrLoadModule("/src/AirPlayChannel.jsx");
 const { RoomFeedback } = await vite.ssrLoadModule("/src/RoomFeedback.jsx");
+const {
+  isSystemStatsDismissShortcut,
+  isSystemStatsShortcut,
+  requestSystemStats,
+  SystemStats,
+} = await vite.ssrLoadModule("/src/SystemStats.jsx");
 const { TodayChannel } = await vite.ssrLoadModule("/src/TodayChannel.jsx");
 const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
   "/src/CameraChannel.jsx",
 );
+const { AlarmChannel, requestAlarm, requestAlarmFiles, requestSleep, selectAlarmFile } =
+  await vite.ssrLoadModule("/src/AlarmChannel.jsx");
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 after(() => vite.close());
@@ -33,6 +41,41 @@ test("AirPlay channel is only a logo, switch, and conditional status region", ()
   assert.doesNotMatch(markup, /absolute inset-0/);
   assert.doesNotMatch(markup, /Ready to mirror|No code required|Ctrl/);
   assert.doesNotMatch(markup, /Select|Skärmen|PIN|password/i);
+});
+
+test("Alarm sleep sends only the coordinator-resolved wake epoch", async () => {
+  const calls = [];
+  await requestSleep("2026-07-28T05:15:00Z", async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ state: "sleeping" }) };
+  });
+
+  assert.deepEqual(calls, [
+    {
+      url: "http://127.0.0.1:38019/alarm/sleep/1785215700",
+      options: { method: "POST" },
+    },
+  ]);
+});
+
+test("Alarm sleep retries the one-shot listener gap", async () => {
+  let attempts = 0;
+  const waits = [];
+
+  await requestSleep(
+    "2026-07-28T05:15:00Z",
+    async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new TypeError("Failed to fetch");
+      }
+      return { ok: true, json: async () => ({ state: "sleeping" }) };
+    },
+    async (duration) => waits.push(duration),
+  );
+
+  assert.equal(attempts, 2);
+  assert.deepEqual(waits, [75]);
 });
 
 test("AirPlay shows only a loader while starting and Skärmen when on", () => {
@@ -124,6 +167,120 @@ test("plain non-repeating Enter is the AirPlay toggle shortcut", () => {
   assert.equal(isAirPlayToggleShortcut({ ...enter, key: " " }), false);
 });
 
+test("only exact Ctrl+Alt+M toggles the computer overview", () => {
+  const shortcut = {
+    altKey: true,
+    code: "KeyM",
+    ctrlKey: true,
+    metaKey: false,
+    repeat: false,
+    shiftKey: false,
+  };
+
+  assert.equal(isSystemStatsShortcut(shortcut), true);
+  for (const changed of [
+    { altKey: false },
+    { code: "KeyS" },
+    { ctrlKey: false },
+    { metaKey: true },
+    { repeat: true },
+    { shiftKey: true },
+  ]) {
+    assert.equal(isSystemStatsShortcut({ ...shortcut, ...changed }), false);
+  }
+});
+
+test("only plain non-repeating Escape closes the computer overview", () => {
+  const shortcut = {
+    altKey: false,
+    ctrlKey: false,
+    key: "Escape",
+    metaKey: false,
+    repeat: false,
+    shiftKey: false,
+  };
+
+  assert.equal(isSystemStatsDismissShortcut(shortcut), true);
+  for (const changed of [
+    { altKey: true },
+    { ctrlKey: true },
+    { key: "KeyM" },
+    { metaKey: true },
+    { repeat: true },
+    { shiftKey: true },
+  ]) {
+    assert.equal(isSystemStatsDismissShortcut({ ...shortcut, ...changed }), false);
+  }
+});
+
+test("computer overview validates local endpoint stats", async () => {
+  const stats = {
+    cpuPercent: 12.5,
+    loadOne: 0.3,
+    memoryPercent: 44.2,
+    memoryTotalMiB: 7900,
+    memoryUsedMiB: 3492,
+    temperatureC: 52.1,
+    uptimeSeconds: 3720,
+  };
+  const calls = [];
+
+  assert.deepEqual(
+    await requestSystemStats(async (url) => {
+      calls.push(url);
+      return { ok: true, json: async () => stats };
+    }),
+    stats,
+  );
+  assert.deepEqual(calls, ["http://127.0.0.1:38019/stats"]);
+  let attempts = 0;
+  const waits = [];
+  assert.deepEqual(
+    await requestSystemStats(
+      async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new TypeError("Failed to fetch");
+        }
+        return { ok: true, json: async () => stats };
+      },
+      async (duration) => waits.push(duration),
+    ),
+    stats,
+  );
+  assert.equal(attempts, 2);
+  assert.deepEqual(waits, [75]);
+  await assert.rejects(
+    requestSystemStats(
+      async () => {
+        throw new TypeError("Failed to fetch");
+      },
+      async () => {},
+    ),
+    /Computer stats are unavailable/,
+  );
+  await assert.rejects(
+    requestSystemStats(async () => ({
+      ok: true,
+      json: async () => ({ ...stats, cpuPercent: 101 }),
+    })),
+    /invalid data/,
+  );
+});
+
+test("computer overview is global, compact, and content-free", () => {
+  const hidden = renderToStaticMarkup(createElement(SystemStats, { visible: false }));
+  const visible = renderToStaticMarkup(createElement(SystemStats, { visible: true }));
+
+  assert.equal(hidden, "");
+  assert.match(visible, /Computer performance overview/);
+  assert.match(visible, /iMac performance/);
+  assert.match(visible, /Close computer overview/);
+  assert.match(visible, /Close · Esc/);
+  assert.match(visible, /Collecting local computer stats/);
+  assert.doesNotMatch(visible, /backdrop-blur/);
+});
+
 test("Today channel owns available weather and attribution presentation", () => {
   const markup = renderToStaticMarkup(
     createElement(TodayChannel, {
@@ -147,6 +304,75 @@ test("Today channel owns available weather and attribution presentation", () => 
   assert.match(markup, /20°/);
   assert.match(markup, /Clear/);
   assert.match(markup, /Weather data: MET Norway · CC BY 4.0/);
+});
+
+test("Ringing Alarm replaces the editor with a dominant live clock", () => {
+  const markup = renderToStaticMarkup(
+    createElement(AlarmChannel, {
+      onAction: () => {},
+      snapshot: { status: "ringing", time: "07:30", firesAt: null },
+    }),
+  );
+
+  assert.match(markup, /aria-label="Ringing alarm"/);
+  assert.match(markup, /Press Enter to dismiss/);
+  assert.doesNotMatch(markup, /Press Ctrl\+Enter to sleep/);
+});
+
+test("Alarm audio calls only the loopback start and stop routes", async () => {
+  const calls = [];
+  const state = await requestAlarm("/alarm/start", async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ state: "playing" }) };
+  });
+
+  assert.equal(state, "playing");
+  assert.deepEqual(calls, [
+    {
+      url: "http://127.0.0.1:38019/alarm/start",
+      options: { method: "POST" },
+    },
+  ]);
+  await assert.rejects(
+    requestAlarm("/alarm/stop", async () => ({
+      ok: true,
+      json: async () => ({ state: "unknown" }),
+    })),
+    /Alarm audio is unavailable/,
+  );
+});
+
+test("Alarm sound selector lists and applies only endpoint catalog entries", async () => {
+  const calls = [];
+  const files = await requestAlarmFiles(async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      json: async () => ({
+        files: ["birds.mp3", "wake-alarm.mp3"],
+        selected: "birds.mp3",
+      }),
+    };
+  });
+  await selectAlarmFile("wake-alarm.mp3", async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ state: "selected" }) };
+  });
+
+  assert.deepEqual(files, {
+    files: ["birds.mp3", "wake-alarm.mp3"],
+    selected: "birds.mp3",
+  });
+  assert.deepEqual(calls, [
+    {
+      url: "http://127.0.0.1:38019/alarm/files",
+      options: { method: "GET" },
+    },
+    {
+      url: "http://127.0.0.1:38019/alarm/select/wake-alarm.mp3",
+      options: { method: "POST" },
+    },
+  ]);
 });
 
 test("Music channel owns loaded playback and artwork fallback presentation", () => {

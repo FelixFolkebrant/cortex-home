@@ -45,6 +45,7 @@ scp -q -r \
   "$script_dir/client/dist" \
   "$script_dir/files" \
   "$script_dir/agent_runtime.py" \
+  "$script_dir/alarm.py" \
   "$script_dir/context.py" \
   "$script_dir/cortex_home.py" \
   "$script_dir/hue.py" \

@@ -72,6 +72,7 @@ apt-get install --yes --no-install-recommends \
   gstreamer1.0-pulseaudio \
   gstreamer1.0-x \
   lightdm \
+  mpg123 \
   netcat-openbsd \
   openbox \
   pulseaudio \
@@ -111,6 +112,21 @@ install -D --mode=755 \
   "$source_dir/files/cortex-endpoint-airplay" \
   /usr/local/bin/cortex-endpoint-airplay
 install -D --mode=755 \
+  "$source_dir/files/cortex-endpoint-alarm" \
+  /usr/local/bin/cortex-endpoint-alarm
+install --directory --owner=root --group=root --mode=755 \
+  /var/lib/cortex-endpoint
+install --directory --owner=imac --group=cortex-endpoint --mode=750 \
+  /var/lib/cortex-endpoint/alarm-audio
+install --directory --owner=cortex-endpoint --group=cortex-endpoint --mode=700 \
+  /home/cortex-endpoint/.config
+install -D --mode=755 \
+  "$source_dir/files/cortex-endpoint-rtc-suspend" \
+  /usr/local/bin/cortex-endpoint-rtc-suspend
+install -D --mode=440 \
+  "$source_dir/files/cortex-endpoint-rtc-suspend.sudoers" \
+  /etc/sudoers.d/cortex-endpoint-rtc-suspend
+install -D --mode=755 \
   "$source_dir/files/cortex-airplay-control" \
   /usr/local/bin/cortex-airplay-control
 install -D --mode=755 \
@@ -143,6 +159,9 @@ printf \
 /usr/sbin/visudo \
   --check \
   --file="$source_dir/files/cortex-speech-qualification-playback.sudoers"
+/usr/sbin/visudo \
+  --check \
+  --file="$source_dir/files/cortex-endpoint-rtc-suspend.sudoers"
 install --owner=root --group=root --mode=755 \
   "$source_dir/files/cortex-speech-qualification-capture" \
   /usr/local/bin/cortex-speech-qualification-capture

@@ -1,0 +1,58 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  echo "Usage: $0 <local-mp3>" >&2
+  exit 1
+fi
+
+source_file=$1
+
+case "$source_file" in
+  *.mp3) ;;
+  *)
+    echo "The alarm file must have a .mp3 extension." >&2
+    exit 1
+    ;;
+esac
+
+if [ ! -f "$source_file" ]; then
+  echo "The alarm file must be a regular file." >&2
+  exit 1
+fi
+
+size=$(wc -c < "$source_file")
+if [ "$size" -lt 1 ] || [ "$size" -gt 33554432 ]; then
+  echo "The alarm file must be 1-33554432 bytes." >&2
+  exit 1
+fi
+
+magic=$(dd if="$source_file" bs=1 count=3 2>/dev/null | od -An -tx1 | tr -d ' \n')
+case "$magic" in
+  494433 | fff2 | fff3 | fffa | fffb | ffe2 | ffe3) ;;
+  *)
+    echo "The alarm file does not contain an MP3 header." >&2
+    exit 1
+    ;;
+esac
+
+remote_file=$(ssh imac mktemp /tmp/cortex-alarm.XXXXXX)
+
+case "$remote_file" in
+  /tmp/cortex-alarm.*) ;;
+  *)
+    echo "Unexpected remote temporary path: $remote_file" >&2
+    exit 1
+    ;;
+esac
+
+cleanup() {
+  ssh imac "rm -f -- '$remote_file'" || true
+}
+
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+scp -q "$source_file" "imac:$remote_file"
+ssh -tt imac "sudo install --owner=root --group=cortex-endpoint --mode=640 '$remote_file' /var/lib/cortex-endpoint/alarm-audio/wake-alarm.mp3"

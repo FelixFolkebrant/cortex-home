@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { AirPlayChannel } from "./AirPlayChannel";
+import { AirPlayChannel, requestAirPlay } from "./AirPlayChannel";
+import { AlarmChannel, requestSleep } from "./AlarmChannel";
 import {
   AGENT_INTERACTION_ACTION,
   isVoiceDebugShortcut,
@@ -17,6 +18,11 @@ import {
   roomReducer,
   SCENE_ACTION,
 } from "./room-state";
+import {
+  isSystemStatsDismissShortcut,
+  isSystemStatsShortcut,
+  SystemStats,
+} from "./SystemStats";
 import { TodayChannel } from "./TodayChannel";
 import {
   VOICE_CAPTURE_ACTION,
@@ -102,6 +108,7 @@ async function playIdentifySound() {
 export function App() {
   const [room, dispatch] = useReducer(roomReducer, initialRoomState);
   const [musicFullscreen, setMusicFullscreen] = useState(false);
+  const [systemStatsVisible, setSystemStatsVisible] = useState(false);
   const [voiceDebug, setVoiceDebug] = useState(null);
   const [voiceDebugVisible, setVoiceDebugVisible] = useState(false);
   const currentClientEntry = document
@@ -110,9 +117,12 @@ export function App() {
   const endpointToken = useRef(null);
   const activeRequestId = useRef(null);
   const lighting = useRef(null);
+  const alarm = useRef(null);
+  const alarmAction = useRef(null);
   const actionGeneration = useRef(0);
   const interactionTimer = useRef(null);
   const activeChannel = useRef("today");
+  const systemStatsVisibleRef = useRef(false);
   const voiceRequestId = useRef(null);
 
   useEffect(() => {
@@ -286,6 +296,9 @@ export function App() {
       showInteraction(CHANNEL_ACTION, "working");
 
       try {
+        if (channel === "alarm" && activeChannel.current === "airplay") {
+          await requestAirPlay("/off");
+        }
         const response = await fetch("/api/actions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -308,6 +321,35 @@ export function App() {
         showInteraction(CHANNEL_ACTION, "failed", message, 5000);
       }
     }
+
+    async function submitAlarm(action, time) {
+      const requestId = `keyboard-alarm-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      activeRequestId.current = requestId;
+      showInteraction(action, "working");
+
+      try {
+        const response = await fetch("/api/actions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestId, action, ...(time ? { time } : {}) }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result.error || `Coordinator returned ${response.status}.`);
+        }
+      } catch (error) {
+        if (activeRequestId.current !== requestId) {
+          return;
+        }
+        activeRequestId.current = null;
+        const message = error instanceof Error ? error.message : "Unknown failure.";
+        showInteraction(action, "failed", message, 5000);
+      }
+    }
+
+    alarmAction.current = submitAlarm;
 
     async function activateScene(scene) {
       const requestId = `keyboard-scene-${Date.now().toString(36)}-${Math.random()
@@ -416,6 +458,14 @@ export function App() {
       }
     });
 
+    events.addEventListener("alarm.state", (event) => {
+      const snapshot = parseMessage(event);
+      if (snapshot) {
+        alarm.current = snapshot;
+        dispatch({ type: "alarm", snapshot });
+      }
+    });
+
     events.addEventListener(AGENT_INTERACTION_ACTION, (event) => {
       const message = parseMessage(event);
       if (
@@ -449,7 +499,17 @@ export function App() {
 
     events.addEventListener("action.status", (event) => {
       const message = parseMessage(event);
-      if (!message || ![SCENE_ACTION, CHANNEL_ACTION].includes(message.action)) {
+      if (
+        !message ||
+        ![
+          SCENE_ACTION,
+          CHANNEL_ACTION,
+          "alarm.arm",
+          "alarm.disarm",
+          "alarm.dismiss",
+          "alarm.sleep",
+        ].includes(message.action)
+      ) {
         return;
       }
 
@@ -479,6 +539,22 @@ export function App() {
       }
     });
 
+    events.addEventListener("alarm.sleep", (event) => {
+      const message = parseMessage(event);
+      if (!message?.requestId || !message.firesAt) {
+        return;
+      }
+      requestSleep(message.firesAt)
+        .then(() => postStatus(message.requestId, "completed"))
+        .catch((error) =>
+          postStatus(
+            message.requestId,
+            "failed",
+            error instanceof Error ? error.message : "The iMac could not sleep.",
+          ).catch(() => {}),
+        );
+    });
+
     events.addEventListener("result", (event) => {
       const message = parseMessage(event);
       if (
@@ -506,6 +582,23 @@ export function App() {
     };
 
     async function onKeyDown(event) {
+      if (isSystemStatsShortcut(event)) {
+        event.preventDefault();
+        setSystemStatsVisible((current) => {
+          const next = !current;
+          systemStatsVisibleRef.current = next;
+          return next;
+        });
+        return;
+      }
+
+      if (systemStatsVisibleRef.current && isSystemStatsDismissShortcut(event)) {
+        event.preventDefault();
+        systemStatsVisibleRef.current = false;
+        setSystemStatsVisible(false);
+        return;
+      }
+
       if (isVoiceDebugShortcut(event)) {
         event.preventDefault();
         setVoiceDebugVisible((current) => !current);
@@ -553,7 +646,7 @@ export function App() {
         return;
       }
 
-      const request = keyboardAction(event, lighting.current);
+      const request = keyboardAction(event, lighting.current, activeChannel.current);
       if (!request || activeRequestId.current) {
         return;
       }
@@ -584,6 +677,7 @@ export function App() {
       clearInteractionTimer();
       voiceCapture.dispose();
       spokenInteraction.dispose();
+      alarmAction.current = null;
       events.close();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
@@ -594,7 +688,14 @@ export function App() {
   const channel = room.channel?.active || "today";
   const showMusicFullscreen = channel === "music" && musicFullscreen;
   let channelPresentation;
-  if (channel === "airplay") {
+  if (channel === "alarm") {
+    channelPresentation = (
+      <AlarmChannel
+        onAction={(action, time) => alarmAction.current?.(action, time)}
+        snapshot={room.alarm}
+      />
+    );
+  } else if (channel === "airplay") {
     channelPresentation = <AirPlayChannel />;
   } else if (channel === "music") {
     channelPresentation = (
@@ -636,6 +737,14 @@ export function App() {
           voiceOnly={showMusicFullscreen}
         />
       ) : null}
+
+      <SystemStats
+        onDismiss={() => {
+          systemStatsVisibleRef.current = false;
+          setSystemStatsVisible(false);
+        }}
+        visible={systemStatsVisible}
+      />
     </div>
   );
 }

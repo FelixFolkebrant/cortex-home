@@ -1,82 +1,77 @@
-# GH-020 Plan: Transition Between Channels
+# GH-020 Plan: Evaluate Channel Transitions
 
 # What
 
-- Add a short, deliberate visual transition when an observed channel change
-  replaces one browser-rendered view with another.
-- Use the browser View Transition API when it is available, with an immediate
-  behavior-preserving fallback and a no-motion path for reduced-motion users.
-- Preserve synchronous Camera cleanup, AirPlay's native composition boundary,
-  shared room feedback, and the coordinator as the sole source of active
-  channel state.
+- Evaluate visual transitions between coordinator-observed channel changes on
+  the physical low-end iMac.
+- Keep immediate channel replacement after the snapshot and fade experiments
+  proved slower and less reliable than a direct cut.
+- Let `Ctrl`+`Alt`+`Left` and `Ctrl`+`Alt`+`Right` request the previous and next
+  channel in the fixed channel order, including loopback.
+- Add an on-demand `Ctrl`+`Alt`+`M` overlay with real local CPU, memory,
+  temperature, load, and uptime data from the iMac.
+- Preserve the findings and rejected alternatives in
+  `docs/CHROMIUM_PERFORMANCE.md`.
 
 ## Out Of Scope
 
-- Changing channel shortcuts, action acknowledgement, coordinator contracts,
-  channel content, Camera capture, AirPlay process control, or Music's internal
-  track transition.
-- A router, browser history, gesture navigation, configurable animation,
-  transition libraries, or a general animation framework.
-- Holding a live Camera stream behind another view or capturing Camera frames
-  for animation.
-- Redesigning channel content or the Home/Today screen.
+- Further channel-transition animation, retained outgoing views, snapshots,
+  routers, framework migrations, configurable motion, or animation libraries.
+- Changing action acknowledgement, coordinator contracts, channel content,
+  Camera capture, AirPlay process control, or Music's internal track transition.
+- Redesigning the Home/Today screen; GH-021 owns that presentation.
 
 ## Deferred
 
-- Cross-document navigation transitions remain deferred because Cortex Home is
-  one application shell with no router.
-- Channel-specific transition choreography waits until one shared transition
-  proves timing, readability, and iMac rendering cost.
-- Animated Camera and native AirPlay handoffs remain deferred unless a later
-  issue can preserve their privacy and compositor boundaries without retained
-  snapshots.
+- Animated channel changes remain deferred until different endpoint hardware or
+  measured compositor evidence justifies revisiting the accepted instant cut.
+- SSR, Astro, Preact, multi-page navigation, and a vanilla rewrite remain
+  deferred because they do not address the measured runtime transition path.
 
 ## Acceptance Criteria
 
-- [ ] A transition starts only when a new `channel.active` snapshot changes the
-  observed channel, never on keydown, request submission, acknowledgement,
-  reconnect replay, or a rejected action.
-- [ ] Supported Chromium uses `document.startViewTransition` for eligible
-  browser-rendered channel changes without adding a dependency or router.
-- [ ] The outgoing view leaves and the incoming view settles in a short,
-  consistent motion that remains readable on the physical iMac and does not
-  obscure shared action, connection, lighting, or voice feedback.
-- [ ] Camera entry and exit remain immediate privacy cuts: every owned track is
-  stopped before another channel paints, and no frozen Camera frame participates
-  in a transition snapshot.
-- [ ] AirPlay entry and exit preserve the accepted native lower-layer
-  composition and do not snapshot, cover, or delay receiver teardown.
-- [ ] Music's existing fullscreen and track-change animations remain unchanged
-  and do not double-animate during channel selection.
-- [ ] Rapid observed channel changes settle on the newest channel without stale
-  content, uncaught transition promises, blocked input, or an obsolete
-  transition completing over current state.
-- [ ] Browsers without the API and users with `prefers-reduced-motion: reduce`
-  receive the exact current immediate channel replacement behavior.
-- [ ] Initial load, unavailable channels, connection loss, voice phases, and
-  failed channel actions remain clear and do not animate as false navigation.
-- [ ] Automated tests cover observed-state triggering, unsupported and
-  reduced-motion fallbacks, rapid replacement, Camera/AirPlay exclusions, and
-  cleanup without depending on real animation timing.
-- [ ] A deployed manual pass confirms Today-to-Music motion, reverse motion,
-  Music fullscreen exit, Camera and AirPlay privacy cuts, rapid switching,
-  feedback layering, and acceptable rendering on the iMac.
+- [ ] Every changed `channel.active` snapshot replaces the current React channel
+  immediately, with no animation, snapshot, retained channel tree, timer,
+  transition promise, or delayed state commit.
+- [ ] Initial snapshots, reconnect replay, unavailable channels, connection
+  loss, voice phases, and failed channel actions remain clear and do not create
+  false navigation.
+- [ ] Camera cleanup remains synchronous before another channel paints, AirPlay
+  retains its native composition boundary, and Music fullscreen and track
+  animations remain unchanged.
+- [ ] `Ctrl`+`Alt`+`Left` and `Ctrl`+`Alt`+`Right` request the prior and next
+  fixed channel respectively, loop from Today to AirPlay and AirPlay to Today,
+  and retain the exact-modifier and non-repeating shortcut boundary.
+- [ ] Exact non-repeating `Ctrl`+`Alt`+`M` toggles one compact performance
+  overview above every Chromium-rendered view; it polls only while visible and
+  fails clearly when the loopback endpoint is unavailable.
+- [ ] The overview reports bounded real iMac CPU, memory, temperature,
+  one-minute load, and uptime without adding a dependency, network listener,
+  host identifier, process list, or persistent telemetry.
+- [ ] `docs/CHROMIUM_PERFORMANCE.md` explains why View Transition snapshots,
+  fade-through-black, SSR, Astro, Preact, vanilla DOM, and multi-page navigation
+  were not selected.
+- [ ] Automated tests cover loopback navigation, exact shortcuts, metrics
+  validation, overlay presentation, endpoint bounds, and the existing immediate
+  channel reducer behavior.
+- [ ] A deployed manual pass confirms immediate switching across every channel,
+  Camera/AirPlay boundaries, rapid switching, and the performance overlay.
 
 # Tasks
 
-## 1. GH-020: Transition Observed Channel Changes
+## 1. GH-020: Measure And Reject Expensive Motion
 
-- Isolate the observed channel presentation update behind one small transition
-  boundary and add the View Transition API choreography and focused tests.
-- This is atomic because it introduces the transition without changing any
-  channel contract or content.
+- Research and prototype bounded transition approaches, test them on the iMac,
+  and preserve the final decision and useful evidence.
+- This is atomic because it resolves one presentation decision without changing
+  channel content or contracts.
 
-## 2. GH-020: Preserve Motion And Media Boundaries
+## 2. GH-020: Add Local Performance Visibility
 
-- Add reduced-motion and unsupported fallbacks, exclude Camera and AirPlay
-  snapshots, and prove interruption, cleanup, and shared-feedback layering.
-- This is atomic because it hardens the visual enhancement around the product's
-  existing accessibility, privacy, and native-composition constraints.
+- Extend the existing loopback endpoint bridge with one bounded current stats
+  route and add a global on-demand browser overlay.
+- This is atomic because it adds diagnostics without retaining telemetry or
+  changing coordinator state.
 
 # Heatmap
 
@@ -84,40 +79,23 @@ Reference: `../project/HEATMAP.md`.
 
 ## Hot
 
-### H1 - Transition Only Safe Browser Views
+### H1 - Prefer Reliable Instant Cuts On This Endpoint
 
-- Decision: Animate ordinary browser-rendered channel replacements while
-  keeping Camera and AirPlay as immediate cuts.
-- Proposed approach: Invoke one rootless, named channel-surface transition only
-  for eligible observed changes. Do not include Camera video, the native
-  AirPlay surface, or persistent shared feedback in a captured transition.
-- Why: A frozen Camera frame conflicts with the accepted local-live-view
-  boundary, and AirPlay is composed outside Chromium.
-- Alternatives: Snapshot every channel; keep outgoing media mounted; animate a
-  full-root screenshot; disable transitions everywhere.
-- Review focus: exact eligibility, DOM snapshot scope, track teardown,
-  AirPlay visibility, and feedback z-order.
-
-### H2 - Prefer A Progressive Browser Primitive
-
-- Decision: Use the native View Transition API as a progressive enhancement
-  instead of introducing an animation package or parallel channel stack.
-- Proposed approach: Feature-detect the API, keep one current channel DOM, and
-  fall back to the existing immediate render when unsupported or reduced motion
-  is requested.
-- Why: The browser primitive can coordinate old and new rendering without a
-  durable abstraction or duplicated live channel state.
-- Alternatives: CSS-only enter animation; two mounted React trees; an animation
-  dependency; a custom canvas transition.
-- Review focus: small ownership boundary, React update timing, interruption,
-  rejected promises, and no retained obsolete tree.
+- Decision: Commit each observed channel directly with no transition layer.
+- Proposed approach: Keep one current channel DOM and dispatch the validated
+  `channel.active` snapshot immediately.
+- Why: View Transition snapshots lagged on the iMac, and the follow-up black
+  fade introduced a state-update failure. Motion is not worth weakening the
+  basic channel switch.
+- Alternatives: View Transition snapshots; fade-through-black; incoming-only
+  CSS animation; two retained view trees; Canvas/WebGL.
+- Review focus: absence of transition code, synchronous media cleanup, and
+  reliable rapid switching.
 
 ## Stylistic
 
-### S1 - Quiet Room-Scale Motion
+### S1 - No Channel Motion
 
-- Choice: Use one brief easing curve with subtle opacity and displacement,
-  keeping the motion subordinate to content and feedback.
-- Alternative: Large directional slides, zooms, blur, per-channel effects, or
-  long cinematic transitions.
-- When to apply: Only to an eligible observed channel replacement.
+- Choice: Use an immediate cut between channels.
+- Alternative: Slides, fades, zooms, blur, snapshots, or per-channel effects.
+- When to apply: Every coordinator-observed channel replacement on the iMac.

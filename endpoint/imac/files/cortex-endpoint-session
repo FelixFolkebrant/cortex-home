@@ -56,6 +56,10 @@ cleanup() {
     /usr/local/bin/cortex-endpoint-airplay stop-local || true
   fi
 
+  if [ -x /usr/local/bin/cortex-endpoint-alarm ]; then
+    /usr/local/bin/cortex-endpoint-alarm stop || true
+  fi
+
   kill \
     "$openbox_pid" \
     "$unclutter_pid" \

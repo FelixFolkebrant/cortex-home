@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -uo pipefail
+export LC_ALL=C
 
 if [[ $# -ne 0 ]]; then
   echo "Usage: $0" >&2
@@ -9,7 +10,11 @@ fi
 
 coordinator_url_file=/etc/cortex-endpoint/coordinator-url
 airplay_helper=/usr/local/bin/cortex-endpoint-airplay
+alarm_helper=/usr/local/bin/cortex-endpoint-alarm
+rtc_suspend_helper=/usr/local/bin/cortex-endpoint-rtc-suspend
 connection_pid=
+previous_cpu_idle=
+previous_cpu_total=
 
 if [[ ! -r $coordinator_url_file ]]; then
   echo "The endpoint coordinator URL is not configured." >&2
@@ -32,6 +37,16 @@ fi
 
 if [[ ! -x $airplay_helper ]]; then
   echo "The endpoint AirPlay helper is not installed." >&2
+  exit 1
+fi
+
+if [[ ! -x $alarm_helper ]]; then
+  echo "The endpoint alarm helper is not installed." >&2
+  exit 1
+fi
+
+if [[ ! -x $rtc_suspend_helper ]]; then
+  echo "The endpoint RTC suspend helper is not installed." >&2
   exit 1
 fi
 
@@ -61,6 +76,106 @@ send_response() {
     "$body" \
     >&"$response_fd"
 }
+
+alarm_files_response() {
+  local file files=() selected
+  while IFS= read -r file; do
+    files+=("\"$file\"")
+  done < <("$alarm_helper" list)
+  selected=$("$alarm_helper" selected 2>/dev/null || true)
+  printf '{"files":[%s],"selected":"%s"}' "$(IFS=,; echo "${files[*]}")" "$selected"
+}
+
+read_cpu_counters() {
+  local label user nice system idle iowait irq softirq steal
+
+  read -r label user nice system idle iowait irq softirq steal _ < /proc/stat
+  cpu_idle=$((idle + iowait))
+  cpu_total=$((user + nice + system + idle + iowait + irq + softirq + steal))
+}
+
+read_temperature() {
+  local input sample
+  temperature_milli=
+
+  for input in \
+    /sys/class/thermal/thermal_zone*/temp \
+    /sys/class/hwmon/hwmon*/temp*_input
+  do
+    [[ -r $input ]] || continue
+    IFS= read -r sample < "$input" || continue
+    [[ $sample =~ ^[0-9]+$ ]] || continue
+
+    if [[ $sample -lt 1000 ]]; then
+      sample=$((sample * 1000))
+    fi
+    if [[ -z $temperature_milli || $sample -gt $temperature_milli ]]; then
+      temperature_milli=$sample
+    fi
+  done
+}
+
+system_stats() {
+  local key value
+  local memory_available_kib=
+  local memory_total_kib=
+
+  read_cpu_counters
+  cpu_delta=$((cpu_total - previous_cpu_total))
+  idle_delta=$((cpu_idle - previous_cpu_idle))
+  if [[ $cpu_delta -gt 0 ]]; then
+    cpu_percent=$(awk \
+      -v total="$cpu_delta" \
+      -v idle="$idle_delta" \
+      'BEGIN { printf "%.1f", 100 * (total - idle) / total }')
+  else
+    cpu_percent=0
+  fi
+  previous_cpu_idle=$cpu_idle
+  previous_cpu_total=$cpu_total
+
+  while read -r key value _; do
+    case "$key" in
+      MemTotal:) memory_total_kib=$value ;;
+      MemAvailable:) memory_available_kib=$value ;;
+    esac
+  done < /proc/meminfo
+
+  memory_used_kib=$((memory_total_kib - memory_available_kib))
+  memory_percent=$(awk \
+    -v total="$memory_total_kib" \
+    -v used="$memory_used_kib" \
+    'BEGIN { printf "%.1f", 100 * used / total }')
+  memory_used_mib=$((memory_used_kib / 1024))
+  memory_total_mib=$((memory_total_kib / 1024))
+
+  read -r load_one _ < /proc/loadavg
+  read -r uptime_value _ < /proc/uptime
+  uptime_seconds=${uptime_value%%.*}
+
+  read_temperature
+  if [[ -n $temperature_milli ]]; then
+    temperature_c=$(awk \
+      -v temperature="$temperature_milli" \
+      'BEGIN { printf "%.1f", temperature / 1000 }')
+  else
+    temperature_c=null
+  fi
+
+  printf -v stats_body \
+    '{"cpuPercent":%s,"memoryPercent":%s,"memoryUsedMiB":%d,"memoryTotalMiB":%d,"temperatureC":%s,"loadOne":%s,"uptimeSeconds":%d}' \
+    "$cpu_percent" \
+    "$memory_percent" \
+    "$memory_used_mib" \
+    "$memory_total_mib" \
+    "$temperature_c" \
+    "$load_one" \
+    "$uptime_seconds"
+}
+
+read_cpu_counters
+previous_cpu_idle=$cpu_idle
+previous_cpu_total=$cpu_total
 
 while true; do
   coproc /usr/bin/nc -l -N 127.0.0.1 38019
@@ -100,6 +215,9 @@ while true; do
     elif [[ $method == GET && $path == /status ]]; then
       state=$("$airplay_helper" status)
       send_response "200 OK" "{\"state\":\"$state\"}"
+    elif [[ $method == GET && $path == /stats ]]; then
+      system_stats
+      send_response "200 OK" "$stats_body"
     elif [[ $method == POST && $path == /on ]]; then
       if "$airplay_helper" receiver-on >/dev/null 2>&1; then
         send_response "200 OK" '{"state":"on"}'
@@ -113,6 +231,44 @@ while true; do
       else
         send_response "500 Internal Server Error" \
           '{"error":"AirPlay could not stop."}'
+      fi
+    elif [[ $method == POST && $path == /alarm/start ]]; then
+      if "$alarm_helper" start >/dev/null 2>&1; then
+        send_response "200 OK" '{"state":"playing"}'
+      else
+        send_response "500 Internal Server Error" \
+          '{"error":"Alarm audio could not start."}'
+      fi
+    elif [[ $method == POST && $path == /alarm/stop ]]; then
+      if "$alarm_helper" stop >/dev/null 2>&1; then
+        send_response "200 OK" '{"state":"stopped"}'
+      else
+        send_response "500 Internal Server Error" \
+          '{"error":"Alarm audio could not stop."}'
+      fi
+    elif [[ $method == GET && $path == /alarm/files ]]; then
+      send_response "200 OK" "$(alarm_files_response)"
+    elif [[ $method == POST && $path =~ ^/alarm/select/.+$ ]]; then
+      selected_file=${path#/alarm/select/}
+      selected_file=${selected_file//+/ }
+      selected_file=$(printf '%b' "${selected_file//%/\\x}")
+      if "$alarm_helper" select "$selected_file" >/dev/null 2>&1; then
+        send_response "200 OK" '{"state":"selected"}'
+      else
+        send_response "400 Bad Request" '{"error":"Alarm audio selection is unavailable."}'
+      fi
+    elif [[ $method == POST && $path =~ ^/alarm/sleep/[0-9]+$ ]]; then
+      wake_epoch=${path##*/}
+      now=$(/usr/bin/date +%s)
+      if (( wake_epoch < now + 60 || wake_epoch > now + 93600 )); then
+        send_response "400 Bad Request" '{"error":"Wake time is out of range."}'
+      elif ! "$airplay_helper" stop-local >/dev/null 2>&1; then
+        send_response "500 Internal Server Error" '{"error":"AirPlay could not stop."}'
+      elif ! "$alarm_helper" ready >/dev/null 2>&1; then
+        send_response "500 Internal Server Error" '{"error":"Alarm audio is unavailable."}'
+      else
+        nohup sudo -n "$rtc_suspend_helper" "$wake_epoch" >/dev/null 2>&1 &
+        send_response "200 OK" '{"state":"sleeping"}'
       fi
     else
       send_response "404 Not Found" '{"error":"Route not found."}'

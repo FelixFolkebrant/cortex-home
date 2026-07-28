@@ -1,6 +1,16 @@
 export const IDENTIFY_ACTION = "endpoint.identify";
 export const SCENE_ACTION = "room.scene.activate";
 export const CHANNEL_ACTION = "channel.select";
+const CHANNELS = ["today", "music", "camera", "airplay", "alarm"];
+
+function adjacentChannel(channel, direction) {
+  const currentIndex = Math.max(0, CHANNELS.indexOf(channel));
+  const offset = direction === "previous" ? -1 : 1;
+  return CHANNELS[(currentIndex + offset + CHANNELS.length) % CHANNELS.length];
+}
+export const ALARM_ARM_ACTION = "alarm.arm";
+export const ALARM_DISARM_ACTION = "alarm.disarm";
+export const ALARM_DISMISS_ACTION = "alarm.dismiss";
 
 export const initialRoomState = {
   connection: "connecting",
@@ -8,6 +18,7 @@ export const initialRoomState = {
   today: null,
   playback: null,
   lighting: null,
+  alarm: null,
   interaction: {
     state: "idle",
     action: null,
@@ -43,6 +54,11 @@ export function roomReducer(state, event) {
       return {
         ...state,
         lighting: event.snapshot,
+      };
+    case "alarm":
+      return {
+        ...state,
+        alarm: event.snapshot,
       };
     case "interaction":
       return {
@@ -133,7 +149,7 @@ export function nextScene(lighting) {
   return lighting.scenes[(activeIndex + 1) % lighting.scenes.length];
 }
 
-export function keyboardAction(event, lighting) {
+export function keyboardAction(event, lighting, activeChannel) {
   if (
     !event.ctrlKey ||
     !event.altKey ||
@@ -149,9 +165,21 @@ export function keyboardAction(event, lighting) {
     Digit2: "music",
     Digit3: "camera",
     Digit4: "airplay",
+    Digit5: "alarm",
   }[event.code];
   if (channel) {
     return { action: CHANNEL_ACTION, channel };
+  }
+
+  const direction = {
+    ArrowLeft: "previous",
+    ArrowRight: "next",
+  }[event.code];
+  if (direction) {
+    return {
+      action: CHANNEL_ACTION,
+      channel: adjacentChannel(activeChannel, direction),
+    };
   }
 
   if (event.code === "KeyS") {
