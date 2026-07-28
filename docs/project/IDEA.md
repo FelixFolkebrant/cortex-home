@@ -95,6 +95,9 @@ The exact MVP is not accepted yet. The current candidate is:
    sensing, processing, action, and failure feedback.
 9. Music can evolve independently while a deliberate Camera channel turns the
    iMac's built-in front camera into a full-screen local mirror.
+10. One deliberate wake alarm can suspend the iMac overnight, wake it at the
+    next selected time, show the clock, activate `Warm low`, and play one
+    replaceable local sound until dismissal.
 
 ## Candidate Later Capabilities
 
@@ -119,6 +122,17 @@ its native Hue behavior.
 2. The user sees time, weather, and today's most useful context at a distance.
 3. The user can request more detail without first finding a phone.
 4. The screen and voice response make it clear what the system understood.
+
+### Wake Up
+
+1. The user selects Alarm and sets the next wake time with number or arrow keys.
+2. The screen confirms the exact next occurrence before a second Enter
+   deliberately suspends the iMac.
+3. The iMac wakes from its hardware RTC while the ThinkPad remains responsible
+   for the persisted schedule and exact Hue action.
+4. The current time fills the screen, `Warm low` is requested, and one local
+   alarm file loops through the Sonos route.
+5. Enter dismisses the audio and one-shot alarm and returns to Today.
 
 ### Play Spotify
 

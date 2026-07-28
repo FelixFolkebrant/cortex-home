@@ -24,6 +24,8 @@ const { TodayChannel } = await vite.ssrLoadModule("/src/TodayChannel.jsx");
 const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
   "/src/CameraChannel.jsx",
 );
+const { AlarmChannel, requestAlarm, requestAlarmFiles, requestSleep, selectAlarmFile } =
+  await vite.ssrLoadModule("/src/AlarmChannel.jsx");
 const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
 
 after(() => vite.close());
@@ -39,6 +41,41 @@ test("AirPlay channel is only a logo, switch, and conditional status region", ()
   assert.doesNotMatch(markup, /absolute inset-0/);
   assert.doesNotMatch(markup, /Ready to mirror|No code required|Ctrl/);
   assert.doesNotMatch(markup, /Select|Skärmen|PIN|password/i);
+});
+
+test("Alarm sleep sends only the coordinator-resolved wake epoch", async () => {
+  const calls = [];
+  await requestSleep("2026-07-28T05:15:00Z", async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ state: "sleeping" }) };
+  });
+
+  assert.deepEqual(calls, [
+    {
+      url: "http://127.0.0.1:38019/alarm/sleep/1785215700",
+      options: { method: "POST" },
+    },
+  ]);
+});
+
+test("Alarm sleep retries the one-shot listener gap", async () => {
+  let attempts = 0;
+  const waits = [];
+
+  await requestSleep(
+    "2026-07-28T05:15:00Z",
+    async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new TypeError("Failed to fetch");
+      }
+      return { ok: true, json: async () => ({ state: "sleeping" }) };
+    },
+    async (duration) => waits.push(duration),
+  );
+
+  assert.equal(attempts, 2);
+  assert.deepEqual(waits, [75]);
 });
 
 test("AirPlay shows only a loader while starting and Skärmen when on", () => {
@@ -267,6 +304,75 @@ test("Today channel owns available weather and attribution presentation", () => 
   assert.match(markup, /20°/);
   assert.match(markup, /Clear/);
   assert.match(markup, /Weather data: MET Norway · CC BY 4.0/);
+});
+
+test("Ringing Alarm replaces the editor with a dominant live clock", () => {
+  const markup = renderToStaticMarkup(
+    createElement(AlarmChannel, {
+      onAction: () => {},
+      snapshot: { status: "ringing", time: "07:30", firesAt: null },
+    }),
+  );
+
+  assert.match(markup, /aria-label="Ringing alarm"/);
+  assert.match(markup, /Press Enter to dismiss/);
+  assert.doesNotMatch(markup, /Press Ctrl\+Enter to sleep/);
+});
+
+test("Alarm audio calls only the loopback start and stop routes", async () => {
+  const calls = [];
+  const state = await requestAlarm("/alarm/start", async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ state: "playing" }) };
+  });
+
+  assert.equal(state, "playing");
+  assert.deepEqual(calls, [
+    {
+      url: "http://127.0.0.1:38019/alarm/start",
+      options: { method: "POST" },
+    },
+  ]);
+  await assert.rejects(
+    requestAlarm("/alarm/stop", async () => ({
+      ok: true,
+      json: async () => ({ state: "unknown" }),
+    })),
+    /Alarm audio is unavailable/,
+  );
+});
+
+test("Alarm sound selector lists and applies only endpoint catalog entries", async () => {
+  const calls = [];
+  const files = await requestAlarmFiles(async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      json: async () => ({
+        files: ["birds.mp3", "wake-alarm.mp3"],
+        selected: "birds.mp3",
+      }),
+    };
+  });
+  await selectAlarmFile("wake-alarm.mp3", async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ state: "selected" }) };
+  });
+
+  assert.deepEqual(files, {
+    files: ["birds.mp3", "wake-alarm.mp3"],
+    selected: "birds.mp3",
+  });
+  assert.deepEqual(calls, [
+    {
+      url: "http://127.0.0.1:38019/alarm/files",
+      options: { method: "GET" },
+    },
+    {
+      url: "http://127.0.0.1:38019/alarm/select/wake-alarm.mp3",
+      options: { method: "POST" },
+    },
+  ]);
 });
 
 test("Music channel owns loaded playback and artwork fallback presentation", () => {

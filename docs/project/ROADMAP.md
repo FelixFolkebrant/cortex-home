@@ -112,6 +112,24 @@ behavior, layering limits, input and notification implications, and the
 smallest credible follow-up slice. It does not select or deploy a permanent
 receiver yet.
 
+### [7 ACCEPTED - Wake-Up Alarm](../planpoints/PP-7.md)
+
+One keyboard-set, one-shot alarm persists on the ThinkPad, deliberately
+suspends the iMac until its hardware RTC wake, then shows the current time
+full-screen, requests exact `Warm low`, and loops one replaceable endpoint-local
+audio file until dismissal.
+
+| Crossroad | Proposed Decision | Alternatives |
+|---|---|---|
+| Alarm schedule authority | One coordinator-owned persisted next occurrence | Browser timer; iMac daemon; dynamic systemd timers |
+| Endpoint sleep and wake | Deep suspend-to-RAM through a narrow RTC helper | Screen blanking; hibernate; poweroff; Wake-on-LAN |
+| Automatic room authority | One exact `Warm low` request through observed coordinator scene execution | Display/audio only; configurable scene; general automation |
+| Alarm audio ownership | One replaceable iMac-local MP3 through the exact-origin endpoint bridge | Client asset; ThinkPad response; Spotify; generated tone |
+
+The observed endpoint exposes the required deep-sleep and RTC interfaces, but
+the physical suspend/resume path remains unaccepted until a bounded GH-021
+qualification proves display, network, audio, keyboard, and kiosk recovery.
+
 ### Later Experiments
 
 - Camera-assisted presence, deliberate gestures, and agent vision.
@@ -135,11 +153,12 @@ slices.
   coordination, and unclear ownership; a late split costs history and CI work
   but does not require rewriting the product.
 - Proposed choice: Keep this as the single Cortex Home integration repository
-  through Planpoints 4 and 5. Use one issue branch and worktree per concurrent
-  unit, and extract only a service with an independently useful deployment
-  lifecycle. Do not use nested repositories or submodules yet.
-- Why: Voice and channel work can own separate files and issue branches while
-  still sharing one coordinator, client build, deployment, and physical room.
+  through Planpoint 7. Use one issue branch and worktree per concurrent unit,
+  and extract only a service with an independently useful deployment lifecycle.
+  Do not use nested repositories or submodules yet.
+- Why: Voice, channel, and wake-alarm work can own explicit files and issue
+  branches while still sharing one coordinator, client build, deployment, and
+  physical room.
 - Status: decided
 
 ### C2 - iMac Presentation Path

@@ -10,6 +10,8 @@ fi
 
 coordinator_url_file=/etc/cortex-endpoint/coordinator-url
 airplay_helper=/usr/local/bin/cortex-endpoint-airplay
+alarm_helper=/usr/local/bin/cortex-endpoint-alarm
+rtc_suspend_helper=/usr/local/bin/cortex-endpoint-rtc-suspend
 connection_pid=
 previous_cpu_idle=
 previous_cpu_total=
@@ -38,6 +40,16 @@ if [[ ! -x $airplay_helper ]]; then
   exit 1
 fi
 
+if [[ ! -x $alarm_helper ]]; then
+  echo "The endpoint alarm helper is not installed." >&2
+  exit 1
+fi
+
+if [[ ! -x $rtc_suspend_helper ]]; then
+  echo "The endpoint RTC suspend helper is not installed." >&2
+  exit 1
+fi
+
 if [[ ! -x /usr/bin/nc ]]; then
   echo "OpenBSD netcat is not installed." >&2
   exit 1
@@ -63,6 +75,15 @@ send_response() {
     "$coordinator_url" \
     "$body" \
     >&"$response_fd"
+}
+
+alarm_files_response() {
+  local file files=() selected
+  while IFS= read -r file; do
+    files+=("\"$file\"")
+  done < <("$alarm_helper" list)
+  selected=$("$alarm_helper" selected 2>/dev/null || true)
+  printf '{"files":[%s],"selected":"%s"}' "$(IFS=,; echo "${files[*]}")" "$selected"
 }
 
 read_cpu_counters() {
@@ -210,6 +231,44 @@ while true; do
       else
         send_response "500 Internal Server Error" \
           '{"error":"AirPlay could not stop."}'
+      fi
+    elif [[ $method == POST && $path == /alarm/start ]]; then
+      if "$alarm_helper" start >/dev/null 2>&1; then
+        send_response "200 OK" '{"state":"playing"}'
+      else
+        send_response "500 Internal Server Error" \
+          '{"error":"Alarm audio could not start."}'
+      fi
+    elif [[ $method == POST && $path == /alarm/stop ]]; then
+      if "$alarm_helper" stop >/dev/null 2>&1; then
+        send_response "200 OK" '{"state":"stopped"}'
+      else
+        send_response "500 Internal Server Error" \
+          '{"error":"Alarm audio could not stop."}'
+      fi
+    elif [[ $method == GET && $path == /alarm/files ]]; then
+      send_response "200 OK" "$(alarm_files_response)"
+    elif [[ $method == POST && $path =~ ^/alarm/select/.+$ ]]; then
+      selected_file=${path#/alarm/select/}
+      selected_file=${selected_file//+/ }
+      selected_file=$(printf '%b' "${selected_file//%/\\x}")
+      if "$alarm_helper" select "$selected_file" >/dev/null 2>&1; then
+        send_response "200 OK" '{"state":"selected"}'
+      else
+        send_response "400 Bad Request" '{"error":"Alarm audio selection is unavailable."}'
+      fi
+    elif [[ $method == POST && $path =~ ^/alarm/sleep/[0-9]+$ ]]; then
+      wake_epoch=${path##*/}
+      now=$(/usr/bin/date +%s)
+      if (( wake_epoch < now + 60 || wake_epoch > now + 93600 )); then
+        send_response "400 Bad Request" '{"error":"Wake time is out of range."}'
+      elif ! "$airplay_helper" stop-local >/dev/null 2>&1; then
+        send_response "500 Internal Server Error" '{"error":"AirPlay could not stop."}'
+      elif ! "$alarm_helper" ready >/dev/null 2>&1; then
+        send_response "500 Internal Server Error" '{"error":"Alarm audio is unavailable."}'
+      else
+        nohup sudo -n "$rtc_suspend_helper" "$wake_epoch" >/dev/null 2>&1 &
+        send_response "200 OK" '{"state":"sleeping"}'
       fi
     else
       send_response "404 Not Found" '{"error":"Route not found."}'

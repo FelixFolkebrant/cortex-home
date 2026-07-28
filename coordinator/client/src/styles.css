@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@import "./alarm-channel.css";
+
 @theme {
   --font-sans: "DejaVu Sans", sans-serif;
   --animate-identify: identify 550ms ease-in-out infinite alternate;

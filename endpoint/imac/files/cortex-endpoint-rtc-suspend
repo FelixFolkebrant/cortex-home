@@ -1,0 +1,20 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [[ $EUID -ne 0 || $# -ne 1 || ! $1 =~ ^[0-9]+$ ]]; then
+  echo "Usage: $0 <future-utc-epoch>" >&2
+  exit 1
+fi
+
+now=$(/usr/bin/date +%s)
+minimum=$((now + 60))
+maximum=$((now + 93600))
+
+if (( $1 < minimum || $1 > maximum )); then
+  echo "The RTC wake epoch must be 1 minute to 26 hours in the future." >&2
+  exit 1
+fi
+
+/usr/bin/sleep 2
+/usr/sbin/rtcwake --utc --mode freeze --time "$1"

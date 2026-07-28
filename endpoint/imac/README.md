@@ -173,6 +173,43 @@ off. A prior moving-mirror sample observed approximately 16–56% UxPlay CPU and
 87–90 MiB resident memory; a more static sample observed approximately 132 MiB.
 Those measurements are indicative, not resource limits.
 
+## Wake Alarm
+
+Install the initial ordinary local MP3 without rebuilding or restarting Cortex
+Home:
+
+```sh
+./endpoint/imac/provision-alarm
+./endpoint/imac/provision-alarm-audio <local-mp3>
+```
+
+The command accepts only a regular `.mp3` file up to 32 MiB and installs it as
+`wake-alarm.mp3` in `/var/lib/cortex-endpoint/alarm-audio`. Add additional sounds
+directly without provisioning:
+
+```sh
+scp <local-mp3> imac:/var/lib/cortex-endpoint/alarm-audio/
+```
+
+From the disarmed Alarm view, press `A` to open the sound dropdown, use Up and
+Down to choose a file, and press Enter to apply it. The endpoint accepts only
+regular, bounded-name `.mp3` files from that folder and plays only the selected
+file while an observed ringing alarm is active. Pressing Enter to dismiss or
+Escape to disarm stops the local player even after the view changes.
+
+To qualify the physical sleep/wake path after the alarm audio is installed,
+set an alarm at least two minutes ahead, press `Ctrl`+`Alt`+`5`, press Enter
+to arm it, then press `Ctrl`+`Enter` after the armed confirmation appears.
+Confirm that UxPlay stops, the iMac enters suspend-to-idle, and it resumes at the
+selected instant with normal black levels and colors, the Alarm clock visible,
+`Warm low` requested, and one looping alarm sound. The suspend helper leaves a
+short browser-acknowledgement window before sleeping. Suspend-to-idle consumes
+more power than deep suspend, but avoids corrupting the legacy Radeon display
+state on resume. Press Enter to
+dismiss, then repeat once after waking the iMac manually before the alarm time;
+it must remain silent until the scheduled instant and permit another deliberate
+sleep request.
+
 ## Playback Diagnostics
 
 When Music becomes black unexpectedly, note the song title and reproduce it

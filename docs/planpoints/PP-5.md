@@ -166,15 +166,13 @@ framework or a camera service.
    third shortcut, video-only local capture lifecycle, exact-origin kiosk video
    permission, mirrored full-screen preview, and independent failure recovery.
 
-The accepted slice is complete. Two presentation-only follow-ups reuse its
+The accepted slice is complete. One presentation-only follow-up reuses its
 explicit channel ownership without changing the original channel contracts:
 
 4. **GH-020 - Transition Between Channels**: progressively enhance observed
    browser-rendered channel changes with short native view transitions while
    preserving Camera privacy, AirPlay composition, reduced motion, and
    unsupported-browser behavior.
-5. **GH-021 - Redesign The Home Screen**: recompose the existing Today channel
-   as the calm default Home view using only its current clock and weather data.
 
 ## Conceptual Heatmap
 

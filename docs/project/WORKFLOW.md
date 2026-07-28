@@ -105,7 +105,8 @@ Continue work in the following lanes:
 | 1 | GH-012 agent-safe room context | GH-013 channel shell separation |
 | 2 | GH-014 local speech qualification | GH-015 Music visual polish |
 | 3 | GH-016 Pi and OpenRouter answer path | GH-017 local Camera mirror |
-| 4 | GH-018 exact scene tool | GH-020 channel transitions and GH-021 Home redesign |
+| 4 | GH-018 exact scene tool | GH-020 channel transitions |
+| 5 | — | GH-021 wake alarm after GH-018 and GH-020 |
 
 Keep each lane sequential: voice issues build on the prior voice boundary,
 while channel issues share the explicit shell switch, room state, and
@@ -140,15 +141,25 @@ git worktree add ../cortex-home-GH-021 -b felixf/GH-021/0 main
 GH-018 owns the agent child protocol, the coordinator's agent-to-scene
 execution seam, and focused voice-action lifecycle tests. GH-020 owns the
 observed channel transition boundary in `App.jsx`, its transition styles, and
-focused transition tests. GH-021 owns `TodayChannel.jsx` and its focused
-presentation tests. GH-020 must not redesign channel content, and GH-021 must
-not change the application shell or shared feedback. If either presentation
-issue needs the same stylesheet lines, keep the addition issue-specific and
-rebase the later merge rather than broadening ownership.
+focused transition tests.
 
-All three may begin from the same planning baseline. Code and automated tests
-may proceed independently, but integrated deployment and physical-room review
-remain serialized.
+GH-021 is the accepted Planpoint 7 wake-alarm slice. Its revision-0 worktree
+owns the accepted planning baseline. Create the implementation worktree from
+the updated `main`:
+
+```sh
+git worktree add ../cortex-home-GH-021-1 -b felixf/GH-021/1 main
+```
+
+Implementation still waits until GH-018 and GH-020 merge. GH-021 then rebases
+their shared coordinator scene-execution and application-shell boundaries
+before it changes alarm state and actions, `App.jsx`, the fixed channel set,
+keyboard mapping, endpoint loopback control, RTC suspend provisioning, audio
+ownership, and focused tests.
+
+Code and automated tests for GH-018 and GH-020 may proceed independently.
+GH-021 physical sleep/wake work and every integrated deployment remain
+serialized against the shared room.
 
 ## Finish
 
