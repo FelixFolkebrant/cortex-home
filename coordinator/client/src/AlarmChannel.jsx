@@ -179,7 +179,9 @@ export function AlarmChannel({ onAction, snapshot }) {
         ) : (
           <>
             <p>Left / Right selects hours or minutes. Up / Down adjusts.</p>
-            <p className="mt-2 text-base">Minutes change in five-minute steps.</p>
+            <p className="mt-2 text-base">
+              Minutes change in five-minute steps. Hold Ctrl for one-minute steps.
+            </p>
             <p className="mt-3 text-[#f3d18a]">Press Enter to arm.</p>
           </>
         )}

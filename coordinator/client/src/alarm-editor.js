@@ -25,7 +25,7 @@ export function reduceAlarmEditor(editor, action) {
   }
   if (action.type === "step") {
     const maximum = editor.selected === "hours" ? 23 : 59;
-    const increment = editor.selected === "hours" ? 1 : 5;
+    const increment = action.increment ?? (editor.selected === "hours" ? 1 : 5);
     const value =
       (editor[editor.selected] + action.amount * increment + maximum + 1) %
       (maximum + 1);
@@ -68,7 +68,12 @@ export function alarmKeyboardAction(event, snapshot) {
   ) {
     return { type: "sleep" };
   }
-  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+  if (
+    event.altKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    (event.ctrlKey && !["ArrowUp", "ArrowDown"].includes(event.key))
+  ) {
     return null;
   }
   if (snapshot?.status === "ringing" && event.key === "Enter") {
@@ -90,10 +95,14 @@ export function alarmKeyboardAction(event, snapshot) {
     return { type: "select", selected: "minutes" };
   }
   if (event.key === "ArrowUp") {
-    return { type: "step", amount: 1 };
+    return event.ctrlKey
+      ? { type: "step", amount: 1, increment: 1 }
+      : { type: "step", amount: 1 };
   }
   if (event.key === "ArrowDown") {
-    return { type: "step", amount: -1 };
+    return event.ctrlKey
+      ? { type: "step", amount: -1, increment: 1 }
+      : { type: "step", amount: -1 };
   }
   if (/^\d$/.test(event.key)) {
     return { type: "digit", digit: event.key, at: Date.now() };
