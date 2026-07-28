@@ -347,7 +347,7 @@ class CoordinatorTests(unittest.TestCase):
             status, payload = request.result(timeout=1)
         self.assertEqual(status, HTTPStatus.BAD_GATEWAY)
         self.assertEqual(payload["status"], "failed")
-        self.assertEqual(coordinator.alarm.error, "sleep_failed")
+        self.assertEqual(coordinator.alarm.error, "bridge unavailable")
         coordinator.close()
 
     def test_rejects_a_sleep_request_that_cannot_reach_the_endpoint_bound(self):

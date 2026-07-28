@@ -58,6 +58,26 @@ test("Alarm sleep sends only the coordinator-resolved wake epoch", async () => {
   ]);
 });
 
+test("Alarm sleep retries the one-shot listener gap", async () => {
+  let attempts = 0;
+  const waits = [];
+
+  await requestSleep(
+    "2026-07-28T05:15:00Z",
+    async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new TypeError("Failed to fetch");
+      }
+      return { ok: true, json: async () => ({ state: "sleeping" }) };
+    },
+    async (duration) => waits.push(duration),
+  );
+
+  assert.equal(attempts, 2);
+  assert.deepEqual(waits, [75]);
+});
+
 test("AirPlay shows only a loader while starting and Skärmen when on", () => {
   const starting = renderToStaticMarkup(
     createElement(AirPlayStatus, { state: "starting" }),

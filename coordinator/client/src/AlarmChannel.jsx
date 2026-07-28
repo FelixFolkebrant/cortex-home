@@ -92,9 +92,12 @@ export async function requestSleep(firesAt, fetcher = fetch, wait) {
   if (!Number.isSafeInteger(epoch)) {
     throw new Error("The alarm wake time is invalid.");
   }
-  const response = await fetcher(`http://127.0.0.1:38019/alarm/sleep/${epoch}`, {
-    method: "POST",
-  });
+  const response = await requestEndpointControl(
+    `/alarm/sleep/${epoch}`,
+    { method: "POST" },
+    fetcher,
+    wait,
+  );
   const result = await response.json().catch(() => ({}));
   if (!response.ok || result.state !== "sleeping") {
     throw new Error(result.error || "The iMac could not sleep.");

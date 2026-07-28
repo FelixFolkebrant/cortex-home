@@ -613,14 +613,15 @@ class Coordinator:
                         "missing_error",
                         "A failed endpoint status requires an error.",
                     )
+                failure = error.strip()[:160]
                 self._finish_locked(
                     pending,
                     status,
-                    error.strip()[:160],
+                    failure,
                     HTTPStatus.BAD_GATEWAY,
                 )
                 if pending.action == ALARM_SLEEP_ACTION:
-                    self._record_alarm_error_locked("sleep_failed")
+                    self._record_alarm_error_locked(failure)
             else:
                 raise ApiError(
                     HTTPStatus.CONFLICT,
