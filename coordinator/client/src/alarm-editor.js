@@ -69,10 +69,10 @@ export function alarmKeyboardAction(event, snapshot) {
     return { type: "sleep" };
   }
   if (
-    event.altKey ||
     event.metaKey ||
     event.shiftKey ||
-    (event.ctrlKey && !["ArrowUp", "ArrowDown"].includes(event.key))
+    event.ctrlKey ||
+    (event.altKey && !["ArrowUp", "ArrowDown"].includes(event.key))
   ) {
     return null;
   }
@@ -95,12 +95,12 @@ export function alarmKeyboardAction(event, snapshot) {
     return { type: "select", selected: "minutes" };
   }
   if (event.key === "ArrowUp") {
-    return event.ctrlKey
+    return event.altKey
       ? { type: "step", amount: 1, increment: 1 }
       : { type: "step", amount: 1 };
   }
   if (event.key === "ArrowDown") {
-    return event.ctrlKey
+    return event.altKey
       ? { type: "step", amount: -1, increment: 1 }
       : { type: "step", amount: -1 };
   }

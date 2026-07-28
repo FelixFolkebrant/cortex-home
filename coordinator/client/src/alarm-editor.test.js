@@ -55,13 +55,18 @@ test("Alarm keyboard scope accepts only its exact editing and action keys", () =
     amount: -1,
   });
   assert.deepEqual(
-    alarmKeyboardAction({ ...event, ctrlKey: true, key: "ArrowUp" }, disarmed),
+    alarmKeyboardAction({ ...event, altKey: true, key: "ArrowUp" }, disarmed),
     { type: "step", amount: 1, increment: 1 },
   );
   assert.deepEqual(
-    alarmKeyboardAction({ ...event, ctrlKey: true, key: "ArrowDown" }, disarmed),
+    alarmKeyboardAction({ ...event, altKey: true, key: "ArrowDown" }, disarmed),
     { type: "step", amount: -1, increment: 1 },
   );
+  assert.equal(
+    alarmKeyboardAction({ ...event, ctrlKey: true, key: "ArrowUp" }, disarmed),
+    null,
+  );
+  assert.equal(alarmKeyboardAction({ ...event, altKey: true }, disarmed), null);
   assert.equal(alarmKeyboardAction(event, armed), null);
   assert.equal(alarmKeyboardAction({ ...event, ctrlKey: true }, disarmed), null);
   assert.equal(alarmKeyboardAction({ ...event, repeat: true }, disarmed), null);
