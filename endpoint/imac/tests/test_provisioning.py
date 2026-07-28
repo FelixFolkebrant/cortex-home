@@ -459,7 +459,16 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("$EUID -ne 0", helper)
         self.assertIn("$# -ne 1", helper)
         self.assertIn("93600", helper)
-        self.assertIn("/usr/sbin/rtcwake --utc --mode mem --time", helper)
+        self.assertIn(
+            "/usr/sbin/rtcwake --utc --mode freeze --time",
+            helper,
+        )
+        self.assertLess(
+            helper.index("/usr/bin/sleep 2"),
+            helper.index("/usr/sbin/rtcwake --utc --mode freeze --time"),
+        )
+        self.assertNotIn("--mode mem", helper)
+        self.assertNotIn("/usr/bin/xrandr", helper)
         self.assertEqual(
             sudoers,
             "cortex-endpoint ALL=(root) NOPASSWD: "

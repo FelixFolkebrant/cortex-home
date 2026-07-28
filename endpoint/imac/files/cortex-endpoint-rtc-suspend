@@ -16,4 +16,5 @@ if (( $1 < minimum || $1 > maximum )); then
   exit 1
 fi
 
-/usr/sbin/rtcwake --utc --mode mem --time "$1"
+/usr/bin/sleep 2
+/usr/sbin/rtcwake --utc --mode freeze --time "$1"
