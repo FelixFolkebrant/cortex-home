@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@10.18.2",
   "scripts": {
-    "check": "node --check answer-child.js",
+    "check": "node --check agent-turn.js && node --check answer-child.js && node --check development-tool.js && node --check local-agent-child.js",
     "test": "node --test"
   },
   "dependencies": {

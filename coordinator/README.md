@@ -255,6 +255,67 @@ credential, provider detail, or audio content. The coordinator returns the
 server measurements in `X-Cortex-Debug-Metrics`; the browser accepts only the
 fixed non-negative numeric allowlist and ignores every other field.
 
+## Local Voice Workbench
+
+GH-022 adds a development-laptop-only voice loop. It has no coordinator HTTP
+client, endpoint client, Hue adapter, room hardware access, or deployment
+configuration. It captures one bounded 15-second utterance with the selected
+Vosk recognizer, sends only its transcript through the pinned OpenRouter route,
+and plays the selected Pocket TTS result locally. The optional development tool
+is in-memory and always reports a simulated result; it cannot inspect or alter
+the laptop or room.
+
+On Arch, install the local command and runtime prerequisites, then prepare an
+isolated Python environment and the locked Node package:
+
+```sh
+sudo pacman -S --needed alsa-utils nodejs pnpm python unzip
+python -m venv .venv
+.venv/bin/python -m pip install \
+  --extra-index-url https://download.pytorch.org/whl/cpu \
+  --requirement coordinator/requirements.txt
+pnpm --dir coordinator/agent install --frozen-lockfile
+```
+
+Download the selected Vosk model outside the repository and verify its pinned
+archive checksum before unzipping it:
+
+```sh
+mkdir -p "$HOME/.local/share/cortex-home"
+curl --fail --location --output /tmp/vosk-model-small-en-us-0.15.zip \
+  https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+printf '%s  %s\n' \
+  30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498 \
+  /tmp/vosk-model-small-en-us-0.15.zip | sha256sum --check -
+unzip -q /tmp/vosk-model-small-en-us-0.15.zip -d "$HOME/.local/share/cortex-home"
+```
+
+List ALSA device names if the PipeWire default device is not the desired source
+or sink:
+
+```sh
+arecord -L
+aplay -L
+```
+
+With an OpenRouter key in the current shell, this one command starts a single
+local interaction. It does not start or contact any Cortex Home service:
+
+```sh
+OPENROUTER_API_KEY=<private-key> \
+  .venv/bin/python coordinator/local_voice.py \
+  --vosk-model "$HOME/.local/share/cortex-home/vosk-model-small-en-us-0.15"
+```
+
+Pass `--input-device <alsa-name>` or `--output-device <alsa-name>` to select a
+non-default device. The terminal prints only lifecycle phases and content-free
+error codes: `listening`, `transcribing`, `thinking`, optional `acting`,
+`speaking`, then `completed`, `failed`, or `cancelled`. `Ctrl`+`C` cancels the
+current stage, stops local recording or playback, terminates unfinished model
+work, and releases the audio devices. Ask explicitly to test the development
+tool to exercise the one simulated tool continuation; a successful response is
+not room or hardware evidence.
+
 With the endpoint connected, an outside caller can invoke its identify action:
 
 ```sh
