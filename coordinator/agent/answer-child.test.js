@@ -7,6 +7,7 @@ import {
   fauxThinking,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import {
   AgentRequestError,
   answerRequest,
@@ -15,6 +16,7 @@ import {
   MAX_OUTPUT_TOKENS,
   validateRequest,
 } from "./answer-child.js";
+import { AgentTurnError, runTurn } from "./agent-turn.js";
 
 const request = {
   context: {
@@ -41,6 +43,29 @@ function runtime(responses) {
   };
 }
 
+function developmentTool(execute = async () => "Simulated result.") {
+  return {
+    definition: {
+      description: "Returns a simulated local development result.",
+      label: "Development test",
+      name: "development_test",
+      parameters: Type.Object({}, { additionalProperties: false }),
+    },
+    execute,
+  };
+}
+
+function localTurn(responses, tool, options = {}) {
+  return runTurn(request, {
+    onPayload: lockProviderPayload,
+    promptFor: () => "Local test prompt",
+    runtime: runtime(responses),
+    systemPrompt: "Local test system prompt",
+    tool,
+    ...options,
+  });
+}
+
 test("one faux Pi turn returns one bounded answer without tools", async () => {
   const fake = runtime([fauxAssistantMessage("A light jacket should be enough.")]);
 
@@ -52,6 +77,94 @@ test("one faux Pi turn returns one bounded answer without tools", async () => {
     status: "completed",
   });
   assert.equal(fake.faux.state.callCount, 1);
+});
+
+test("one injected tool continues in the same Pi turn", async () => {
+  const calls = [];
+  const phases = [];
+  const result = await localTurn(
+    [
+      fauxAssistantMessage(fauxToolCall("development_test", {}), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("The simulated development tool completed."),
+    ],
+    developmentTool(async (arguments_) => {
+      calls.push(arguments_);
+      return "Simulated result: no room hardware was contacted or observed.";
+    }),
+    { onAction: () => phases.push("acting") },
+  );
+
+  assert.equal(result.answer, "The simulated development tool completed.");
+  assert.deepEqual(calls, [{}]);
+  assert.deepEqual(phases, ["acting"]);
+});
+
+test("unknown, malformed, and repeated tool calls do not execute", async () => {
+  const cases = [
+    [fauxToolCall("unknown_tool", {})],
+    [fauxToolCall("development_test", { unexpected: true })],
+    [fauxToolCall("development_test", {}), fauxToolCall("development_test", {})],
+  ];
+
+  for (const calls of cases) {
+    let executions = 0;
+    await assert.rejects(
+      localTurn(
+        [
+          fauxAssistantMessage(calls, { stopReason: "toolUse" }),
+          fauxAssistantMessage("This must not become an answer."),
+        ],
+        developmentTool(async () => {
+          executions += 1;
+          return "Simulated result.";
+        }),
+      ),
+      (error) =>
+        error instanceof AgentTurnError && error.code === "invalid_tool_request",
+    );
+    assert.equal(executions, calls[0].name === "development_test" && calls.length === 2 ? 1 : 0);
+  }
+});
+
+test("cancelled and failed injected tools cannot produce a late answer", async () => {
+  const controller = new AbortController();
+  let release;
+  const pending = new Promise((resolve) => {
+    release = resolve;
+  });
+  const result = localTurn(
+    [
+      fauxAssistantMessage(fauxToolCall("development_test", {}), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("This must be ignored."),
+    ],
+    developmentTool(async () => pending),
+    { signal: controller.signal },
+  );
+  controller.abort();
+  release("Simulated result.");
+
+  await assert.rejects(
+    result,
+    (error) => error instanceof AgentTurnError && error.code === "cancelled",
+  );
+
+  await assert.rejects(
+    localTurn(
+      [
+        fauxAssistantMessage(fauxToolCall("development_test", {}), {
+          stopReason: "toolUse",
+        }),
+      ],
+      developmentTool(async () => {
+        throw new Error("private failure");
+      }),
+    ),
+    (error) => error instanceof AgentTurnError && error.code === "tool_failed",
+  );
 });
 
 test("the child request is exact, bounded, and channel scoped", () => {
@@ -113,7 +226,9 @@ test("thinking, tool calls, truncation, and unsafe answer shapes fail", async ()
       answerRequest(request, { runtime: runtime([response]) }),
       (error) =>
         error instanceof AgentRequestError &&
-        ["agent_failed", "invalid_answer"].includes(error.code),
+        ["agent_failed", "invalid_answer", "invalid_tool_request"].includes(
+          error.code,
+        ),
     );
   }
 });

@@ -263,6 +263,6 @@ def load_selected_speech(vosk_model, pocket_voice="alba"):
         recognizer = VoskRecognizer(Model(str(vosk_model)))
         model = TTSModel.load_model()
         voice_state = model.get_state_for_audio_prompt(pocket_voice)
-    except (OSError, RuntimeError, TypeError, ValueError) as error:
+    except Exception as error:
         raise SpeechError("Selected speech engines could not be loaded.") from error
     return recognizer, PocketTtsSynthesizer(model, voice_state)

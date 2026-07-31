@@ -51,7 +51,12 @@ class InstallTests(unittest.TestCase):
             "cortex-home.service",
         ).read_text()
 
-        for artifact in ["answer-child.js", "package.json", "pnpm-lock.yaml"]:
+        for artifact in [
+            "agent-turn.js",
+            "answer-child.js",
+            "package.json",
+            "pnpm-lock.yaml",
+        ]:
             self.assertIn(f'"$script_dir/agent/{artifact}"', install)
         self.assertIn("node_version=24.18.0", install_host)
         self.assertIn(
@@ -59,6 +64,7 @@ class InstallTests(unittest.TestCase):
             install_host,
         )
         self.assertIn("pnpm@10.18.2", install_host)
+        self.assertIn('["typebox", "1.1.38"]', install_host)
         self.assertEqual(
             install_host.count(
                 "PATH=/opt/cortex-home/node/bin:/usr/sbin:/usr/bin:/sbin:/bin"

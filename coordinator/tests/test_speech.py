@@ -5,6 +5,7 @@ import sys
 import unittest
 import wave
 from pathlib import Path
+from types import ModuleType
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -25,6 +26,7 @@ from speech import (
     WaveAudio,
     WhisperCppRecognizer,
     read_capture,
+    load_selected_speech,
 )
 from qualify_speech import edit_distance, play, words
 
@@ -221,6 +223,20 @@ class SpeechTests(unittest.TestCase):
             with self.subTest(text_length=len(text)):
                 with self.assertRaises(SpeechError):
                     synthesizer.synthesize(text)
+
+    def test_selected_loader_hides_a_backend_model_exception(self):
+        class BrokenModel:
+            def __init__(self, _path):
+                raise Exception("private model path")
+
+        pocket_tts = ModuleType("pocket_tts")
+        pocket_tts.TTSModel = SimpleNamespace()
+        vosk = ModuleType("vosk")
+        vosk.Model = BrokenModel
+
+        with patch.dict(sys.modules, {"pocket_tts": pocket_tts, "vosk": vosk}):
+            with self.assertRaisesRegex(SpeechError, "could not be loaded"):
+                load_selected_speech("not-a-model")
 
     def test_endpoint_playback_targets_the_kiosk_audio_session(self):
         audio = read_capture(wav_bytes())

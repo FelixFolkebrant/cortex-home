@@ -1,16 +1,20 @@
 import { pathToFileURL } from "node:url";
-import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels } from "@earendil-works/pi-ai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
+import {
+  AgentTurnError,
+  MAX_ANSWER_CHARACTERS,
+  MAX_CONTEXT_BYTES,
+  MAX_TRANSCRIPT_CHARACTERS,
+  readRequest,
+  runTurn,
+  validateTurnRequest,
+} from "./agent-turn.js";
 
 export const MODEL_ID = "google/gemini-3.5-flash-lite";
-export const MAX_ANSWER_CHARACTERS = 1_000;
-export const MAX_CONTEXT_BYTES = 16_384;
 export const MAX_INPUT_BYTES = 24_576;
-export const MAX_TRANSCRIPT_CHARACTERS = 4_096;
 export const MAX_OUTPUT_TOKENS = 128;
 
-const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
 const ROUTING = Object.freeze({
   allow_fallbacks: false,
   data_collection: "deny",
@@ -50,62 +54,27 @@ export const OPENROUTER_MODEL = Object.freeze({
   reasoning: false,
 });
 
-export class AgentRequestError extends Error {
-  constructor(code) {
-    super(code);
-    this.code = code;
-  }
-}
-
-function plainObject(value) {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
-}
+export { AgentTurnError as AgentRequestError, MAX_ANSWER_CHARACTERS, MAX_CONTEXT_BYTES, MAX_TRANSCRIPT_CHARACTERS };
 
 export function validateRequest(value) {
+  const request = validateTurnRequest(value);
   if (
-    !plainObject(value) ||
-    Object.keys(value).sort().join(",") !== "context,requestId,transcript" ||
-    typeof value.requestId !== "string" ||
-    !REQUEST_ID_PATTERN.test(value.requestId) ||
-    typeof value.transcript !== "string" ||
-    value.transcript.trim() !== value.transcript ||
-    value.transcript.length < 1 ||
-    value.transcript.length > MAX_TRANSCRIPT_CHARACTERS ||
-    !plainObject(value.context)
+    Object.keys(request.context).sort().join(",") !== "activeChannel,channel" ||
+    !["music", "today"].includes(request.context.activeChannel)
   ) {
-    throw new AgentRequestError("invalid_request");
+    throw new AgentTurnError("invalid_request");
   }
-
-  let context;
-  try {
-    context = JSON.stringify(value.context);
-  } catch {
-    throw new AgentRequestError("invalid_request");
-  }
-  if (
-    context === undefined ||
-    Buffer.byteLength(context) > MAX_CONTEXT_BYTES ||
-    Object.keys(value.context).sort().join(",") !== "activeChannel,channel" ||
-    !["music", "today"].includes(value.context.activeChannel)
-  ) {
-    throw new AgentRequestError("invalid_request");
-  }
-
-  return {
-    context: structuredClone(value.context),
-    requestId: value.requestId,
-    transcript: value.transcript,
-  };
+  return request;
 }
 
-export function lockProviderPayload(payload) {
-  if (!plainObject(payload)) {
-    throw new AgentRequestError("provider_payload_failed");
+export function lockProviderPayload(payload, allowTool = false) {
+  if (
+    payload === null ||
+    typeof payload !== "object" ||
+    Array.isArray(payload) ||
+    Object.getPrototypeOf(payload) !== Object.prototype
+  ) {
+    throw new AgentTurnError("provider_payload_failed");
   }
 
   const locked = {
@@ -118,8 +87,10 @@ export function lockProviderPayload(payload) {
   delete locked.models;
   delete locked.reasoning;
   delete locked.reasoning_effort;
-  delete locked.tools;
-  delete locked.tool_choice;
+  if (!allowTool) {
+    delete locked.tools;
+    delete locked.tool_choice;
+  }
   return locked;
 }
 
@@ -133,32 +104,6 @@ function promptFor(request) {
   ].join("\n");
 }
 
-function answerFrom(agent) {
-  const message = agent.state.messages.at(-1);
-  if (message?.role === "assistant" && message.stopReason === "error") {
-    throw new AgentRequestError("agent_failed");
-  }
-  if (
-    !message ||
-    message.role !== "assistant" ||
-    message.stopReason !== "stop" ||
-    message.content.length !== 1 ||
-    message.content[0].type !== "text"
-  ) {
-    throw new AgentRequestError("invalid_answer");
-  }
-
-  const answer = message.content[0].text;
-  if (
-    answer.trim() !== answer ||
-    answer.length < 1 ||
-    answer.length > MAX_ANSWER_CHARACTERS
-  ) {
-    throw new AgentRequestError("invalid_answer");
-  }
-  return answer;
-}
-
 function productionRuntime() {
   const models = createModels();
   models.setProvider(openrouterProvider());
@@ -170,71 +115,14 @@ function productionRuntime() {
 
 export async function answerRequest(value, options = {}) {
   const request = validateRequest(value);
-  if (options.signal?.aborted) {
-    throw new AgentRequestError("cancelled");
-  }
   const runtime = options.runtime || productionRuntime();
-  const agent = new Agent({
-    followUpMode: "one-at-a-time",
-    initialState: {
-      messages: [],
-      model: runtime.model,
-      systemPrompt: SYSTEM_PROMPT,
-      thinkingLevel: "off",
-      tools: [],
-    },
-    maxRetryDelayMs: 0,
+  return runTurn(request, {
     onPayload: lockProviderPayload,
-    steeringMode: "one-at-a-time",
-    streamFn: runtime.streamFn,
-    toolExecution: "sequential",
+    promptFor,
+    runtime,
+    signal: options.signal,
+    systemPrompt: SYSTEM_PROMPT,
   });
-
-  const abort = () => agent.abort();
-  options.signal?.addEventListener("abort", abort, { once: true });
-  try {
-    await agent.prompt(promptFor(request));
-    if (options.signal?.aborted) {
-      throw new AgentRequestError("cancelled");
-    }
-    return {
-      answer: answerFrom(agent),
-      requestId: request.requestId,
-      status: "completed",
-    };
-  } catch (error) {
-    if (error instanceof AgentRequestError) {
-      throw error;
-    }
-    throw new AgentRequestError(
-      options.signal?.aborted ? "cancelled" : "agent_failed",
-    );
-  } finally {
-    options.signal?.removeEventListener("abort", abort);
-    agent.clearAllQueues();
-  }
-}
-
-export async function readRequest(input) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of input) {
-    size += chunk.length;
-    if (size > MAX_INPUT_BYTES) {
-      throw new AgentRequestError("invalid_request");
-    }
-    chunks.push(chunk);
-  }
-
-  const text = Buffer.concat(chunks).toString("utf8");
-  if (!text.endsWith("\n") || text.slice(0, -1).includes("\n")) {
-    throw new AgentRequestError("invalid_request");
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new AgentRequestError("invalid_request");
-  }
 }
 
 async function main() {
@@ -246,11 +134,11 @@ async function main() {
   let result;
   let exitCode = 0;
   try {
-    const request = await readRequest(process.stdin);
+    const request = await readRequest(process.stdin, MAX_INPUT_BYTES);
     result = await answerRequest(request, { signal: controller.signal });
   } catch (error) {
     result = {
-      code: error instanceof AgentRequestError ? error.code : "agent_failed",
+      code: error instanceof AgentTurnError ? error.code : "agent_failed",
       status: "failed",
     };
     exitCode = 1;
