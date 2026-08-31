@@ -1,0 +1,13 @@
+@theme {
+  --animate-identify: identify 550ms ease-in-out infinite alternate;
+}
+
+@keyframes identify {
+  from {
+    transform: scale(0.92);
+  }
+
+  to {
+    transform: scale(1.12);
+  }
+}

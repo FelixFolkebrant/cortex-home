@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { FALLBACK_MUSIC_PALETTE, paletteFromImage } from "./music-palette";
-import { artworkSource, formatTime, projectPosition } from "./room-state";
+import { artworkSource, formatTime, projectPosition } from "./music-state";
 
 const FULLSCREEN_TRANSITION_MS = 400;
 const FULLSCREEN_ITEM_GRACE_MS = 800;

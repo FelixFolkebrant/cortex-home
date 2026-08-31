@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { cn } from "../../shared/classes";
 import {
   adjustCameraLightWidth,
   CAMERA_LIGHT_WIDTHS,
@@ -8,7 +9,6 @@ import {
   DEFAULT_CAMERA_LIGHT_WIDTH,
   startCameraCapture,
 } from "./camera";
-import { cn } from "./classes";
 
 export const cameraStatusCopy = {
   blocked: [

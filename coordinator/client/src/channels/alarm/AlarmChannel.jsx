@@ -1,11 +1,11 @@
 import { useEffect, useReducer, useState } from "react";
+import { requestEndpointControl } from "../../shared/endpoint-control";
 import {
   alarmKeyboardAction,
   alarmTime,
   initialAlarmEditor,
   reduceAlarmEditor,
 } from "./alarm-editor";
-import { requestEndpointControl } from "./endpoint-control";
 
 function stockholmTime(now = new Date()) {
   return new Intl.DateTimeFormat("en-GB", {

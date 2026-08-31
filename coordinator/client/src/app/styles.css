@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+@import "../channels/alarm/alarm.css";
+@import "../channels/camera/camera.css";
+@import "../channels/music/music.css";
+@import "../voice/feedback.css";
+
+@theme {
+  --font-sans: "DejaVu Sans", sans-serif;
+}

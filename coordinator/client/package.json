@@ -9,7 +9,7 @@
     "check": "biome check .",
     "check:write": "biome check --write .",
     "dev": "vite --host 127.0.0.1",
-    "test": "node --test src/*.test.js"
+    "test": "node --test"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",

@@ -1,7 +1,7 @@
 import { cva } from "class-variance-authority";
+import { CHANNEL_ACTION, IDENTIFY_ACTION, SCENE_ACTION } from "../app/room-state";
+import { cn } from "../shared/classes";
 import { AGENT_INTERACTION_ACTION } from "./agent-interaction";
-import { cn } from "./classes";
-import { CHANNEL_ACTION, IDENTIFY_ACTION, SCENE_ACTION } from "./room-state";
 import { VOICE_CAPTURE_ACTION } from "./voice-capture";
 
 const interactionCopy = {

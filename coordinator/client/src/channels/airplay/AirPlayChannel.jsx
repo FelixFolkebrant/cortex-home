@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { requestEndpointControl } from "./endpoint-control";
+import { requestEndpointControl } from "../../shared/endpoint-control";
 
 function AirPlayLogo({ className = "" }) {
   return (

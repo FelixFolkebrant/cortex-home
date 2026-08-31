@@ -155,7 +155,7 @@ the endpoint retains no samples or host identity.
 The bridge accepts one connection at a time. Chromium may send a private-network
 preflight immediately before the real request, which can land in the listener's
 short replacement gap. Browser calls to this bridge must therefore use
-`coordinator/client/src/endpoint-control.js`: it retries one network failure
+`coordinator/client/src/shared/endpoint-control.js`: it retries one network failure
 after 75 ms, then lets the calling feature show its own clear unavailable
 message. Do not turn this into background retrying or additional polling.
 

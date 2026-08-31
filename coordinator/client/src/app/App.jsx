@@ -1,34 +1,34 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { AirPlayChannel, requestAirPlay } from "./AirPlayChannel";
-import { AlarmChannel, requestSleep } from "./AlarmChannel";
-import {
-  AGENT_INTERACTION_ACTION,
-  isVoiceDebugShortcut,
-  SpokenInteraction,
-} from "./agent-interaction";
-import { CameraChannel } from "./CameraChannel";
-import { MusicChannel, MusicFullscreen } from "./MusicChannel";
-import { RoomFeedback } from "./RoomFeedback";
-import {
-  CHANNEL_ACTION,
-  IDENTIFY_ACTION,
-  initialRoomState,
-  isMusicFullscreenShortcut,
-  keyboardAction,
-  roomReducer,
-  SCENE_ACTION,
-} from "./room-state";
+import { AirPlayChannel, requestAirPlay } from "../channels/airplay/AirPlayChannel";
+import { AlarmChannel, requestSleep } from "../channels/alarm/AlarmChannel";
+import { CameraChannel } from "../channels/camera/CameraChannel";
+import { MusicChannel, MusicFullscreen } from "../channels/music/MusicChannel";
+import { isMusicFullscreenShortcut } from "../channels/music/music-state";
+import { TodayChannel } from "../channels/today/TodayChannel";
 import {
   isSystemStatsDismissShortcut,
   isSystemStatsShortcut,
   SystemStats,
-} from "./SystemStats";
-import { TodayChannel } from "./TodayChannel";
+} from "../diagnostics/SystemStats";
+import {
+  AGENT_INTERACTION_ACTION,
+  isVoiceDebugShortcut,
+  SpokenInteraction,
+} from "../voice/agent-interaction";
+import { RoomFeedback } from "../voice/RoomFeedback";
 import {
   VOICE_CAPTURE_ACTION,
   VoiceCapture,
   voiceCaptureTransition,
-} from "./voice-capture";
+} from "../voice/voice-capture";
+import {
+  CHANNEL_ACTION,
+  IDENTIFY_ACTION,
+  initialRoomState,
+  keyboardAction,
+  roomReducer,
+  SCENE_ACTION,
+} from "./room-state";
 
 function writeWavLabel(view, offset, label) {
   for (const [index, character] of [...label].entries()) {
