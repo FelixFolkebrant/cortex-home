@@ -2,59 +2,58 @@
 
 # What
 
-- Make the existing deliberate voice interaction feel reliable as a repeated
-  conversation: hold `Ctrl`+`Alt`+`Space` to speak, release to send, and press
-  the same chord again to cancel any current capture, processing, download, or
-  playback before starting the next utterance.
+- Turn the existing IdeaPad-only local voice workbench into a repeated,
+  terminal-first conversation loop: start one deliberate utterance, hear one
+  local answer, interrupt recording, thinking, or playback, then immediately
+  begin the next utterance without restarting the program.
 - Keep every turn independent. There is no retained conversation history,
   automatic turn detection, wake word, continuous listening, scene tool, or
   other room action in this issue.
-- Qualify the complete iMac-to-ThinkPad-to-Sonos path, including cancellation
-  during each active phase and immediate recovery with a new utterance.
+- Keep every dependency local to the IdeaPad except the existing text-only
+  OpenRouter request. Do not start or contact the Cortex Home coordinator,
+  iMac, ThinkPad, Sonos, Hue bridge, browser, or deployment configuration.
 
 ## Acceptance Criteria
 
-- [ ] The exact hold-to-speak chord starts capture only once, release ends the
-  current capture, and every capture releases its microphone tracks.
-- [ ] A fresh press during capture, transcription, thinking, answer download,
-  or playback stops only the current request, suppresses late output, and
-  starts the new capture once coordinator cancellation has settled.
-- [ ] Browser, coordinator, and child-process cancellation use the same request
-  ID; stale phases, audio, and terminal responses cannot replace the later
-  interaction.
-- [ ] Visible feedback distinguishes listening, transcribing, thinking,
-  speaking, cancellation, failure, and readiness without showing transcript,
-  answer, provider, or audio content.
+- [ ] One documented IdeaPad command stays open for repeated deliberate turns;
+  it starts no home service and retains no audio, transcript, answer, or
+  conversation state between turns.
+- [ ] Enter starts the next bounded capture only while the terminal is ready.
+  `Ctrl`+`C` during capture, transcription, thinking, synthesis, or playback
+  cancels only that turn, releases local resources, and returns to readiness.
+- [ ] A fresh turn after every cancellation receives a new request ID, ignores
+  all late local results, and can complete with intelligible local playback.
+- [ ] The terminal shows only ready and lifecycle phases plus content-free
+  terminal errors; it never prints recognized or provider content.
 - [ ] The answer-only Pi route, local speech processing, privacy routing, and
   no-persistence boundary remain unchanged.
-- [ ] Automated browser and coordinator tests cover rapid replacement,
-  cancellation during every phase, endpoint reconnect, late results, and one
-  successful turn after each cancellation.
-- [ ] A physical iMac pass proves at most 60-second samples of normal response,
-  interruption during thinking and playback, immediate next-turn recovery, and
-  intelligible Sonos playback.
+- [ ] Automated tests cover repeated turns, interruption during every local
+  phase, late-result rejection, device release, and recovery without
+  credentials, network, or hardware.
+- [ ] A manual IdeaPad pass proves normal response, interruption during
+  thinking and playback, immediate next-turn recovery, and intelligible local
+  playback in samples no longer than 60 seconds.
 
 # Tasks
 
-## 1. GH-025: Make Replacement Deterministic
+## 1. GH-025: Add A Persistent Local Turn Loop
 
-- Trace the current `VoiceCapture`, `SpokenInteraction`, and coordinator
-  request-ID ownership paths. Tighten only races found between a fresh keydown,
-  capture release, HTTP abort, DELETE cancellation, and a late SSE or audio
-  response.
-- Keep one active interaction globally. A new press is never queued and never
-  overlaps an earlier microphone or playback session.
+- Refactor `local_voice.py` around a small terminal runner that waits for Enter
+  before each turn and returns to readiness after every terminal outcome.
+- Keep one active local turn. `Ctrl`+`C` cancels it in place; EOF exits cleanly.
+  No turn is queued, resumed, or allowed to overlap its successor.
 
-## 2. GH-025: Prove Phase-Correct Interruption
+## 2. GH-025: Prove Phase-Correct Local Interruption
 
-- Add focused tests around the browser replacement sequence and coordinator
-  cancellation propagation. Preserve the existing process-group abort in the
-  Node runtime and reject all late results by request ID.
+- Add focused runner tests around input waiting, cancellation during every
+  component phase, resource release, late results, and a successful next turn.
+  Preserve the existing local process-group aborts and request-ID checks.
 
-## 3. GH-025: Qualify The Room Conversation Loop
+## 3. GH-025: Qualify The IdeaPad Conversation Loop
 
-- Deploy the focused change and complete the physical iMac/ThinkPad/Sonos pass.
-  Record only phase outcomes, device-selection facts, and content-free errors.
+- Run the local command on the IdeaPad. Record only phase outcomes,
+  device-selection facts, and content-free errors. A later issue will port this
+  proven interaction model to the room path.
 
 # Heatmap
 
@@ -62,18 +61,18 @@ Reference: `../project/HEATMAP.md`.
 
 ## Hot
 
-### H1 - One New Press Owns The Next Turn
+### H1 - One Local Turn Owns The Next Turn
 
-- Decision: Do not overlap, queue, or resume voice sessions.
-- Why: Immediate interruption must never allow stale audio or an older answer
-  to take over after the user starts speaking again.
+- Decision: Do not overlap, queue, or resume local voice turns.
+- Why: Interruption must never allow stale audio or an older answer to take over
+  after the user begins the next utterance.
 - Alternatives: Parallel turns; queued utterances; hands-free barge-in; keeping
-  the microphone open between turns.
+  a microphone open between turns.
 
-### H2 - Deliberate Sensing Stays Intact
+### H2 - Local Deliberate Sensing Stays Intact
 
-- Decision: Keep the fixed hold-to-speak chord and explicit release boundary.
-- Why: A conversational feel does not require ambient capture, and deliberate
-  microphone ownership remains the accepted privacy baseline.
+- Decision: Keep explicit terminal start and cancellation controls.
+- Why: A conversational local workbench does not require ambient capture, and
+  the microphone remains owned by one visible foreground turn.
 - Alternatives: Wake word; voice activity detection; automatic silence timeout;
   always-on microphone.
