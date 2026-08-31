@@ -15,7 +15,13 @@ import sys
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from local_audio import AlsaInput, AlsaOutput, LocalAudioError
-from local_voice import LocalAgent, LocalVoiceError, run_interaction, run_turn_loop
+from local_voice import (
+    LocalAgent,
+    LocalVoiceError,
+    report_phase,
+    run_interaction,
+    run_turn_loop,
+)
 from speech import SpeechError, read_capture, read_synthesis
 
 
@@ -156,6 +162,9 @@ class CancelledProcess(CompletedProcess):
 
 
 class LocalVoiceTests(unittest.TestCase):
+    def test_reports_ready_as_a_content_free_local_phase(self):
+        self.assertIsNone(report_phase("ready"))
+
     def test_turn_loop_returns_to_ready_for_each_local_turn(self):
         waits = iter([None, None, EOFError()])
         phases = []

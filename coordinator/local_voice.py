@@ -24,6 +24,7 @@ LOCAL_CONTEXT = {"activeChannel": "today", "channel": {"available": False, "type
 MAX_AGENT_OUTPUT_BYTES = 2_048
 MAX_ANSWER_CHARACTERS = 1_000
 PHASES = {
+    "ready",
     "listening",
     "transcribing",
     "thinking",
