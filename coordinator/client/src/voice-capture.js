@@ -30,15 +30,6 @@ export function voiceCaptureTransition(event) {
   return null;
 }
 
-export function shouldStartVoiceCapture(
-  held,
-  generation,
-  startGeneration,
-  activeRequestId,
-) {
-  return held && generation === startGeneration && !activeRequestId;
-}
-
 function writeLabel(view, offset, label) {
   for (const [index, character] of [...label].entries()) {
     view.setUint8(offset + index, character.charCodeAt(0));
