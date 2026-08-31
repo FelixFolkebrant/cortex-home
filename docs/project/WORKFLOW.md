@@ -105,8 +105,8 @@ Continue work in the following lanes:
 | 1 | GH-012 agent-safe room context | GH-013 channel shell separation |
 | 2 | GH-014 local speech qualification | GH-015 Music visual polish |
 | 3 | GH-016 Pi and OpenRouter answer path | GH-017 local Camera mirror |
-| 4 | GH-018 exact scene tool | GH-020 channel transitions |
-| 5 | — | GH-021 wake alarm after GH-018 and GH-020 |
+| 4 | GH-025 interruptible voice turns | GH-020 channel transitions |
+| 5 | GH-018 exact scene tool after GH-025 | GH-021 wake alarm after GH-018 and GH-020 |
 
 Keep each lane sequential: voice issues build on the prior voice boundary,
 while channel issues share the explicit shell switch, room state, and
