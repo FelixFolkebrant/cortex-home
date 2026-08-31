@@ -298,8 +298,8 @@ arecord -L
 aplay -L
 ```
 
-With an OpenRouter key in the current shell, this one command starts a single
-local interaction. It does not start or contact any Cortex Home service:
+With an OpenRouter key in the current shell, this command starts the persistent
+local interaction loop. It does not start or contact any Cortex Home service:
 
 ```sh
 OPENROUTER_API_KEY=<private-key> \
@@ -308,13 +308,14 @@ OPENROUTER_API_KEY=<private-key> \
 ```
 
 Pass `--input-device <alsa-name>` or `--output-device <alsa-name>` to select a
-non-default device. The terminal prints only lifecycle phases and content-free
-error codes: `listening`, `transcribing`, `thinking`, optional `acting`,
-`speaking`, then `completed`, `failed`, or `cancelled`. `Ctrl`+`C` cancels the
-current stage, stops local recording or playback, terminates unfinished model
-work, and releases the audio devices. Ask explicitly to test the development
-tool to exercise the one simulated tool continuation; a successful response is
-not room or hardware evidence.
+non-default device. The terminal prints `ready` between turns plus content-free
+lifecycle phases and errors: `listening`, `transcribing`, `thinking`, optional
+`acting`, `speaking`, then `completed`, `failed`, or `cancelled`. Press Enter
+to begin one turn, `Ctrl`+`C` to cancel only its current stage, and `Ctrl`+`D`
+at `ready` to exit. Cancellation stops local recording or playback, terminates
+unfinished model work, releases the audio devices, and returns to `ready`. Ask
+explicitly to test the development tool to exercise the one simulated tool
+continuation; a successful response is not room or hardware evidence.
 
 With the endpoint connected, an outside caller can invoke its identify action:
 
