@@ -228,9 +228,10 @@ without creating an ambient or general-purpose assistant.
    process, Pi Agent Core with `pi-ai`, protected OpenRouter credential, pinned
    qualified text model, request-ID cancellation seam, ephemeral interaction
    lifecycle, and one spoken answer about Today or Music without tools.
-4. **GH-018 NEXT - Activate One Scene By Voice**: expose only exact scene
-   activation, execute at most one strict tool call through the coordinator,
-   and speak the observed result.
+4. **GH-018 PLANNED - Activate One Scene By Voice**: build on GH-022's bounded
+   Pi tool turn with one strict coordinator-owned tool exchange, execute at
+   most one exact scene call through the existing observed action path, and
+   speak only the observed result.
 
 ## Conceptual Heatmap
 

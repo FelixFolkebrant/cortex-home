@@ -12,6 +12,20 @@
 - Keep the interaction ephemeral and preserve the accepted OpenRouter routing,
   privacy, cancellation, and content-free diagnostics boundaries.
 
+## Starting Point
+
+GH-022 is merged. Its shared `agent-turn.js` already creates a fresh Pi turn,
+permits zero or one injected strict tool, serializes tool execution, rejects
+unsafe tool shapes, and continues to one bounded final answer. Its local
+workbench proves that continuation with an in-memory development executor.
+
+Production still deliberately uses one request line and one terminal result
+line between `agent_runtime.py` and `answer-child.js`; it sends only Today or
+Music context and gives the child no tools. GH-018 changes that production
+transport just enough to let the coordinator execute the one injected tool. It
+does not move Hue authority, credentials, scene observation, or interaction
+ownership into Node.
+
 ## Out Of Scope
 
 - More tools, multiple tool calls, parallel tools, scene cycling, channel
@@ -75,21 +89,59 @@
 
 # Tasks
 
-## 1. GH-018: Request One Exact Scene
+## 1. GH-018: Add One Bounded Coordinator Tool Exchange
 
-- Extend the normalized child request with the current lighting catalog, define
-  the one strict Pi tool, and add one bounded request-ID-keyed tool exchange to
-  the existing private standard-stream protocol.
-- This is atomic because it establishes and tests the complete untrusted model
-  request boundary without granting execution authority.
+- Extend the production agent context with only a fresh available-scene catalog:
+  exact human-facing names, never Hue IDs, bridge state, credentials, or
+  arbitrary lighting metadata. Do not expose a tool while lighting is
+  unavailable.
+- Make `answer-child.js` derive the strict `activate_scene` schema from that
+  catalog and inject it into the existing GH-022 turn core. The child validates
+  the tool name, arguments, request ID, and one-call limit before it asks the
+  parent to act.
+- Replace the production `communicate()` transaction with bounded private
+  newline-JSON messages: the initial request, at most one child
+  `tool_request`, exactly one matching coordinator `tool_result`, then one
+  terminal completed or failed message. Each message is request-ID keyed,
+  schema checked, size bounded, and content-free outside the current
+  transcript, exact scene name, and bounded final answer.
+- Keep stderr empty and fail the whole interaction on a duplicate, out-of-order,
+  unknown, malformed, stale, cancelled, or oversized message. The coordinator
+  must terminate the child process group on cancellation, timeout, endpoint
+  replacement, disconnect, or protocol failure.
+- This is atomic because it establishes the complete untrusted model-request
+  boundary without granting execution authority.
 
-## 2. GH-018: Execute The Observed Scene Action
+## 2. GH-018: Execute And Report One Observed Scene Action
 
-- Revalidate the request in the coordinator, run it through the shared exact
-  scene execution boundary, publish the acting lifecycle, return one sanitized
-  result to Pi, and speak only the resulting bounded answer.
+- Give `Coordinator.interact()` the one callback needed to handle a validated
+  child tool request. When it arrives, confirm the interaction is still the
+  active endpoint-owned request, publish `acting`, and revalidate the exact
+  scene against the latest available catalog while holding the existing action
+  ownership boundary.
+- Extract or reuse the scene execution primitive behind `room.scene.activate`;
+  do not call the public HTTP route or duplicate Hue behavior. The shared path
+  must retain its current serialization, adapter timeout, observed completion,
+  error mapping, and endpoint action-status behavior.
+- Return only a bounded sanitized observed result to the child. A successful
+  final answer may claim activation only after that result confirms the exact
+  requested scene; unavailable, rejected, timed-out, and cancelled cases stay
+  explicit, content-free failures and never become a spoken success.
 - This is atomic because it connects the already constrained request to the
   existing room authority and its visible outcome.
+
+## 3. GH-018: Prove The Full Room Path
+
+- Add focused Node protocol tests for no-tool answers, one successful tool
+  continuation, every rejected message shape, provider failure, and cancellation
+  races. Add coordinator tests for fresh-catalog revalidation, observed Hue
+  success and failure, phase order, endpoint replacement, and ignored late
+  child results.
+- Deploy only after automated checks pass. On the physical room path, verify one
+  contextual answer, one exact scene request, an unavailable-scene failure,
+  cancellation during both thinking and acting, recovery, browser phases, and
+  intelligible Sonos playback. Keep each observation window at or below 60
+  seconds.
 
 # Heatmap
 
@@ -102,10 +154,10 @@ Reference: `../project/HEATMAP.md`.
 - Decision: Continue the same supervised Pi turn across one coordinator-owned
   tool exchange instead of giving the child Hue authority or starting an
   unrelated second interaction.
-- Proposed approach: Extend the bounded private standard-stream protocol with
-  one request-ID-keyed `tool_request` and one sanitized `tool_result`. The
-  coordinator validates and executes the request, and the child may then
-  produce only the final answer.
+- Proposed approach: Reuse GH-022's injected-tool continuation and extend only
+  the production private standard-stream protocol with one request-ID-keyed
+  `tool_request` and one sanitized `tool_result`. The coordinator validates and
+  executes the request, and the child may then produce only the final answer.
 - Why: The model needs the real observed action result to answer truthfully,
   while credentials, validation, and state authority must remain in the
   coordinator.
