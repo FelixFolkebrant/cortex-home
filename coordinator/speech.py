@@ -255,11 +255,12 @@ class PocketTtsSynthesizer:
 def load_selected_speech(vosk_model, pocket_voice="alba"):
     try:
         from pocket_tts import TTSModel
-        from vosk import Model
+        from vosk import Model, SetLogLevel
     except ImportError as error:
         raise SpeechError("Selected speech engines are not installed.") from error
 
     try:
+        SetLogLevel(-1)
         recognizer = VoskRecognizer(Model(str(vosk_model)))
         model = TTSModel.load_model()
         voice_state = model.get_state_for_audio_prompt(pocket_voice)
