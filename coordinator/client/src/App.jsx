@@ -25,6 +25,7 @@ import {
 } from "./SystemStats";
 import { TodayChannel } from "./TodayChannel";
 import {
+  shouldStartVoiceCapture,
   VOICE_CAPTURE_ACTION,
   VoiceCapture,
   voiceCaptureTransition,
@@ -124,6 +125,8 @@ export function App() {
   const activeChannel = useRef("today");
   const systemStatsVisibleRef = useRef(false);
   const voiceRequestId = useRef(null);
+  const voiceAuthorityHeld = useRef(false);
+  const voiceStartGeneration = useRef(0);
 
   useEffect(() => {
     function clearInteractionTimer() {
@@ -619,11 +622,20 @@ export function App() {
           return;
         }
         event.preventDefault();
+        voiceAuthorityHeld.current = true;
+        const startGeneration = ++voiceStartGeneration.current;
         const { completion } = cancelVoice(
           "The previous voice interaction was replaced.",
         );
         await completion;
-        if (activeRequestId.current) {
+        if (
+          !shouldStartVoiceCapture(
+            voiceAuthorityHeld.current,
+            voiceStartGeneration.current,
+            startGeneration,
+            activeRequestId.current,
+          )
+        ) {
           return;
         }
         if (!endpointToken.current) {
@@ -659,6 +671,9 @@ export function App() {
     }
 
     function onKeyUp(event) {
+      if (voiceCaptureTransition(event) === "stop") {
+        voiceAuthorityHeld.current = false;
+      }
       if (voiceCaptureTransition(event) === "stop" && voiceRequestId.current) {
         event.preventDefault();
         voiceCapture.release(voiceRequestId.current);

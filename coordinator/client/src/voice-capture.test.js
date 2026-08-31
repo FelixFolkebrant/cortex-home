@@ -5,6 +5,7 @@ import {
   MAX_CAPTURE_SECONDS,
   microphoneLevel,
   PCM_SAMPLE_RATE,
+  shouldStartVoiceCapture,
   VoiceCapture,
   voiceCaptureTransition,
 } from "./voice-capture.js";
@@ -40,6 +41,13 @@ test("releasing any authority key stops an active chord", () => {
     voiceCaptureTransition(shortcut({ code: "ShiftLeft", type: "keyup" })),
     null,
   );
+});
+
+test("a replacement capture starts only while its own chord remains held", () => {
+  assert.equal(shouldStartVoiceCapture(true, 2, 2, null), true);
+  assert.equal(shouldStartVoiceCapture(false, 2, 2, null), false);
+  assert.equal(shouldStartVoiceCapture(true, 3, 2, null), false);
+  assert.equal(shouldStartVoiceCapture(true, 2, 2, "voice-current"), false);
 });
 
 test("capture output is bounded mono 16 kHz signed 16-bit PCM WAV", async () => {
