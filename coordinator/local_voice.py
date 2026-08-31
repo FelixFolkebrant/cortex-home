@@ -222,6 +222,8 @@ def run_interaction(input_boundary, output_boundary, recognizer, synthesizer, ag
         synthesized = read_synthesis(synthesizer.synthesize(answer).data)
     except (AttributeError, SpeechError) as error:
         raise LocalVoiceError("synthesis_failed") from error
+    if cancelled.is_set():
+        raise LocalVoiceError("cancelled")
     try:
         output_boundary.play(synthesized.data, cancelled)
     except LocalAudioError as error:
@@ -232,6 +234,28 @@ def report_phase(phase):
     if phase not in PHASES:
         raise LocalVoiceError("phase_failed")
     print(phase, flush=True)
+
+
+def run_turn_loop(wait, run, report):
+    while True:
+        report("ready")
+        try:
+            wait()
+        except (EOFError, KeyboardInterrupt):
+            return
+
+        cancelled = threading.Event()
+        previous_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, lambda _signum, _frame: cancelled.set())
+        try:
+            run(cancelled)
+        except LocalVoiceError as error:
+            report("cancelled" if error.code == "cancelled" else "failed")
+            print(f"error: {error.code}", flush=True)
+        else:
+            report("completed")
+        finally:
+            signal.signal(signal.SIGINT, previous_handler)
 
 
 def arguments():
@@ -252,31 +276,24 @@ def arguments():
 
 def main():
     args = arguments()
-    cancelled = threading.Event()
-    previous_handler = signal.getsignal(signal.SIGINT)
-
-    def cancel(_signum, _frame):
-        cancelled.set()
-
-    signal.signal(signal.SIGINT, cancel)
     input_boundary = AlsaInput(device=args.input_device, duration=MAX_CAPTURE_SECONDS)
     output_boundary = AlsaOutput(device=args.output_device)
     try:
         recognizer, synthesizer = load_selected_speech(args.vosk_model)
         agent = LocalAgent(args.node, args.agent_child, os.environ.get("OPENROUTER_API_KEY"))
-        run_interaction(
-            input_boundary,
-            output_boundary,
-            recognizer,
-            synthesizer,
-            agent,
-            cancelled,
+        run_turn_loop(
+            lambda: input("Press Enter to speak. Ctrl+C cancels the active turn.\n"),
+            lambda cancelled: run_interaction(
+                input_boundary,
+                output_boundary,
+                recognizer,
+                synthesizer,
+                agent,
+                cancelled,
+                report_phase,
+            ),
             report_phase,
         )
-    except LocalVoiceError as error:
-        report_phase("cancelled" if error.code == "cancelled" else "failed")
-        print(f"error: {error.code}", flush=True)
-        return 1
     except SpeechError:
         report_phase("failed")
         print("error: speech_unavailable", flush=True)
@@ -284,8 +301,6 @@ def main():
     finally:
         input_boundary.close()
         output_boundary.close()
-        signal.signal(signal.SIGINT, previous_handler)
-    report_phase("completed")
     return 0
 
 
