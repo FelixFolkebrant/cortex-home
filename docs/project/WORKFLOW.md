@@ -106,7 +106,7 @@ Continue work in the following lanes:
 | 2 | GH-014 local speech qualification | GH-015 Music visual polish |
 | 3 | GH-016 Pi and OpenRouter answer path | GH-017 local Camera mirror |
 | 4 | GH-025 interruptible IdeaPad voice turns | GH-020 channel transitions |
-| 5 | GH-018 exact scene tool after GH-025 | GH-021 wake alarm after GH-018 and GH-020 |
+| 5 | Fluent voice-core follow-up after GH-025; GH-018 remains deferred | GH-021 wake alarm |
 
 Keep each lane sequential: voice issues build on the prior voice boundary,
 while channel issues share the explicit shell switch, room state, and
@@ -128,6 +128,12 @@ Creating all three worktrees does not authorize simultaneous deployment.
 Deploy and manually test only one integrated branch at a time. Remove each
 worktree after its issue branch merges, and rebase any branch that depends on
 the merged result before continuing shared integration.
+
+GH-025 is complete. Before resuming GH-018 implementation, accept a new
+voice-core issue that follows `IDEA-VOICE-AGENT.md`: fluent interruption comes
+before skills, Pocket and Piper remain selectable targets, OpenRouter model
+selection must not remain hard-coded, and both IdeaPad-local and iMac/ThinkPad
+deployment modes must inherit the proven lifecycle.
 
 After the first three waves merge, reserve and plan the next active set on
 `main`, then create:

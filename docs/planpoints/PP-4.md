@@ -228,10 +228,17 @@ without creating an ambient or general-purpose assistant.
    process, Pi Agent Core with `pi-ai`, protected OpenRouter credential, pinned
    qualified text model, request-ID cancellation seam, ephemeral interaction
    lifecycle, and one spoken answer about Today or Music without tools.
-4. **GH-025 NEXT - Interruptible IdeaPad Voice Turns**: qualify repeated local
-   answer-only turns, where terminal controls cancel the current capture,
-   processing, or playback before the next utterance begins.
-5. **GH-018 DEFERRED - Activate One Scene By Voice**: expose only exact scene
+4. **GH-025 COMPLETE - Interruptible IdeaPad Voice Turns**: added repeated local
+   answer-only turns where terminal controls cancel the current capture,
+   processing, or playback before the next utterance begins. Automated
+   lifecycle coverage and real model loading passed; the reviewer accepted the
+   remaining audible qualification for deferral to the next fluency issue.
+5. **NEXT - Qualify The Fluent Core Loop**: plan the smallest issue that closes
+   the gap between deliberate terminal cancellation and fluent spoken
+   interruption while preserving local processing and both deployment modes.
+   Runtime Pocket/Piper selection and OpenRouter model selection remain core
+   requirements from `IDEA-VOICE-AGENT.md`, not later skills.
+6. **GH-018 DEFERRED - Activate One Scene By Voice**: expose only exact scene
    activation after the interruption baseline is proven, execute at most one
    strict tool call through the coordinator, and speak the observed result.
 

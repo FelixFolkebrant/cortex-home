@@ -8,9 +8,11 @@ while device control stays narrow to the existing Hue bridge.
 ## Planpoints
 
 Planpoints 1 through 3 are complete. Planpoints 4 and 5 are accepted for
-concurrent issue work. Voice begins with an agent-safe coordinator context while
-channel evolution begins with a behavior-preserving frontend separation; those
-first issues own different files and can start from the same planning baseline.
+concurrent issue work. The voice lane now has qualified speech components, a Pi
+and OpenRouter answer path, and repeated cancellable IdeaPad turns. Its next
+issue must advance the fluent core loop and runtime engine selection defined by
+`IDEA-VOICE-AGENT.md` before voice-controlled room skills resume. Channel work
+continues independently through its explicit frontend boundaries.
 
 ### [1 COMPLETE - Connected Room Endpoint](../planpoints/PP-1.md)
 
@@ -77,6 +79,12 @@ working, success, and failure feedback.
 
 Wake words, continuous listening, camera input, and general agent autonomy
 remain deferred.
+
+GH-025 completed the repeated IdeaPad runner, per-phase stale-result rejection,
+and recovery coverage. The next voice issue should define and qualify fluent
+spoken interruption, selectable Pocket/Piper synthesis, selectable OpenRouter
+models, and the path from the local baseline to iMac/ThinkPad parity. GH-018
+scene activation remains deferred until that core boundary is accepted.
 
 ### [5 ACCEPTED - Independent Channel Evolution](../planpoints/PP-5.md)
 
