@@ -17,17 +17,16 @@ failure without exposing the system outside the home network.
 - Lighting: Philips Hue bridge and three lamps.
 
 The iMac's qualified hardware and operating-system baseline is recorded in
-[`IDEA.md`](docs/project/IDEA.md#imac-qualification-baseline).
+[PLT-001](docs/platform/issues/PLT-001.md).
 
 ## Project Documents
 
 | Document | Purpose |
 |---|---|
-| [`BACKLOG.md`](BACKLOG.md) | Deferred ideas that are not committed roadmap work |
-| [`IDEA.md`](docs/project/IDEA.md) | Product intent, hardware, user flows, and constraints |
-| [`ROADMAP.md`](docs/project/ROADMAP.md) | Current direction and deferred decisions |
-| [`PP-1.md`](docs/planpoints/PP-1.md) | Current connected-room-endpoint slice |
-| [`GH-001.md`](docs/issues/GH-001.md) | Completed repository-bootstrap record |
+| [Documentation index](docs/README.md) | Module ownership, issue prefixes, and navigation |
+| [General idea](docs/general/IDEA.md) | Product-wide intent and shared constraints |
+| [General roadmap](docs/general/ROADMAP.md) | Current direction across modules |
+| [Workflow](docs/general/WORKFLOW.md) | Lightweight module roadmaps and living issue records |
 
-Cortex Home uses the Crossroads workflow described in
-[`WORKFLOW.md`](docs/project/WORKFLOW.md).
+Each product area has its own IDEA, ROADMAP, active work, and completed issue
+history below `docs/`.

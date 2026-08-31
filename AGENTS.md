@@ -1,21 +1,20 @@
 ## Project Overview
 
-Crossroads is a documentation workflow for planning and reviewing AI-assisted
-project work while keeping human decisions explicit.
+Cortex Home is a local-first room interface. A ThinkPad owns coordination and
+durable state while an old iMac provides the visible channels and nearby media
+hardware.
 
 ## Read When Needed
 
 All documents inside `docs/` are local by design.
 
-- Product intent and constraints: `docs/project/IDEA.md`
-- Current direction: `docs/project/ROADMAP.md`
-- Workflow details: `docs/project/WORKFLOW.md`
-- Heatmap definitions: `docs/project/HEATMAP.md`
-- Accepted implementation patterns: `docs/project/PATTERNS.md`
-- Accepted style choices: `docs/project/STYLE.md`
-- Templates: `docs/templates/`
-- Manifesto: `docs/CROSSROADS_MANIFESTO.md` only when changing workflow,
-  templates, or this file.
+- Module index and issue prefixes: `docs/README.md`
+- Product-wide intent: `docs/general/IDEA.md`
+- Current project direction: `docs/general/ROADMAP.md`
+- Workflow details: `docs/general/WORKFLOW.md`
+- Shared issue template: `docs/general/templates/ISSUE.md`
+- Module intent and direction: `docs/<module>/IDEA.md` and
+  `docs/<module>/ROADMAP.md`
 
 ## Design Philosophy
 
@@ -48,19 +47,22 @@ judgment.*
 
 ## Documentation
 
-- **GH-XXX-PLAN.md:** Temporary issue plan in `docs/wip/`, deleted after merge.
-- **GH-XXX-REVIEW.md:** Temporary review document in `docs/wip/`, used only
-  when prompted.
-- **GH-XXX.md:** Final issue record. Keep it in `docs/wip/` before merge, then
-  move it to `docs/issues/` after merge.
+- Choose the module that owns the outcome and use its three-letter prefix.
+- Keep one living `<PREFIX>-<n>.md` issue record in the module's `wip/`
+  directory. Planning, implementation, useful review findings, and confirmation
+  belong in that record.
+- Move the same record to the module's `issues/` directory after completion.
+- Update the module ROADMAP when current behavior, direction, dependencies, or
+  a lasting decision changes.
+- Use General only for work that has no meaningful primary module.
 
 ## Git Conventions
 
-- **Branch format:** `<name>/GH-<n>/<revision>`; for example,
-  `felixf/GH-001/0`.
+- **Branch format:** `<name>/<PREFIX>-<n>/<revision>`; for example,
+  `felixf/ALA-002/0`.
 - **Commit format:**
   ```text
-  GH-001: Summary title
+  ALA-002: Summary title
 
   Previously we <did something>, which <caused bug | "smelled bad" | did not let us do feature>.
 
@@ -69,15 +71,14 @@ judgment.*
   The subject line is the issue prefix plus a short imperative title. The body
   is mandatory: one sentence on what existed before and why it was a problem,
   one sentence on how this commit resolves it.
-- **Atomic commits:** one commit does exactly one thing; never bundle unrelated
-  changes.
-- **Fixup commits:** use `git commit --fixup=<hash>` to create a fixup for an
-  earlier commit. Before pushing, rebase once to squash all pending fixups in
-  one pass.
+- **Coherent commits:** keep changes understandable and avoid unrelated bundles.
+  Closely related code, tests, and documentation may stay together.
+- **History cleanup:** fixups and squashing are optional. Do not spend work
+  manufacturing a perfect commit history.
 
 ### Completing Issue Work
 
-1. Ensure the issue recap at `docs/wip/GH-XXX.md` contains current **What**,
+1. Ensure the module issue record in `docs/<module>/wip/` contains current **What**,
    **Acceptance Criteria**, **Implementation Walkthrough**, **Problems
    Encountered**, **Confirmation**, and **Notes** sections.
    - The implementation walkthrough must explain the completed work in a useful
@@ -95,10 +96,14 @@ judgment.*
      instructions such as "run the app and inspect it."
    - Use unchecked task boxes for judgments only the user can make so approval
      remains with the reviewer.
-2. Run the repository's relevant checks and ensure the worktree is clean.
-3. Fetch the remote and rebase according to `docs/CROSSROADS_MANIFESTO.md` and
-   `docs/project/WORKFLOW.md`. Resolve conflicts carefully and rerun affected
+2. Update the owning module ROADMAP when the completed work changes current
+   behavior, direction, or lasting decisions.
+3. Run the repository's relevant checks and ensure the worktree is clean.
+4. Fetch and integrate current `main` according to
+   `docs/general/WORKFLOW.md`. Resolve conflicts carefully and rerun affected
    checks. Never rebase the default branch.
-4. Push the issue branch with upstream tracking. Use a normal push when history
+5. Move the living issue record from the module's `wip/` directory to its
+   `issues/` directory after integration.
+6. Push the issue branch with upstream tracking. Use a normal push when history
    is unchanged and `--force-with-lease` only when the rebase rewrote a branch
    that already exists remotely. Never use `--force`.

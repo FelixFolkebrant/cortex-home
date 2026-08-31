@@ -257,7 +257,7 @@ fixed non-negative numeric allowlist and ignores every other field.
 
 ## Local Voice Workbench
 
-GH-022 adds a development-laptop-only voice loop. It has no coordinator HTTP
+VOI-005 adds a development-laptop-only voice loop. It has no coordinator HTTP
 client, endpoint client, Hue adapter, room hardware access, or deployment
 configuration. It captures one bounded 15-second utterance with the selected
 Vosk recognizer, sends only its transcript through the pinned OpenRouter route,
