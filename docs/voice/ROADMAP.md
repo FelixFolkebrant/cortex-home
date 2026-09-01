@@ -16,13 +16,16 @@
 - [VOI-004](issues/VOI-004.md) establishes explicit browser voice sessions,
   provisional local turn detection, and endpoint-bound turn epochs. Its
   IdeaPad path is repeatable through the local development room.
+- [VOI-007](wip/VOI-007.md) keeps one coordinator-owned Pi dialogue child for
+  an active session, bounds its in-memory history, and streams local synthesis
+  segments to the browser before the complete response finishes.
 
 ## Next
 
-- Complete VOI-007 (stream Pi dialogue), then VOI-008 (barge-in and room
-  qualification), before adding any room-agent tools or other authority.
-- Evolve VOI-004's explicit session, local capture, and epoch ownership into
-  bounded ephemeral Pi dialogue, streamed response speech, and interruption.
+- Complete VOI-008 (barge-in and room qualification) before adding any
+  room-agent tools or other authority.
+- Evolve the bounded ephemeral Pi dialogue and streamed response speech from
+  VOI-007 into playback-aware interruption.
 - Measure end-to-end turn and barge-in latency on the actual IdeaPad and room
   hardware. Improve only measured bottlenecks.
 - Qualify privacy, recovery, narrow-layout, and keyboard behavior for a live
@@ -60,5 +63,11 @@
 - Run speech processing locally and keep raw audio off the internet.
 - Send only bounded text, current normalized context, and bounded ephemeral
   active-session history to the selected model provider.
+- An active dialogue retains at most six complete exchanges and 6,000 text
+  characters, evicting the oldest complete exchange before each provider
+  request; terminal session lifecycle events discard it.
+- The IdeaPad workbench keeps the voice path real. It may provide deterministic
+  room observations when the room is absent, but must fail for unavailable
+  voice dependencies rather than substitute canned voice behavior.
 - Keep room and laptop modes as compositions of the same replaceable dialogue
   core.
