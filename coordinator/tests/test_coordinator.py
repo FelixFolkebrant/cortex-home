@@ -1025,7 +1025,6 @@ class AgentInteractionTests(unittest.TestCase):
         self.assertEqual(set(context), {"activeChannel", "channel"})
         self.next_phase("transcribing")
         self.next_phase("thinking")
-
         speaking = self.coordinator.update_interaction(
             self.endpoint.token,
             "voice-1",
@@ -1041,6 +1040,42 @@ class AgentInteractionTests(unittest.TestCase):
         self.assertEqual(completed["phase"], "completed")
         self.next_phase("completed")
         self.assertIsNone(self.coordinator.active_interaction)
+
+    def test_publishes_only_current_ephemeral_partial_transcripts(self):
+        class PartialRecognizer(FakeRecognizer):
+            def partial_transcribe(self, _audio):
+                return "turn on the warm lights"
+
+        self.coordinator.recognizer = PartialRecognizer()
+        self.coordinator.start_voice_session(self.endpoint.token, "voice-subtitles")
+        self.endpoint.events.get(timeout=1)
+
+        self.coordinator.publish_voice_transcript(
+            self.endpoint.token,
+            "voice-subtitles",
+            1,
+            wave_audio().data,
+        )
+
+        event, payload = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "agent.transcript")
+        self.assertEqual(
+            payload,
+            {
+                "requestId": "voice-voice-subtitles-1",
+                "text": "turn on the warm lights",
+            },
+        )
+        self.coordinator.end_voice_session(self.endpoint.token, "voice-subtitles")
+        self.endpoint.events.get(timeout=1)
+        with self.assertRaises(ApiError) as raised:
+            self.coordinator.publish_voice_transcript(
+                self.endpoint.token,
+                "voice-subtitles",
+                1,
+                wave_audio().data,
+            )
+        self.assertEqual(raised.exception.code, "stale_voice_session")
 
     def test_rejects_invalid_audio_with_content_free_failed_phase(self):
         with self.assertRaises(ApiError) as raised:

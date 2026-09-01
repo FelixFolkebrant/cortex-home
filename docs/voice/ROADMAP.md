@@ -19,11 +19,12 @@
 - [VOI-007](issues/VOI-007.md) keeps one coordinator-owned Pi dialogue child for
   an active session, bounds its in-memory history, and streams local synthesis
   segments to the browser before the complete response finishes.
+- [VOI-008](issues/VOI-008.md) streams bounded Vosk partial recognition to the
+  active browser session as ephemeral movie-style subtitles, clearing it before
+  the turn reaches thinking or speaking and never exposing it to diagnostics.
 
 ## Next
 
-- Complete VOI-008 (barge-in and room qualification) before adding any
-  room-agent tools or other authority.
 - Evolve the bounded ephemeral Pi dialogue and streamed response speech from
   VOI-007 into playback-aware interruption.
 - Measure end-to-end turn and barge-in latency on the actual IdeaPad and room

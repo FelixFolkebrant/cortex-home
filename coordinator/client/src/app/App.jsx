@@ -111,6 +111,7 @@ export function App() {
   const [systemStatsVisible, setSystemStatsVisible] = useState(false);
   const [voiceDebug, setVoiceDebug] = useState(null);
   const [voiceDebugVisible, setVoiceDebugVisible] = useState(false);
+  const [subtitle, setSubtitle] = useState("");
   const currentClientEntry = document
     .querySelector('script[type="module"][src]')
     ?.getAttribute("src");
@@ -125,6 +126,7 @@ export function App() {
   const systemStatsVisibleRef = useRef(false);
   const voiceRequestId = useRef(null);
   const voiceSessionId = useRef(null);
+  const subtitleRequestId = useRef(null);
 
   useEffect(() => {
     function clearInteractionTimer() {
@@ -155,6 +157,8 @@ export function App() {
         activeRequestId.current = null;
         showInteraction(AGENT_INTERACTION_ACTION, "completed", null, 2500);
         voiceCapture.resumeTurnDetection();
+        subtitleRequestId.current = null;
+        setSubtitle("");
       },
       onDebug: (requestId, metrics) => {
         if (voiceRequestId.current !== requestId) {
@@ -174,6 +178,8 @@ export function App() {
         activeRequestId.current = null;
         showInteraction(AGENT_INTERACTION_ACTION, "failed", error.message, 5000);
         voiceCapture.resumeTurnDetection();
+        subtitleRequestId.current = null;
+        setSubtitle("");
       },
     });
 
@@ -213,6 +219,8 @@ export function App() {
           return;
         }
         const requestId = `voice-${sessionId}-${turnEpoch}`;
+        subtitleRequestId.current = null;
+        setSubtitle("");
         voiceRequestId.current = requestId;
         activeRequestId.current = requestId;
         setVoiceDebug({ phase: "uploading", requestId });
@@ -225,10 +233,27 @@ export function App() {
           turnEpoch,
         );
       },
-      onTurnStarted: (sessionId) => {
+      onTurnStarted: (sessionId, turnEpoch) => {
         if (voiceSessionId.current === sessionId && !voiceRequestId.current) {
+          subtitleRequestId.current = `voice-${sessionId}-${turnEpoch}`;
+          setSubtitle("");
           showInteraction(VOICE_CAPTURE_ACTION, "user-speaking");
         }
+      },
+      onPartialTurn: (sessionId, turnEpoch, audio) => {
+        if (voiceSessionId.current !== sessionId || !endpointToken.current) {
+          return;
+        }
+        void fetch(`/api/voice/sessions/${encodeURIComponent(sessionId)}/transcript`, {
+          body: audio,
+          headers: {
+            "Content-Type": "audio/wav",
+            "X-Endpoint-Token": endpointToken.current,
+            "X-Voice-Session": sessionId,
+            "X-Voice-Turn-Epoch": String(turnEpoch),
+          },
+          method: "POST",
+        });
       },
       onError: (requestId, error) => {
         if (voiceRequestId.current !== requestId) {
@@ -264,6 +289,8 @@ export function App() {
         voiceRequestId.current = null;
         voiceSessionId.current = null;
         activeRequestId.current = null;
+        subtitleRequestId.current = null;
+        setSubtitle("");
       }
       if (interactionCancelled && showFailure) {
         showInteraction(AGENT_INTERACTION_ACTION, "failed", message, 5000);
@@ -281,6 +308,8 @@ export function App() {
       const completion = spokenInteraction.cancel();
       voiceRequestId.current = null;
       activeRequestId.current = null;
+      subtitleRequestId.current = null;
+      setSubtitle("");
       showInteraction(VOICE_CAPTURE_ACTION, "ending");
       try {
         if (endpointToken.current) {
@@ -603,6 +632,8 @@ export function App() {
         voiceRequestId.current = null;
         activeRequestId.current = null;
         voiceCapture.resumeTurnDetection();
+        subtitleRequestId.current = null;
+        setSubtitle("");
       }
       setVoiceDebug((current) =>
         current?.requestId === message.requestId
@@ -615,6 +646,16 @@ export function App() {
         null,
         terminal ? (message.phase === "completed" ? 2500 : 5000) : null,
       );
+    });
+
+    events.addEventListener("agent.transcript", (event) => {
+      const message = parseMessage(event);
+      if (
+        message?.requestId === subtitleRequestId.current &&
+        typeof message.text === "string"
+      ) {
+        setSubtitle(message.text);
+      }
     });
 
     events.addEventListener("agent.audio", (event) => {
@@ -852,6 +893,7 @@ export function App() {
           connection={room.connection}
           lighting={room.lighting}
           interaction={room.interaction}
+          subtitle={subtitle}
           showLightingStatus={channel !== "music"}
           voiceDebug={voiceDebug}
           voiceDebugVisible={voiceDebugVisible}

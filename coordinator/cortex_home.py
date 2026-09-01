@@ -550,6 +550,36 @@ class Coordinator:
         threading.Thread(target=worker, daemon=True).start()
         return interaction.payload()
 
+    def publish_voice_transcript(self, endpoint_token, session_id, turn_epoch, audio_data):
+        self._validate_request_id(session_id)
+        with self.lock:
+            self._require_endpoint_locked(endpoint_token)
+            self._validate_session_turn_locked(endpoint_token, session_id, turn_epoch)
+            session = self.active_voice_session
+            if self.active_interaction:
+                raise ApiError(HTTPStatus.CONFLICT, "interaction_busy", "The room is already handling an interaction.")
+
+        try:
+            audio = read_capture(audio_data)
+            partial_transcribe = getattr(self.recognizer, "partial_transcribe", None)
+            if not callable(partial_transcribe):
+                return
+            transcript = partial_transcribe(audio)
+        except SpeechError:
+            raise ApiError(HTTPStatus.BAD_GATEWAY, "transcription_failed", "Speech transcription failed.") from None
+
+        if not transcript:
+            return
+        with self.lock:
+            if (
+                self.active_voice_session is not session
+                or session.cancelled.is_set()
+                or session.epoch >= turn_epoch
+                or self.active_interaction
+            ):
+                return
+            self._publish_interaction_transcript_locked(f"voice-{session_id}-{turn_epoch}", transcript)
+
     def interact(
         self,
         endpoint_token,
@@ -1208,6 +1238,10 @@ class Coordinator:
                 },
             )
 
+    def _publish_interaction_transcript_locked(self, request_id, transcript):
+        if self.endpoint:
+            self.endpoint.send("agent.transcript", {"requestId": request_id, "text": transcript})
+
     def _publish_interaction_audio_complete_locked(self, interaction):
         if self.endpoint and self.endpoint.token == interaction.endpoint_token:
             self.endpoint.send(
@@ -1464,6 +1498,19 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                     session_id,
                 )
                 self._send_json(HTTPStatus.OK, payload)
+                return
+
+            transcript_match = re.fullmatch(r"/api/voice/sessions/([^/]+)/transcript", path)
+            if transcript_match:
+                session_id = transcript_match.group(1)
+                self._validate_request_path(session_id)
+                header_session_id, turn_epoch = self._voice_turn_headers()
+                if header_session_id != session_id:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_voice_turn", "Voice turn headers are invalid.")
+                self.server.coordinator.publish_voice_transcript(
+                    self.headers.get("X-Endpoint-Token"), session_id, turn_epoch, self._read_audio()
+                )
+                self._send_json(HTTPStatus.NO_CONTENT, None)
                 return
 
             interaction_match = re.fullmatch(
