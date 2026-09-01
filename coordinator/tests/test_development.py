@@ -84,6 +84,26 @@ class DevelopmentCoordinatorTests(unittest.TestCase):
         finally:
             coordinator.close()
 
+    def test_room_scenario_accepts_a_session_turn(self):
+        coordinator = development_coordinator(ROOM_SCENARIO)
+        try:
+            endpoint, _snapshots = self.initial_snapshots(coordinator)
+            coordinator.start_voice_session(endpoint.token, "development-session")
+            endpoint.events.get(timeout=1)
+
+            answer = coordinator.interact(
+                endpoint.token,
+                "development-turn-1",
+                capture_audio(),
+                session_id="development-session",
+                turn_epoch=1,
+            )
+
+            self.assertEqual(read_synthesis(answer).duration_ms, 200)
+            self.assertEqual(coordinator.active_voice_session.epoch, 1)
+        finally:
+            coordinator.close()
+
     def test_unavailable_scenario_has_no_scene_activator(self):
         coordinator = development_coordinator(UNAVAILABLE_SCENARIO)
         try:

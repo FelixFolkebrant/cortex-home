@@ -54,7 +54,15 @@ class DevelopmentRecognizer:
 
 
 class DevelopmentAgent:
-    def answer(self, _request_id, _transcript, _context, cancelled):
+    def answer(
+        self,
+        _request_id,
+        _transcript,
+        _context,
+        cancelled,
+        _session_id=None,
+        _turn_epoch=None,
+    ):
         if cancelled.is_set():
             raise AgentError("cancelled")
         return DEVELOPMENT_ANSWER
