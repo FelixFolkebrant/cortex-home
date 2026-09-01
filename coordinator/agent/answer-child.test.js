@@ -187,6 +187,36 @@ test("the child request is exact, bounded, and channel scoped", () => {
   }
 });
 
+test("a session turn preserves its exact session ID and epoch", async () => {
+  const sessionRequest = {
+    ...request,
+    sessionId: "voice-session-1",
+    turnEpoch: 4,
+  };
+  const result = await answerRequest(sessionRequest, {
+    runtime: runtime([fauxAssistantMessage("A light jacket should be enough.")]),
+  });
+
+  assert.deepEqual(result, {
+    answer: "A light jacket should be enough.",
+    requestId: "voice-test-1",
+    sessionId: "voice-session-1",
+    status: "completed",
+    turnEpoch: 4,
+  });
+  for (const invalid of [
+    { ...sessionRequest, turnEpoch: 0 },
+    { ...sessionRequest, sessionId: "bad session" },
+    { ...sessionRequest, extra: true },
+    { ...request, turnEpoch: 1 },
+  ]) {
+    assert.throws(
+      () => validateRequest(invalid),
+      (error) => error instanceof AgentRequestError && error.code === "invalid_request",
+    );
+  }
+});
+
 test("provider payload always carries the privacy and output controls", () => {
   const payload = lockProviderPayload({
     messages: [{ content: "private", role: "user" }],

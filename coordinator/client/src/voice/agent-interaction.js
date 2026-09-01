@@ -82,7 +82,7 @@ export class SpokenInteraction {
     return this.session?.requestId === requestId;
   }
 
-  async start(requestId, capturedAudio, endpointToken) {
+  async start(requestId, capturedAudio, endpointToken, sessionId, turnEpoch) {
     if (this.session) {
       return false;
     }
@@ -94,8 +94,10 @@ export class SpokenInteraction {
       generation: ++this.generation,
       playbackStartedAt: null,
       requestId,
+      sessionId,
       startedAt: this.now(),
       url: null,
+      turnEpoch,
     };
     this.session = session;
     this.debug(session, {
@@ -112,6 +114,12 @@ export class SpokenInteraction {
           headers: {
             "Content-Type": "audio/wav",
             "X-Endpoint-Token": endpointToken,
+            ...(sessionId
+              ? {
+                  "X-Voice-Session": sessionId,
+                  "X-Voice-Turn-Epoch": String(turnEpoch),
+                }
+              : {}),
           },
           method: "POST",
           signal: session.controller.signal,

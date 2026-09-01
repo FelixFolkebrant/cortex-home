@@ -1,6 +1,9 @@
 export const VOICE_CAPTURE_ACTION = "speech.capture";
 export const PCM_SAMPLE_RATE = 16_000;
 export const MAX_CAPTURE_SECONDS = 15;
+export const MIN_SPEECH_MILLISECONDS = 400;
+export const END_OF_TURN_MILLISECONDS = 850;
+export const SPEECH_THRESHOLD = 0.018;
 
 const AUTHORITY_KEYS = new Set([
   "AltLeft",
@@ -27,6 +30,24 @@ export function voiceCaptureTransition(event) {
     return "stop";
   }
 
+  return null;
+}
+
+export function voiceSessionTransition(event) {
+  if (
+    event.type === "keydown" &&
+    event.code === "Space" &&
+    event.ctrlKey &&
+    event.altKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.repeat
+  ) {
+    return "toggle";
+  }
+  if (event.type === "keydown" && event.code === "Escape" && !event.repeat) {
+    return "end";
+  }
   return null;
 }
 
@@ -94,6 +115,20 @@ export function microphoneLevel(samples) {
   return Math.max(0, Math.min(1, (decibels + 60) / 48));
 }
 
+export function isSpeech(samples, threshold = SPEECH_THRESHOLD) {
+  if (!Number.isFinite(threshold) || threshold <= 0) {
+    throw new Error("Speech threshold must be positive.");
+  }
+  if (!(samples instanceof Float32Array)) {
+    throw new Error("Microphone samples must be PCM floats.");
+  }
+  let sumOfSquares = 0;
+  for (const sample of samples) {
+    sumOfSquares += sample * sample;
+  }
+  return samples.length > 0 && Math.sqrt(sumOfSquares / samples.length) >= threshold;
+}
+
 function stopTracks(stream) {
   for (const track of stream?.getTracks() || []) {
     track.stop();
@@ -109,6 +144,8 @@ export class VoiceCapture {
     onError,
     onLevel,
     onStarted,
+    onTurn,
+    onTurnStarted,
     setTimer = (callback, delay) => globalThis.setTimeout(callback, delay),
     clearTimer = (timer) => globalThis.clearTimeout(timer),
     workletUrl = new URL("./pcm-capture-worklet.js", import.meta.url),
@@ -120,6 +157,8 @@ export class VoiceCapture {
     this.onError = onError;
     this.onLevel = onLevel;
     this.onStarted = onStarted;
+    this.onTurn = onTurn;
+    this.onTurnStarted = onTurnStarted;
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
     this.workletUrl = workletUrl;
@@ -127,7 +166,7 @@ export class VoiceCapture {
     this.session = null;
   }
 
-  async start(requestId) {
+  async start(requestId, { continuous = false, turnEpoch = 0 } = {}) {
     if (this.session) {
       return false;
     }
@@ -135,6 +174,7 @@ export class VoiceCapture {
     const generation = ++this.generation;
     const session = {
       chunks: [],
+      continuous,
       context: null,
       generation,
       levelReportedAt: null,
@@ -143,6 +183,9 @@ export class VoiceCapture {
       source: null,
       stream: null,
       timer: null,
+      turn: null,
+      turnEpoch,
+      turnDetectionSuspended: false,
     };
     this.session = session;
 
@@ -158,10 +201,10 @@ export class VoiceCapture {
     try {
       const stream = await this.mediaDevices.getUserMedia({
         audio: {
-          autoGainControl: false,
+          autoGainControl: true,
           channelCount: { ideal: 1 },
-          echoCancellation: false,
-          noiseSuppression: false,
+          echoCancellation: true,
+          noiseSuppression: true,
           sampleRate: { ideal: PCM_SAMPLE_RATE },
         },
         video: false,
@@ -190,7 +233,12 @@ export class VoiceCapture {
       silence.gain.value = 0;
       session.node.port.onmessage = ({ data }) => {
         if (this.isCurrent(session) && data instanceof Float32Array) {
-          session.chunks.push(data);
+          if (!session.continuous) {
+            session.chunks.push(data);
+          }
+          if (session.continuous) {
+            this.detectTurn(session, data);
+          }
           const now = Date.now();
           if (session.levelReportedAt === null || now - session.levelReportedAt >= 50) {
             session.levelReportedAt = now;
@@ -219,12 +267,14 @@ export class VoiceCapture {
         );
       }
 
-      session.timer = this.setTimer(() => {
-        this.fail(
-          session,
-          new Error(`Capture exceeded ${MAX_CAPTURE_SECONDS} seconds.`),
-        );
-      }, MAX_CAPTURE_SECONDS * 1000);
+      if (!session.continuous) {
+        session.timer = this.setTimer(() => {
+          this.fail(
+            session,
+            new Error(`Capture exceeded ${MAX_CAPTURE_SECONDS} seconds.`),
+          );
+        }, MAX_CAPTURE_SECONDS * 1000);
+      }
       this.onStarted(requestId);
       return true;
     } catch (error) {
@@ -258,6 +308,34 @@ export class VoiceCapture {
         error instanceof Error ? error : new Error("Microphone capture failed."),
       );
     }
+    return true;
+  }
+
+  end(requestId) {
+    const session = this.session;
+    if (!session || session.requestId !== requestId) {
+      return false;
+    }
+    this.session = null;
+    this.generation += 1;
+    this.stopSession(session);
+    return true;
+  }
+
+  suspendTurnDetection() {
+    if (!this.session?.continuous) {
+      return false;
+    }
+    this.session.turnDetectionSuspended = true;
+    this.session.turn = null;
+    return true;
+  }
+
+  resumeTurnDetection() {
+    if (!this.session?.continuous) {
+      return false;
+    }
+    this.session.turnDetectionSuspended = false;
     return true;
   }
 
@@ -310,5 +388,66 @@ export class VoiceCapture {
     session.source?.disconnect();
     session.node?.disconnect();
     session.context?.close().catch(() => {});
+  }
+
+  detectTurn(session, samples) {
+    if (session.turnDetectionSuspended) {
+      return;
+    }
+    const milliseconds = (samples.length / PCM_SAMPLE_RATE) * 1000;
+    const voiced = isSpeech(samples);
+    if (!session.turn) {
+      if (!voiced) {
+        return;
+      }
+      session.turn = {
+        chunks: [samples],
+        silenceMs: 0,
+        speechMs: milliseconds,
+        startedReported: false,
+      };
+      return;
+    }
+
+    session.turn.chunks.push(samples);
+    if (voiced) {
+      session.turn.speechMs += milliseconds;
+      session.turn.silenceMs = 0;
+    } else {
+      session.turn.silenceMs += milliseconds;
+    }
+    if (
+      !session.turn.startedReported &&
+      session.turn.speechMs >= MIN_SPEECH_MILLISECONDS
+    ) {
+      session.turn.startedReported = true;
+      this.onTurnStarted?.(session.requestId, session.turnEpoch + 1);
+    }
+    const totalSamples = session.turn.chunks.reduce(
+      (total, chunk) => total + chunk.length,
+      0,
+    );
+    const reachedEnd =
+      session.turn.silenceMs >= END_OF_TURN_MILLISECONDS ||
+      totalSamples >= PCM_SAMPLE_RATE * MAX_CAPTURE_SECONDS;
+    if (!reachedEnd) {
+      return;
+    }
+
+    const turn = session.turn;
+    session.turn = null;
+    if (turn.speechMs < MIN_SPEECH_MILLISECONDS) {
+      return;
+    }
+    session.turnDetectionSuspended = true;
+    session.turnEpoch += 1;
+    try {
+      this.onTurn?.(session.requestId, session.turnEpoch, createPcmWav(turn.chunks));
+    } catch (error) {
+      this.onError(
+        session.requestId,
+        error instanceof Error ? error : new Error("Microphone capture failed."),
+      );
+    }
   }
 }

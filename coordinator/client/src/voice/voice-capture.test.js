@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createPcmWav,
+  END_OF_TURN_MILLISECONDS,
+  isSpeech,
   MAX_CAPTURE_SECONDS,
+  MIN_SPEECH_MILLISECONDS,
   microphoneLevel,
   PCM_SAMPLE_RATE,
   VoiceCapture,
   voiceCaptureTransition,
+  voiceSessionTransition,
 } from "./voice-capture.js";
 
 function shortcut(overrides = {}) {
@@ -40,6 +44,54 @@ test("releasing any authority key stops an active chord", () => {
     voiceCaptureTransition(shortcut({ code: "ShiftLeft", type: "keyup" })),
     null,
   );
+});
+
+test("the continuous-session shortcut toggles only on deliberate key presses", () => {
+  assert.equal(voiceSessionTransition(shortcut()), "toggle");
+  assert.equal(voiceSessionTransition(shortcut({ repeat: true })), null);
+  assert.equal(voiceSessionTransition(shortcut({ shiftKey: true })), null);
+  assert.equal(
+    voiceSessionTransition({ code: "Escape", repeat: false, type: "keydown" }),
+    "end",
+  );
+  assert.equal(
+    voiceSessionTransition({ code: "Escape", repeat: true, type: "keydown" }),
+    null,
+  );
+});
+
+test("turn detection requires sustained local speech and a natural pause", async () => {
+  const turns = [];
+  const capture = new VoiceCapture({
+    audioContext: class {},
+    audioWorkletNode: class {},
+    mediaDevices: {},
+    onError: (requestId, error) => assert.fail(`${requestId}: ${error.message}`),
+    onTurn: async (sessionId, epoch, audio) => turns.push({ audio, epoch, sessionId }),
+  });
+  const session = {
+    continuous: true,
+    requestId: "session-1",
+    turn: null,
+    turnDetectionSuspended: false,
+    turnEpoch: 0,
+  };
+  const frameCount = Math.ceil((MIN_SPEECH_MILLISECONDS / 1000) * PCM_SAMPLE_RATE);
+  const speech = new Float32Array(frameCount).fill(0.08);
+  const silence = new Float32Array(
+    Math.ceil((END_OF_TURN_MILLISECONDS / 1000) * PCM_SAMPLE_RATE),
+  );
+
+  assert.equal(isSpeech(speech), true);
+  assert.equal(isSpeech(silence), false);
+  capture.detectTurn(session, speech);
+  capture.detectTurn(session, silence);
+
+  assert.equal(turns.length, 1);
+  assert.equal(turns[0].sessionId, "session-1");
+  assert.equal(turns[0].epoch, 1);
+  assert.equal(turns[0].audio.type, "audio/wav");
+  assert.equal(session.turnDetectionSuspended, true);
 });
 
 test("capture output is bounded mono 16 kHz signed 16-bit PCM WAV", async () => {

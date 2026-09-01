@@ -41,15 +41,26 @@ class NodeAgent:
         if not isinstance(api_key, str) or not api_key:
             raise AgentError("agent_unconfigured")
 
-    def answer(self, request_id, transcript, context, cancelled):
-        payload = json.dumps(
-            {
-                "requestId": request_id,
-                "transcript": transcript,
-                "context": context,
-            },
-            separators=(",", ":"),
-        )
+    def answer(
+        self,
+        request_id,
+        transcript,
+        context,
+        cancelled,
+        session_id=None,
+        turn_epoch=None,
+    ):
+        request = {
+            "requestId": request_id,
+            "transcript": transcript,
+            "context": context,
+        }
+        if session_id is not None or turn_epoch is not None:
+            if not isinstance(session_id, str) or not isinstance(turn_epoch, int):
+                raise AgentError("invalid_request")
+            request["sessionId"] = session_id
+            request["turnEpoch"] = turn_epoch
+        payload = json.dumps(request, separators=(",", ":"))
         environment = {
             "LANG": "C.UTF-8",
             "OPENROUTER_API_KEY": self.api_key,
@@ -123,11 +134,16 @@ class NodeAgent:
             )
 
         answer = result.get("answer")
+        expected_keys = {"answer", "requestId", "status"}
+        if session_id is not None:
+            expected_keys.update({"sessionId", "turnEpoch"})
         if (
             process.returncode != 0
-            or set(result) != {"answer", "requestId", "status"}
+            or set(result) != expected_keys
             or result["status"] != "completed"
             or result["requestId"] != request_id
+            or (session_id is not None and result["sessionId"] != session_id)
+            or (session_id is not None and result["turnEpoch"] != turn_epoch)
             or not isinstance(answer, str)
             or answer.strip() != answer
             or not 1 <= len(answer) <= MAX_ANSWER_CHARACTERS

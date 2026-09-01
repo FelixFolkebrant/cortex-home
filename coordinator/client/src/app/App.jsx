@@ -19,7 +19,7 @@ import { RoomFeedback } from "../voice/RoomFeedback";
 import {
   VOICE_CAPTURE_ACTION,
   VoiceCapture,
-  voiceCaptureTransition,
+  voiceSessionTransition,
 } from "../voice/voice-capture";
 import {
   CHANNEL_ACTION,
@@ -124,6 +124,7 @@ export function App() {
   const activeChannel = useRef("today");
   const systemStatsVisibleRef = useRef(false);
   const voiceRequestId = useRef(null);
+  const voiceSessionId = useRef(null);
 
   useEffect(() => {
     function clearInteractionTimer() {
@@ -153,6 +154,7 @@ export function App() {
         voiceRequestId.current = null;
         activeRequestId.current = null;
         showInteraction(AGENT_INTERACTION_ACTION, "completed", null, 2500);
+        voiceCapture.resumeTurnDetection();
       },
       onDebug: (requestId, metrics) => {
         if (voiceRequestId.current !== requestId) {
@@ -171,6 +173,7 @@ export function App() {
         voiceRequestId.current = null;
         activeRequestId.current = null;
         showInteraction(AGENT_INTERACTION_ACTION, "failed", error.message, 5000);
+        voiceCapture.resumeTurnDetection();
       },
     });
 
@@ -195,6 +198,38 @@ export function App() {
         showInteraction(AGENT_INTERACTION_ACTION, "transcribing");
         void spokenInteraction.start(requestId, audio, endpointToken.current);
       },
+      onTurn: (sessionId, turnEpoch, audio) => {
+        if (voiceSessionId.current !== sessionId || voiceRequestId.current) {
+          return;
+        }
+        if (!endpointToken.current) {
+          showInteraction(
+            AGENT_INTERACTION_ACTION,
+            "failed",
+            "The coordinator is unavailable.",
+            5000,
+          );
+          voiceCapture.resumeTurnDetection();
+          return;
+        }
+        const requestId = `voice-${sessionId}-${turnEpoch}`;
+        voiceRequestId.current = requestId;
+        activeRequestId.current = requestId;
+        setVoiceDebug({ phase: "uploading", requestId });
+        showInteraction(AGENT_INTERACTION_ACTION, "transcribing");
+        void spokenInteraction.start(
+          requestId,
+          audio,
+          endpointToken.current,
+          sessionId,
+          turnEpoch,
+        );
+      },
+      onTurnStarted: (sessionId) => {
+        if (voiceSessionId.current === sessionId && !voiceRequestId.current) {
+          showInteraction(VOICE_CAPTURE_ACTION, "user-speaking");
+        }
+      },
       onError: (requestId, error) => {
         if (voiceRequestId.current !== requestId) {
           return;
@@ -210,15 +245,16 @@ export function App() {
         }
       },
       onStarted: (requestId) => {
-        if (voiceRequestId.current === requestId) {
-          setVoiceDebug((current) => ({ ...current, phase: "capturing" }));
+        if (voiceSessionId.current === requestId) {
+          setVoiceDebug({ phase: "listening", requestId });
           showInteraction(VOICE_CAPTURE_ACTION, "listening");
         }
       },
     });
 
     function cancelVoice(message, showFailure = false) {
-      const captureCancelled = voiceCapture.cancel(message);
+      const sessionId = voiceSessionId.current;
+      const captureCancelled = sessionId && voiceCapture.end(sessionId);
       const interactionCancelled = Boolean(spokenInteraction.session);
       const completion = interactionCancelled
         ? spokenInteraction.cancel()
@@ -226,12 +262,95 @@ export function App() {
       const cancelled = captureCancelled || interactionCancelled;
       if (cancelled) {
         voiceRequestId.current = null;
+        voiceSessionId.current = null;
         activeRequestId.current = null;
       }
       if (interactionCancelled && showFailure) {
         showInteraction(AGENT_INTERACTION_ACTION, "failed", message, 5000);
       }
       return { cancelled, completion };
+    }
+
+    async function endVoiceSession(message, showFailure = false) {
+      const sessionId = voiceSessionId.current;
+      if (!sessionId) {
+        return false;
+      }
+      voiceSessionId.current = null;
+      voiceCapture.end(sessionId);
+      const completion = spokenInteraction.cancel();
+      voiceRequestId.current = null;
+      activeRequestId.current = null;
+      showInteraction(VOICE_CAPTURE_ACTION, "ending");
+      try {
+        if (endpointToken.current) {
+          await fetch(`/api/voice/sessions/${encodeURIComponent(sessionId)}`, {
+            headers: { "X-Endpoint-Token": endpointToken.current },
+            method: "DELETE",
+          });
+        }
+      } catch {
+        // Reconnection also invalidates the coordinator-owned session.
+      }
+      await completion;
+      if (showFailure) {
+        showInteraction(VOICE_CAPTURE_ACTION, "failed", message, 5000);
+      } else {
+        showInteraction(VOICE_CAPTURE_ACTION, "ended", message, 2500);
+      }
+      return true;
+    }
+
+    async function startVoiceSession() {
+      if (!endpointToken.current) {
+        showInteraction(
+          VOICE_CAPTURE_ACTION,
+          "failed",
+          "The coordinator is unavailable.",
+          5000,
+        );
+        return;
+      }
+      const sessionId = `voice-session-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      showInteraction(VOICE_CAPTURE_ACTION, "requesting");
+      try {
+        const response = await fetch(
+          `/api/voice/sessions/${encodeURIComponent(sessionId)}`,
+          {
+            headers: { "X-Endpoint-Token": endpointToken.current },
+            method: "POST",
+          },
+        );
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(result.error || "The voice session could not start.");
+        }
+        const session = await response.json();
+        voiceSessionId.current = sessionId;
+        if (
+          session.sessionId !== sessionId ||
+          session.state !== "listening" ||
+          !Number.isSafeInteger(session.turnEpoch)
+        ) {
+          throw new Error("The coordinator returned an invalid voice session.");
+        }
+        const started = await voiceCapture.start(sessionId, {
+          continuous: true,
+          turnEpoch: session.turnEpoch,
+        });
+        if (!started && voiceSessionId.current === sessionId) {
+          await endVoiceSession("The microphone request failed.", true);
+        }
+      } catch (error) {
+        if (voiceSessionId.current === sessionId) {
+          await endVoiceSession("The voice session could not start.", false);
+        }
+        const message =
+          error instanceof Error ? error.message : "The voice session could not start.";
+        showInteraction(VOICE_CAPTURE_ACTION, "failed", message, 5000);
+      }
     }
 
     async function postStatus(requestId, status, error) {
@@ -483,6 +602,7 @@ export function App() {
         spokenInteraction.stop(message.requestId);
         voiceRequestId.current = null;
         activeRequestId.current = null;
+        voiceCapture.resumeTurnDetection();
       }
       setVoiceDebug((current) =>
         current?.requestId === message.requestId
@@ -495,6 +615,20 @@ export function App() {
         null,
         terminal ? (message.phase === "completed" ? 2500 : 5000) : null,
       );
+    });
+
+    events.addEventListener("voice.session", (event) => {
+      const session = parseMessage(event);
+      if (!session || session.sessionId !== voiceSessionId.current) {
+        return;
+      }
+      if (session.state === "ended") {
+        voiceSessionId.current = null;
+        voiceRequestId.current = null;
+        voiceCapture.end(session.sessionId);
+        activeRequestId.current = null;
+        showInteraction(VOICE_CAPTURE_ACTION, "ended", null, 2500);
+      }
     });
 
     events.addEventListener("action.status", (event) => {
@@ -514,7 +648,7 @@ export function App() {
       }
 
       if (message.status === "accepted") {
-        cancelVoice("Microphone capture was cancelled by another room action.");
+        void endVoiceSession("Voice session ended by another room action.");
         activeRequestId.current = message.requestId;
         showInteraction(message.action, "working", null, null, message.scene);
       } else if (
@@ -611,7 +745,8 @@ export function App() {
         return;
       }
 
-      if (voiceCaptureTransition(event) === "start") {
+      const voiceTransition = voiceSessionTransition(event);
+      if (voiceTransition) {
         if (
           activeRequestId.current &&
           !spokenInteraction.owns(activeRequestId.current)
@@ -619,30 +754,11 @@ export function App() {
           return;
         }
         event.preventDefault();
-        const { completion } = cancelVoice(
-          "The previous voice interaction was replaced.",
-        );
-        await completion;
-        if (activeRequestId.current) {
-          return;
+        if (voiceSessionId.current) {
+          await endVoiceSession("Voice session ended.");
+        } else if (voiceTransition === "toggle") {
+          await startVoiceSession();
         }
-        if (!endpointToken.current) {
-          showInteraction(
-            AGENT_INTERACTION_ACTION,
-            "failed",
-            "The coordinator is unavailable.",
-            5000,
-          );
-          return;
-        }
-        const requestId = `voice-${Date.now().toString(36)}-${Math.random()
-          .toString(36)
-          .slice(2, 10)}`;
-        voiceRequestId.current = requestId;
-        activeRequestId.current = requestId;
-        setVoiceDebug({ phase: "requesting", requestId });
-        showInteraction(VOICE_CAPTURE_ACTION, "requesting");
-        voiceCapture.start(requestId);
         return;
       }
 
@@ -658,19 +774,11 @@ export function App() {
       }
     }
 
-    function onKeyUp(event) {
-      if (voiceCaptureTransition(event) === "stop" && voiceRequestId.current) {
-        event.preventDefault();
-        voiceCapture.release(voiceRequestId.current);
-      }
-    }
-
     function onBlur() {
-      cancelVoice("Voice interaction was cancelled when the display lost focus.", true);
+      void endVoiceSession("Voice session ended when the display lost focus.", true);
     }
 
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onBlur);
 
     return () => {
@@ -680,7 +788,6 @@ export function App() {
       alarmAction.current = null;
       events.close();
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
     };
   }, [currentClientEntry]);

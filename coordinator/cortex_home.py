@@ -138,12 +138,34 @@ class EndpointConnection:
 class AgentInteraction:
     request_id: str
     endpoint_token: str
+    session_id: str | None = None
+    turn_epoch: int | None = None
     phase: str = "transcribing"
     cancelled: threading.Event = field(default_factory=threading.Event)
     playback_timer: threading.Timer | None = None
 
     def payload(self):
-        return {"requestId": self.request_id, "phase": self.phase}
+        payload = {"requestId": self.request_id, "phase": self.phase}
+        if self.session_id:
+            payload["sessionId"] = self.session_id
+            payload["turnEpoch"] = self.turn_epoch
+        return payload
+
+
+@dataclass
+class VoiceSession:
+    session_id: str
+    endpoint_token: str
+    epoch: int = 0
+    state: str = "listening"
+    cancelled: threading.Event = field(default_factory=threading.Event)
+
+    def payload(self):
+        return {
+            "sessionId": self.session_id,
+            "turnEpoch": self.epoch,
+            "state": self.state,
+        }
 
 
 class Coordinator:
@@ -173,6 +195,8 @@ class Coordinator:
         self.requests = OrderedDict()
         self.active_interaction = None
         self.interactions = OrderedDict()
+        self.active_voice_session = None
+        self.voice_sessions = OrderedDict()
         self.playback = {
             "status": "unavailable",
             "item": None,
@@ -203,6 +227,7 @@ class Coordinator:
                     HTTPStatus.SERVICE_UNAVAILABLE,
                 )
                 self._fail_endpoint_interaction_locked(previous.token)
+                self._end_endpoint_voice_session_locked(previous.token)
                 previous.close()
 
             self.endpoint = EndpointConnection()
@@ -225,6 +250,7 @@ class Coordinator:
                 HTTPStatus.SERVICE_UNAVAILABLE,
             )
             self._fail_endpoint_interaction_locked(token)
+            self._end_endpoint_voice_session_locked(token)
 
     def submit(self, request_id, action, channel=None, scene=None, alarm_time=None):
         self._validate_request_id(request_id)
@@ -359,7 +385,71 @@ class Coordinator:
 
         return self._wait_for_endpoint_action(pending)
 
-    def interact(self, endpoint_token, request_id, audio_data, metrics=None):
+    def start_voice_session(self, endpoint_token, session_id):
+        self._validate_request_id(session_id)
+        with self.lock:
+            self._require_endpoint_locked(endpoint_token)
+            if self.active_request_id or self.active_interaction:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "interaction_busy",
+                    "The room is already handling an interaction.",
+                )
+            if self.active_voice_session:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "voice_session_active",
+                    "The endpoint already owns an active voice session.",
+                )
+            if session_id in self.voice_sessions:
+                raise ApiError(
+                    HTTPStatus.CONFLICT,
+                    "duplicate_session_id",
+                    "The voice session ID has already been used.",
+                )
+            session = VoiceSession(session_id, endpoint_token)
+            self.voice_sessions[session_id] = session
+            self.active_voice_session = session
+            self._trim_voice_sessions_locked()
+            self._publish_voice_session_locked(session)
+            return session.payload()
+
+    def end_voice_session(self, endpoint_token, session_id):
+        self._validate_request_id(session_id)
+        with self.lock:
+            self._require_endpoint_locked(endpoint_token)
+            session = self.voice_sessions.get(session_id)
+            if not session or session.endpoint_token != endpoint_token:
+                raise ApiError(
+                    HTTPStatus.NOT_FOUND,
+                    "unknown_voice_session",
+                    "No voice session matches this endpoint and session ID.",
+                )
+            if session.state in {"ended", "failed"}:
+                return session.payload()
+            session.cancelled.set()
+            session.state = "ending"
+            self._publish_voice_session_locked(session)
+            if (
+                self.active_interaction
+                and self.active_interaction.session_id == session_id
+            ):
+                self._finish_interaction_locked(self.active_interaction, "failed")
+            if self.active_voice_session is session:
+                self.active_voice_session = None
+            session.state = "ended"
+            self._publish_voice_session_locked(session)
+            return session.payload()
+
+    def interact(
+        self,
+        endpoint_token,
+        request_id,
+        audio_data,
+        metrics=None,
+        session_id=None,
+        turn_epoch=None,
+    ):
         metrics = metrics if isinstance(metrics, dict) else {}
         self._validate_request_id(request_id)
         with self.lock:
@@ -383,7 +473,24 @@ class Coordinator:
                     "The voice agent is unavailable.",
                 )
 
-            interaction = AgentInteraction(request_id, endpoint_token)
+            session = None
+            if session_id is not None or turn_epoch is not None:
+                self._validate_session_turn_locked(
+                    endpoint_token,
+                    session_id,
+                    turn_epoch,
+                )
+                session = self.active_voice_session
+                session.epoch = turn_epoch
+                session.state = "user-speaking"
+                self._publish_voice_session_locked(session)
+
+            interaction = AgentInteraction(
+                request_id,
+                endpoint_token,
+                session_id=session_id,
+                turn_epoch=turn_epoch,
+            )
             self.interactions[request_id] = interaction
             self.active_interaction = interaction
             self._trim_interactions_locked()
@@ -429,12 +536,22 @@ class Coordinator:
 
             started = time.perf_counter()
             try:
-                answer = self.agent.answer(
-                    request_id,
-                    transcript,
-                    context,
-                    interaction.cancelled,
-                )
+                if session:
+                    answer = self.agent.answer(
+                        request_id,
+                        transcript,
+                        context,
+                        interaction.cancelled,
+                        session_id,
+                        turn_epoch,
+                    )
+                else:
+                    answer = self.agent.answer(
+                        request_id,
+                        transcript,
+                        context,
+                        interaction.cancelled,
+                    )
             except AgentError as error:
                 if error.code == "cancelled":
                     self._ensure_interaction_current(interaction)
@@ -966,6 +1083,58 @@ class Coordinator:
         ):
             self.endpoint.send("agent.interaction", interaction.payload())
 
+    def _publish_voice_session_locked(self, session):
+        if self.endpoint and self.endpoint.token == session.endpoint_token:
+            self.endpoint.send("voice.session", session.payload())
+
+    def _validate_session_turn_locked(self, endpoint_token, session_id, turn_epoch):
+        if not isinstance(session_id, str) or not isinstance(turn_epoch, int):
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_voice_turn",
+                "A voice turn requires a session ID and positive turn epoch.",
+            )
+        self._validate_request_id(session_id)
+        if turn_epoch < 1:
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_voice_turn",
+                "A voice turn requires a session ID and positive turn epoch.",
+            )
+        session = self.active_voice_session
+        if (
+            not session
+            or session.session_id != session_id
+            or session.endpoint_token != endpoint_token
+            or session.cancelled.is_set()
+            or session.state != "listening"
+        ):
+            raise ApiError(
+                HTTPStatus.CONFLICT,
+                "stale_voice_session",
+                "The voice session is no longer active.",
+            )
+        if turn_epoch != session.epoch + 1:
+            raise ApiError(
+                HTTPStatus.CONFLICT,
+                "stale_turn_epoch",
+                "The voice turn is stale or out of order.",
+            )
+
+    def _end_endpoint_voice_session_locked(self, endpoint_token):
+        session = self.active_voice_session
+        if session and session.endpoint_token == endpoint_token:
+            session.cancelled.set()
+            session.state = "ended"
+            self.active_voice_session = None
+
+    def _trim_voice_sessions_locked(self):
+        while len(self.voice_sessions) > MAX_REQUESTS:
+            oldest_id, oldest = next(iter(self.voice_sessions.items()))
+            if oldest is self.active_voice_session:
+                break
+            del self.voice_sessions[oldest_id]
+
     def _finish_interaction_locked(self, interaction, phase):
         if interaction.phase in {"completed", "failed"}:
             return
@@ -977,6 +1146,15 @@ class Coordinator:
         if self.active_interaction is interaction:
             self.active_interaction = None
         self._publish_interaction_locked(interaction)
+        session = self.active_voice_session
+        if (
+            session
+            and interaction.session_id == session.session_id
+            and not session.cancelled.is_set()
+            and phase in {"completed", "failed"}
+        ):
+            session.state = "listening"
+            self._publish_voice_session_locked(session)
 
     def _fail_endpoint_interaction_locked(self, endpoint_token):
         interaction = self.active_interaction
@@ -1123,6 +1301,17 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         debug_metrics = None
         try:
+            voice_session_match = re.fullmatch(r"/api/voice/sessions/([^/]+)", path)
+            if voice_session_match:
+                session_id = voice_session_match.group(1)
+                self._validate_request_path(session_id)
+                payload = self.server.coordinator.start_voice_session(
+                    self.headers.get("X-Endpoint-Token"),
+                    session_id,
+                )
+                self._send_json(HTTPStatus.OK, payload)
+                return
+
             interaction_match = re.fullmatch(
                 r"/api/agent/interactions/([^/]+)",
                 path,
@@ -1140,6 +1329,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                     request_id,
                     audio,
                     debug_metrics,
+                    *self._voice_turn_headers(),
                 )
                 try:
                     self._send_audio(result, debug_metrics)
@@ -1207,6 +1397,16 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         path = urlparse(self.path).path
         try:
+            voice_session_match = re.fullmatch(r"/api/voice/sessions/([^/]+)", path)
+            if voice_session_match:
+                session_id = voice_session_match.group(1)
+                self._validate_request_path(session_id)
+                payload = self.server.coordinator.end_voice_session(
+                    self.headers.get("X-Endpoint-Token"),
+                    session_id,
+                )
+                self._send_json(HTTPStatus.OK, payload)
+                return
             match = re.fullmatch(r"/api/agent/interactions/([^/]+)", path)
             if not match:
                 raise ApiError(
@@ -1223,6 +1423,23 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.OK, payload)
         except ApiError as error:
             self._send_error(error)
+
+    def _voice_turn_headers(self):
+        session_id = self.headers.get("X-Voice-Session")
+        epoch = self.headers.get("X-Voice-Turn-Epoch")
+        if session_id is None and epoch is None:
+            return None, None
+        if (
+            session_id is None
+            or not isinstance(epoch, str)
+            or not re.fullmatch(r"[1-9][0-9]{0,15}", epoch)
+        ):
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_voice_turn",
+                "Voice turn headers are invalid.",
+            )
+        return session_id, int(epoch)
 
     def _serve_static(self, relative_path):
         file_path = (self.server.client_directory / relative_path).resolve()

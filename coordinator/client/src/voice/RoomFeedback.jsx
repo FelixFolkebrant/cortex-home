@@ -17,8 +17,10 @@ const interactionCopy = {
   },
   [VOICE_CAPTURE_ACTION]: {
     requesting: ["Opening microphone.", "Waiting for the room microphone."],
-    listening: ["Listening.", "Keep holding Control, Alt, and Space."],
-    captured: ["Captured.", "The bounded utterance was released."],
+    listening: ["Listening.", "Speak naturally. Press Control, Alt, and Space to end."],
+    "user-speaking": ["Hearing you.", "Pause naturally when you are finished."],
+    ending: ["Ending voice session.", "Closing the microphone and current turn."],
+    ended: ["Voice session ended.", "The microphone is no longer active."],
     failed: ["Couldn’t capture.", "The microphone request failed."],
   },
   [AGENT_INTERACTION_ACTION]: {
@@ -155,18 +157,21 @@ function VoiceCaptureBar({ interaction }) {
   const [title, defaultMessage] = copy;
   const level = Math.max(0, Math.min(1, interaction.level || 0));
   const width = {
-    captured: 55,
     completed: 100,
+    ending: 100,
+    ended: 100,
     failed: 100,
     listening: 10 + level * 90,
     requesting: 18,
     speaking: 90,
     thinking: 66,
     transcribing: 40,
+    "user-speaking": 10 + level * 90,
   }[interaction.state];
   const tone = {
-    captured: "bg-[#92d6a1] shadow-[0_0_1.5rem_rgb(146_214_161_/_55%)]",
     completed: "bg-[#92d6a1] shadow-[0_0_1.5rem_rgb(146_214_161_/_55%)]",
+    ending: "animate-pulse bg-[#736959] motion-reduce:animate-none",
+    ended: "bg-[#736959]",
     failed: "bg-[#e67d6f] shadow-[0_0_1.5rem_rgb(230_125_111_/_55%)]",
     listening: "bg-[#d6a954] shadow-[0_0_1.75rem_rgb(214_169_84_/_65%)]",
     requesting:
@@ -177,6 +182,7 @@ function VoiceCaptureBar({ interaction }) {
       "animate-pulse bg-[#d6a954] shadow-[0_0_1.5rem_rgb(214_169_84_/_55%)] motion-reduce:animate-none",
     transcribing:
       "animate-pulse bg-[#d6a954] shadow-[0_0_1.5rem_rgb(214_169_84_/_55%)] motion-reduce:animate-none",
+    "user-speaking": "bg-[#d6a954] shadow-[0_0_1.75rem_rgb(214_169_84_/_65%)]",
   }[interaction.state];
 
   return (

@@ -57,14 +57,31 @@ export const OPENROUTER_MODEL = Object.freeze({
 export { AgentTurnError as AgentRequestError, MAX_ANSWER_CHARACTERS, MAX_CONTEXT_BYTES, MAX_TRANSCRIPT_CHARACTERS };
 
 export function validateRequest(value) {
-  const request = validateTurnRequest(value);
+  const hasSession =
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    ("sessionId" in value || "turnEpoch" in value);
+  if (
+    hasSession &&
+    (!Object.hasOwn(value, "sessionId") ||
+      !Object.hasOwn(value, "turnEpoch") ||
+      typeof value.sessionId !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(value.sessionId) ||
+      !Number.isSafeInteger(value.turnEpoch) ||
+      value.turnEpoch < 1)
+  ) {
+    throw new AgentTurnError("invalid_request");
+  }
+  const { sessionId, turnEpoch, ...turn } = value || {};
+  const request = validateTurnRequest(turn);
   if (
     Object.keys(request.context).sort().join(",") !== "activeChannel,channel" ||
     !["music", "today"].includes(request.context.activeChannel)
   ) {
     throw new AgentTurnError("invalid_request");
   }
-  return request;
+  return hasSession ? { ...request, sessionId, turnEpoch } : request;
 }
 
 export function lockProviderPayload(payload, allowTool = false) {
@@ -116,13 +133,17 @@ function productionRuntime() {
 export async function answerRequest(value, options = {}) {
   const request = validateRequest(value);
   const runtime = options.runtime || productionRuntime();
-  return runTurn(request, {
+  const { sessionId, turnEpoch, ...turn } = request;
+  const result = await runTurn(turn, {
     onPayload: lockProviderPayload,
     promptFor,
     runtime,
     signal: options.signal,
     systemPrompt: SYSTEM_PROMPT,
   });
+  return sessionId
+    ? { ...result, sessionId, turnEpoch }
+    : result;
 }
 
 async function main() {

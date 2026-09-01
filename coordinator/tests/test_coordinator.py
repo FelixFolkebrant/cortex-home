@@ -1228,6 +1228,124 @@ class AgentInteractionTests(unittest.TestCase):
             with self.assertRaises(ApiError):
                 interaction.result(timeout=1)
 
+    def test_voice_session_owns_monotonic_turn_epochs_and_the_agent_request(self):
+        class SessionAgent(FakeAgent):
+            def answer(
+                self,
+                request_id,
+                transcript,
+                context,
+                cancelled,
+                session_id,
+                turn_epoch,
+            ):
+                self.request = (
+                    request_id,
+                    transcript,
+                    context,
+                    session_id,
+                    turn_epoch,
+                )
+                if cancelled.is_set():
+                    raise AgentError("cancelled")
+                return self.answer_text
+
+        self.coordinator.agent = SessionAgent()
+        session = self.coordinator.start_voice_session(
+            self.endpoint.token,
+            "voice-session-1",
+        )
+        self.assertEqual(session, {
+            "sessionId": "voice-session-1",
+            "turnEpoch": 0,
+            "state": "listening",
+        })
+        event, published = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "voice.session")
+        self.assertEqual(published, session)
+
+        with self.assertRaises(ApiError) as raised:
+            self.coordinator.interact(
+                self.endpoint.token,
+                "voice-stale",
+                wave_audio().data,
+                session_id="voice-session-1",
+                turn_epoch=2,
+            )
+        self.assertEqual(raised.exception.code, "stale_turn_epoch")
+
+        self.coordinator.interact(
+            self.endpoint.token,
+            "voice-session-turn-1",
+            wave_audio().data,
+            session_id="voice-session-1",
+            turn_epoch=1,
+        )
+        self.assertEqual(
+            self.coordinator.agent.request[-2:],
+            ("voice-session-1", 1),
+        )
+        event, speaking = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "voice.session")
+        self.assertEqual(speaking["state"], "user-speaking")
+        transcribing = self.next_phase("transcribing")
+        self.assertEqual(transcribing["sessionId"], "voice-session-1")
+        self.assertEqual(transcribing["turnEpoch"], 1)
+        self.next_phase("thinking")
+        self.coordinator.update_interaction(
+            self.endpoint.token,
+            "voice-session-turn-1",
+            "speaking",
+        )
+        self.next_phase("speaking")
+        self.coordinator.update_interaction(
+            self.endpoint.token,
+            "voice-session-turn-1",
+            "completed",
+        )
+        self.next_phase("completed")
+        event, resumed = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "voice.session")
+        self.assertEqual(resumed, {
+            "sessionId": "voice-session-1",
+            "turnEpoch": 1,
+            "state": "listening",
+        })
+
+    def test_ending_or_replacing_a_session_rejects_late_turns(self):
+        self.coordinator.start_voice_session(self.endpoint.token, "voice-session-end")
+        self.endpoint.events.get(timeout=1)
+        ended = self.coordinator.end_voice_session(
+            self.endpoint.token,
+            "voice-session-end",
+        )
+        self.assertEqual(ended["state"], "ended")
+        self.endpoint.events.get(timeout=1)
+        with self.assertRaises(ApiError) as raised:
+            self.coordinator.interact(
+                self.endpoint.token,
+                "voice-late",
+                wave_audio().data,
+                session_id="voice-session-end",
+                turn_epoch=1,
+            )
+        self.assertEqual(raised.exception.code, "stale_voice_session")
+
+        self.coordinator.start_voice_session(self.endpoint.token, "voice-session-old")
+        self.endpoint.events.get(timeout=1)
+        replacement = self.coordinator.connect_endpoint()
+        for _index in range(5):
+            replacement.events.get(timeout=1)
+        with self.assertRaises(ApiError) as raised:
+            self.coordinator.interact(
+                replacement.token,
+                "voice-replaced",
+                wave_audio().data,
+                session_id="voice-session-old",
+                turn_epoch=1,
+            )
+        self.assertEqual(raised.exception.code, "stale_voice_session")
+
 
 class HttpTests(unittest.TestCase):
     @classmethod

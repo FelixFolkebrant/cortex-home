@@ -652,7 +652,7 @@ test("room feedback makes deliberate microphone capture visible", () => {
 
   assert.match(markup, /Cortex Home \/ Microphone/);
   assert.match(markup, /Listening\./);
-  assert.match(markup, /Keep holding Control, Alt, and Space\./);
+  assert.match(markup, /Speak naturally\. Press Control, Alt, and Space to end\./);
   assert.match(markup, /width:55%/);
 });
 

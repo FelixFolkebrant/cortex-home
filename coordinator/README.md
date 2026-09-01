@@ -76,12 +76,15 @@ from the endpoint's origin-bound loopback bridge and polls only while visible.
 
 ## Speech Qualification
 
-`Ctrl`+`Alt`+`Space` is the deliberate microphone boundary. The first exact
-keydown opens a mono microphone stream, Chromium resamples it to 16 kHz, and
-releasing Space, Control, or Alt closes every track. Repeat keydowns and
-combinations containing Shift or Meta do nothing. Capture also stops on focus
-loss, error, coordinator reconnection, or client cleanup, and it fails after a
-15-second maximum.
+`Ctrl`+`Alt`+`Space` explicitly starts and ends a voice session. Chromium opens
+one mono 16 kHz microphone stream only after the session is accepted; `Escape`,
+focus loss, microphone failure, coordinator reconnection, or client cleanup
+ends it and closes every track. Repeat keydowns and combinations containing
+Shift or Meta do nothing. While active, the browser applies local RMS voice
+activity detection with a 0.018 threshold, requires 400 ms of speech, and ends
+a turn after 850 ms of silence; one submitted turn remains capped at 15 seconds.
+The detector is paused while the former one-shot answer is processing or
+playing, so playback cannot become a user turn before VOI-008 adds barge-in.
 
 The resulting in-memory value is a WAV container containing one channel of
 signed 16-bit little-endian PCM at 16 kHz. The browser sends it only to its
@@ -204,14 +207,14 @@ for the selected speech path. The Vosk archive is checksum-verified. The
 coordinator preloads both speech engines and validates the private agent
 configuration before it opens port 8080.
 
-Each accepted capture owns one fresh
+Each accepted turn owns one fresh
 `/opt/cortex-home/agent/answer-child.js` process. The child receives only its
-request ID, bounded transcript, and fresh reduced active-view context through
-standard input. That context contains exactly `activeChannel` and `channel`;
-lighting remains internal until later accepted work. The child has no tools or
-history and returns only one bounded answer through standard output. The
-coordinator terminates its process group on replacement, disconnect, timeout,
-malformed output, or shutdown.
+request ID, session ID and epoch, bounded transcript, and fresh reduced
+active-view context through standard input. That context contains exactly
+`activeChannel` and `channel`; lighting remains internal until later accepted
+work. The child has no tools or history and returns only one bounded answer
+through standard output. The coordinator terminates its process group on
+replacement, disconnect, timeout, malformed output, or shutdown.
 
 The locked child uses `@earendil-works/pi-agent-core` and
 `@earendil-works/pi-ai` `0.82.1` with
@@ -223,19 +226,26 @@ per-interaction child environment; it is never sent to the browser.
 
 The endpoint contract is:
 
-- `POST /api/agent/interactions/<request-id>` with the active endpoint token
-  and `audio/wav` returns the current synthesized `audio/wav`.
+- `POST /api/voice/sessions/<session-id>` with the active endpoint token starts
+  one explicit session; `DELETE` ends it and invalidates its microphone and
+  turn ownership.
+- `POST /api/agent/interactions/<request-id>` with the active endpoint token,
+  `audio/wav`, `X-Voice-Session`, and `X-Voice-Turn-Epoch` returns the current
+  synthesized `audio/wav`. The coordinator accepts only the next exact epoch.
 - `DELETE /api/agent/interactions/<request-id>` cancels or reserves that
   endpoint-owned request ID.
 - `POST /api/agent/interactions/<request-id>/status` reports `speaking`,
   `completed`, or `failed`.
-- `agent.interaction` SSE publishes only the request ID and
-  `transcribing`, `thinking`, `speaking`, `completed`, or `failed`.
+- `voice.session` SSE publishes only the session ID, epoch, and `listening`,
+  `user-speaking`, `ending`, or `ended` state. `agent.interaction` publishes only the
+  request ID, session ID, epoch, and `transcribing`, `thinking`, `speaking`,
+  `completed`, or `failed`.
 
-A later exact `Ctrl`+`Alt`+`Space` press replaces current answer processing or
-playback before capturing again. Focus loss, endpoint disconnect, invalid
-audio, recognition, provider, synthesis, and playback failures all release the
-same interaction and show a content-free failed state.
+The coordinator, browser, and Node child all reject stale session or epoch
+data. Endpoint replacement, disconnect, an explicit session end, invalid audio,
+recognition, provider, synthesis, and playback failures cannot publish work into
+a replacement session. Sessions retain no audio or conversation data; VOI-007
+will add bounded in-memory dialogue only after its lifecycle is implemented.
 
 Exact non-repeating `Ctrl`+`Alt`+`D` toggles a local voice diagnostics panel.
 It is hidden by default and renders only numeric timing, duration, byte, and
