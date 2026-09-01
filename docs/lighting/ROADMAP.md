@@ -11,10 +11,10 @@
 
 ## Next
 
-- Support [VOI-004](../voice/wip/VOI-004.md) only through the existing exact
-  scene catalog and observed-completion action.
 - Add no new automatic authority until a module has a specific user flow and
-  owns the outcome.
+  owns the outcome. Voice-controlled lighting is deferred while
+  [VOI-004](../voice/issues/VOI-004.md) and its follow-on dialogue work
+  establish natural interaction first.
 
 ## Later
 

@@ -7,32 +7,33 @@
 - [VOI-002](issues/VOI-002.md) qualifies deliberate browser capture, local
   Vosk recognition, local Pocket TTS synthesis, and the shared Sonos route.
 - [VOI-003](issues/VOI-003.md) connects one ephemeral room turn to Pi Agent
-  Core and a pinned OpenRouter route. Some provider, responsive, and deployed
-  reviewer checks remain recorded in that issue.
+  Core and a pinned OpenRouter route. Its answer-only room checks remain useful
+  baseline evidence, not proof of natural dialogue.
 - [VOI-005](issues/VOI-005.md) extracts the one-turn core and proves it in a
   laptop-only local workbench with one simulated tool.
 - [VOI-006](issues/VOI-006.md) makes the local workbench repeatable and rejects
-  cancelled or late phase results. Its physical interruption checks remain
-  useful input to the next fluency pass.
-- [VOI-004](wip/VOI-004.md) is the next room integration: one exact Hue scene
-  tool through coordinator-owned validation and observed completion.
+  cancelled or late one-turn results.
+- [VOI-004](issues/VOI-004.md) establishes explicit browser voice sessions,
+  provisional local turn detection, and endpoint-bound turn epochs. Its
+  IdeaPad path is repeatable through the local development room.
 
 ## Next
 
-- Complete VOI-004 without expanding beyond zero or one exact scene request.
-- Qualify the outstanding physical interruption, latency, provider-policy,
-  narrow-layout, and recovery behavior already identified by VOI-003 and
-  VOI-006.
-- Improve turn fluency only from measured bottlenecks; keep model, speech, and
-  playback changes separate enough to compare honestly.
+- Complete VOI-007 (stream Pi dialogue), then VOI-008 (barge-in and room
+  qualification), before adding any room-agent tools or other authority.
+- Evolve VOI-004's explicit session, local capture, and epoch ownership into
+  bounded ephemeral Pi dialogue, streamed response speech, and interruption.
+- Measure end-to-end turn and barge-in latency on the actual IdeaPad and room
+  hardware. Improve only measured bottlenecks.
+- Qualify privacy, recovery, narrow-layout, and keyboard behavior for a live
+  session rather than reusing one-turn evidence as a proxy.
 
 ## Later
 
-- Mid-speech interruption and conversational history only after one-turn
-  cancellation and privacy behavior are trustworthy.
-- Additional allow-listed room actions one concrete user flow at a time.
-- Wake words, proactive initiation, or ambient sensing only with a separately
-  accepted privacy and feedback model.
+- Additional allow-listed room actions only after natural dialogue and its
+  interruption behavior are trustworthy.
+- Wake words, proactive initiation, or capture outside an explicitly active
+  session only with a separately accepted privacy and feedback model.
 - Camera context only through deliberate opt-in work; never infer it from the
   existence of the Camera channel.
 - Reconsider a fully local language model after hosted latency, cost, quality,
@@ -40,18 +41,24 @@
 
 ## Open Decisions
 
-- Which measured change most improves perceived room-turn latency.
-- Whether future multi-turn interaction can remain useful without durable
-  conversation history.
-- What user-visible permission model is required before a second room action.
+- Which detector calibration works reliably against the room's real microphone,
+  speakers, and acoustic echo.
+- Which measured change most improves perceived response and barge-in latency.
+- What bounded active-session context preserves useful follow-ups without
+  retaining private conversation after the session ends.
 
 ## Accepted Decisions
 
-- Use deliberate hold-to-speak and show every sensing and processing phase.
+- Natural dialogue is the Voice module's highest priority; tools and other
+  room authority are deferred.
+- Listening may be continuous only while the person has explicitly activated a
+  visible session. There is no wake word or inactive background listening.
+- Barge-in is a first-class interaction: detected user speech cancels current
+  model work and assistant playback, and stale output must never resume.
+- Continue with Pi Agent Core as the dialogue harness; evolve its current fresh
+  child protocol into a coordinator-supervised active-session protocol.
 - Run speech processing locally and keep raw audio off the internet.
-- Use Pi Agent Core behind a private request-ID-keyed child protocol and a
-  pinned OpenRouter model/provider/privacy payload.
-- Send only current normalized context and retain no conversation content.
-- Permit at most one strict tool request per turn and route it through the
-  coordinator rather than giving the model direct integration access.
-- Keep room and laptop modes as compositions of the same replaceable core.
+- Send only bounded text, current normalized context, and bounded ephemeral
+  active-session history to the selected model provider.
+- Keep room and laptop modes as compositions of the same replaceable dialogue
+  core.
