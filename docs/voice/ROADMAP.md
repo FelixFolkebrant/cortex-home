@@ -21,7 +21,8 @@
   segments to the browser before the complete response finishes.
 - [VOI-008](issues/VOI-008.md) streams bounded Vosk partial recognition to the
   active browser session as ephemeral movie-style subtitles, clearing it before
-  the turn reaches thinking or speaking and never exposing it to diagnostics.
+  the next user turn or terminal session lifecycle event and never exposing it
+  to diagnostics.
 
 ## Next
 

@@ -1768,6 +1768,21 @@ class HttpTests(unittest.TestCase):
 
         status, headers, body = self.request_raw(
             "POST",
+            "/api/voice/sessions/http-stream-session/transcript",
+            body=wave_audio().data,
+            headers={
+                "Content-Type": "audio/wav",
+                "X-Endpoint-Token": token,
+                "X-Voice-Session": "http-stream-session",
+                "X-Voice-Turn-Epoch": "1",
+            },
+        )
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(headers["Content-Type"], "application/json")
+        self.assertEqual(json.loads(body), {})
+
+        status, headers, body = self.request_raw(
+            "POST",
             "/api/agent/interactions/http-stream-turn",
             body=wave_audio().data,
             headers={

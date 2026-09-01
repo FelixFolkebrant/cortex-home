@@ -1510,7 +1510,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                 self.server.coordinator.publish_voice_transcript(
                     self.headers.get("X-Endpoint-Token"), session_id, turn_epoch, self._read_audio()
                 )
-                self._send_json(HTTPStatus.NO_CONTENT, None)
+                self._send_json(HTTPStatus.OK, {})
                 return
 
             interaction_match = re.fullmatch(

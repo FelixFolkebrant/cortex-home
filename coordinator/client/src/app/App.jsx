@@ -157,8 +157,6 @@ export function App() {
         activeRequestId.current = null;
         showInteraction(AGENT_INTERACTION_ACTION, "completed", null, 2500);
         voiceCapture.resumeTurnDetection();
-        subtitleRequestId.current = null;
-        setSubtitle("");
       },
       onDebug: (requestId, metrics) => {
         if (voiceRequestId.current !== requestId) {
@@ -178,8 +176,6 @@ export function App() {
         activeRequestId.current = null;
         showInteraction(AGENT_INTERACTION_ACTION, "failed", error.message, 5000);
         voiceCapture.resumeTurnDetection();
-        subtitleRequestId.current = null;
-        setSubtitle("");
       },
     });
 
@@ -219,8 +215,6 @@ export function App() {
           return;
         }
         const requestId = `voice-${sessionId}-${turnEpoch}`;
-        subtitleRequestId.current = null;
-        setSubtitle("");
         voiceRequestId.current = requestId;
         activeRequestId.current = requestId;
         setVoiceDebug({ phase: "uploading", requestId });
@@ -638,8 +632,6 @@ export function App() {
         voiceRequestId.current = null;
         activeRequestId.current = null;
         voiceCapture.resumeTurnDetection();
-        subtitleRequestId.current = null;
-        setSubtitle("");
       }
       setVoiceDebug((current) =>
         current?.requestId === message.requestId
@@ -688,6 +680,8 @@ export function App() {
         voiceRequestId.current = null;
         voiceCapture.end(session.sessionId);
         activeRequestId.current = null;
+        subtitleRequestId.current = null;
+        setSubtitle("");
         showInteraction(VOICE_CAPTURE_ACTION, "ended", null, 2500);
       }
     });
