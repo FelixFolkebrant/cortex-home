@@ -143,12 +143,15 @@ def parse_args():
         type=Path,
         default=Path(__file__).with_name("client"),
     )
+    parser.add_argument("--ready-file", type=Path, help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     server = development_server(args.port, args.scenario, args.client)
+    if args.ready_file:
+        args.ready_file.touch(exist_ok=False)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

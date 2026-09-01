@@ -144,10 +144,16 @@ class DevelopmentCoordinatorTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         source = launcher.read_text()
-        self.assertIn('python3 "$script_dir/development.py" "$@" &', source)
+        self.assertIn('ready_directory=$(mktemp -d)', source)
+        self.assertIn('ready_file=$ready_directory/coordinator-ready', source)
+        self.assertIn('python3 "$script_dir/development.py" --ready-file "$ready_file" "$@" &', source)
+        self.assertIn('if [ -f "$ready_file" ]; then', source)
         self.assertIn('trap cleanup EXIT', source)
         self.assertIn("trap 'exit 0' HUP INT TERM", source)
-        self.assertIn('pnpm --dir "$script_dir/client" dev &', source)
+        self.assertIn(
+            'pnpm --dir "$script_dir/client" exec vite --host 127.0.0.1 --strictPort &',
+            source,
+        )
         self.assertIn('while kill -0 "$client_pid" 2>/dev/null; do', source)
         self.assertIn('wait "$client_pid"', source)
 
