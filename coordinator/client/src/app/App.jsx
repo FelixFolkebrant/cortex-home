@@ -30,6 +30,12 @@ import {
   SCENE_ACTION,
 } from "./room-state";
 
+function frontendDiagnostic(event, details = {}) {
+  if (import.meta.env.DEV) {
+    console.info("cortex-home client:", event, details);
+  }
+}
+
 function writeWavLabel(view, offset, label) {
   for (const [index, character] of [...label].entries()) {
     view.setUint8(offset + index, character.charCodeAt(0));
@@ -132,6 +138,9 @@ export function App() {
     let partialTranscriptRequest = null;
 
     function cancelPartialTranscript() {
+      if (partialTranscriptRequest) {
+        frontendDiagnostic("partial transcript cancelled");
+      }
       partialTranscriptRequest?.abort();
       partialTranscriptRequest = null;
     }
@@ -251,6 +260,10 @@ export function App() {
         }
         const controller = new AbortController();
         partialTranscriptRequest = controller;
+        frontendDiagnostic("partial transcript started", {
+          bytes: audio.size,
+          turnEpoch,
+        });
         void fetch(`/api/voice/sessions/${encodeURIComponent(sessionId)}/transcript`, {
           body: audio,
           headers: {
@@ -262,7 +275,18 @@ export function App() {
           method: "POST",
           signal: controller.signal,
         })
-          .catch(() => {})
+          .then((response) => {
+            frontendDiagnostic("partial transcript completed", {
+              status: response.status,
+              turnEpoch,
+            });
+          })
+          .catch((error) => {
+            frontendDiagnostic("partial transcript failed", {
+              error: error instanceof Error ? error.name : "UnknownError",
+              turnEpoch,
+            });
+          })
           .finally(() => {
             if (partialTranscriptRequest === controller) {
               partialTranscriptRequest = null;
@@ -565,6 +589,11 @@ export function App() {
     }
 
     const events = new EventSource("/api/events");
+    frontendDiagnostic("event stream created", { readyState: events.readyState });
+
+    events.onopen = () => {
+      frontendDiagnostic("event stream opened", { readyState: events.readyState });
+    };
 
     events.addEventListener("ready", (event) => {
       const message = parseMessage(event);
@@ -583,6 +612,7 @@ export function App() {
       }
 
       endpointToken.current = message.endpointToken;
+      frontendDiagnostic("event stream ready", { readyState: events.readyState });
       actionGeneration.current += 1;
       const { cancelled } = cancelVoice(
         "Microphone capture was cancelled by reconnection.",
@@ -779,6 +809,7 @@ export function App() {
     });
 
     events.onerror = () => {
+      frontendDiagnostic("event stream error", { readyState: events.readyState });
       endpointToken.current = null;
       actionGeneration.current += 1;
       const { cancelled } = cancelVoice(
@@ -864,6 +895,9 @@ export function App() {
       voiceCapture.dispose();
       spokenInteraction.dispose();
       alarmAction.current = null;
+      frontendDiagnostic("event stream closed by cleanup", {
+        readyState: events.readyState,
+      });
       events.close();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("blur", onBlur);

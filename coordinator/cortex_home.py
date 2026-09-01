@@ -90,6 +90,13 @@ MAX_SLEEP_DELAY_SECONDS = 93_600
 DEBUG_DIAGNOSTICS = os.environ.get("CORTEX_HOME_DEBUG") == "1"
 
 
+def diagnostic(event, **fields):
+    if not DEBUG_DIAGNOSTICS:
+        return
+    details = " ".join(f"{key}={value}" for key, value in sorted(fields.items()))
+    print(f"cortex-home: {event}{f' {details}' if details else ''}", flush=True)
+
+
 class ApiError(Exception):
     def __init__(self, status, code, message):
         super().__init__(message)
@@ -225,6 +232,10 @@ class Coordinator:
         with self.lock:
             previous = self.endpoint
             if previous:
+                diagnostic(
+                    "event stream replaced",
+                    voice_session=bool(self.active_voice_session),
+                )
                 self._fail_active_locked(
                     previous.token,
                     "endpoint connection was replaced",
@@ -245,8 +256,10 @@ class Coordinator:
     def disconnect_endpoint(self, token):
         with self.lock:
             if not self.endpoint or self.endpoint.token != token:
+                diagnostic("stale event stream closed")
                 return
 
+            diagnostic("active event stream closed")
             self.endpoint = None
             self._fail_active_locked(
                 token,
@@ -1900,10 +1913,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _diagnostic(event, **fields):
-        if not DEBUG_DIAGNOSTICS:
-            return
-        details = " ".join(f"{key}={value}" for key, value in sorted(fields.items()))
-        print(f"cortex-home: {event}{f' {details}' if details else ''}", flush=True)
+        diagnostic(event, **fields)
 
     def _log_event_stream_disconnect(self):
         self._diagnostic("event stream disconnected")
