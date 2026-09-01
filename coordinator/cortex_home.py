@@ -10,6 +10,7 @@ import re
 import secrets
 import threading
 import time
+import traceback
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -86,6 +87,7 @@ SPOTIFY_URI_PATTERN = re.compile(
 WAKE_SCENE = "Warm low"
 MIN_SLEEP_DELAY_SECONDS = 60
 MAX_SLEEP_DELAY_SECONDS = 93_600
+DEBUG_DIAGNOSTICS = os.environ.get("CORTEX_HOME_DEBUG") == "1"
 
 
 class ApiError(Exception):
@@ -1502,6 +1504,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
 
             transcript_match = re.fullmatch(r"/api/voice/sessions/([^/]+)/transcript", path)
             if transcript_match:
+                started = time.perf_counter()
                 session_id = transcript_match.group(1)
                 self._validate_request_path(session_id)
                 header_session_id, turn_epoch = self._voice_turn_headers()
@@ -1509,6 +1512,11 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                     raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_voice_turn", "Voice turn headers are invalid.")
                 self.server.coordinator.publish_voice_transcript(
                     self.headers.get("X-Endpoint-Token"), session_id, turn_epoch, self._read_audio()
+                )
+                self._diagnostic(
+                    "partial transcript completed",
+                    elapsed_ms=elapsed_ms(started),
+                    turn_epoch=turn_epoch,
                 )
                 self._send_json(HTTPStatus.OK, {})
                 return
@@ -1605,7 +1613,16 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
 
             raise ApiError(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
         except ApiError as error:
+            self._diagnostic("request failed", code=error.code, route=self._route_name(path), status=int(error.status))
             self._send_error(error, debug_metrics)
+        except (BrokenPipeError, ConnectionResetError):
+            self._diagnostic("response disconnected", route=self._route_name(path))
+        except Exception as error:
+            self._log_unexpected("request failed unexpectedly", error, route=self._route_name(path))
+            self._send_error(
+                ApiError(HTTPStatus.INTERNAL_SERVER_ERROR, "request_failed", "The coordinator request failed."),
+                debug_metrics,
+            )
 
     def do_DELETE(self):
         path = urlparse(self.path).path
@@ -1635,7 +1652,15 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
             )
             self._send_json(HTTPStatus.OK, payload)
         except ApiError as error:
+            self._diagnostic("request failed", code=error.code, route=self._route_name(path), status=int(error.status))
             self._send_error(error)
+        except (BrokenPipeError, ConnectionResetError):
+            self._diagnostic("response disconnected", route=self._route_name(path))
+        except Exception as error:
+            self._log_unexpected("request failed unexpectedly", error, route=self._route_name(path))
+            self._send_error(
+                ApiError(HTTPStatus.INTERNAL_SERVER_ERROR, "request_failed", "The coordinator request failed.")
+            )
 
     def _voice_turn_headers(self):
         session_id = self.headers.get("X-Voice-Session")
@@ -1706,6 +1731,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
 
     def _serve_events(self):
         endpoint = self.server.coordinator.connect_endpoint()
+        self._diagnostic("event stream connected")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
@@ -1732,6 +1758,8 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                 self._write_event(event, data)
         except (BrokenPipeError, ConnectionResetError):
             self._log_event_stream_disconnect()
+        except Exception as error:
+            self._log_unexpected("event stream failed unexpectedly", error)
         finally:
             self.close_connection = True
             self.server.coordinator.disconnect_endpoint(endpoint.token)
@@ -1861,8 +1889,37 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
         pass
 
     @staticmethod
-    def _log_event_stream_disconnect():
-        print("cortex-home: event stream disconnected", flush=True)
+    def _route_name(path):
+        if re.fullmatch(r"/api/voice/sessions/[^/]+/transcript", path):
+            return "voice_transcript"
+        if re.fullmatch(r"/api/voice/sessions/[^/]+", path):
+            return "voice_session"
+        if re.fullmatch(r"/api/agent/interactions/[^/]+(?:/status)?", path):
+            return "agent_interaction"
+        return "other"
+
+    @staticmethod
+    def _diagnostic(event, **fields):
+        if not DEBUG_DIAGNOSTICS:
+            return
+        details = " ".join(f"{key}={value}" for key, value in sorted(fields.items()))
+        print(f"cortex-home: {event}{f' {details}' if details else ''}", flush=True)
+
+    def _log_event_stream_disconnect(self):
+        self._diagnostic("event stream disconnected")
+
+    def _log_unexpected(self, event, error, **fields):
+        stack = traceback.extract_tb(error.__traceback__)
+        location = "unknown"
+        if stack:
+            frame = stack[-1]
+            location = f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}"
+        self._diagnostic(
+            event,
+            error=type(error).__name__,
+            location=location,
+            **fields,
+        )
 
 
 def validate_playback(observation):

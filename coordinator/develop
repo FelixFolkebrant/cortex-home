@@ -17,7 +17,7 @@ fi
 
 ready_directory=$(mktemp -d)
 ready_file=$ready_directory/coordinator-ready
-"$python" "$script_dir/development.py" --ready-file "$ready_file" "$@" &
+CORTEX_HOME_DEBUG=1 "$python" "$script_dir/development.py" --ready-file "$ready_file" "$@" &
 coordinator_pid=$!
 client_pid=
 
@@ -53,6 +53,11 @@ fi
 pnpm --dir "$script_dir/client" exec vite --host 127.0.0.1 --strictPort &
 client_pid=$!
 while kill -0 "$client_pid" 2>/dev/null; do
+  if ! kill -0 "$coordinator_pid" 2>/dev/null; then
+    echo "Cortex Home coordinator exited unexpectedly." >&2
+    wait "$coordinator_pid" || true
+    exit 1
+  fi
   sleep 0.1
 done
 wait "$client_pid"
