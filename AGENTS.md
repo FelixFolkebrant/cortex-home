@@ -49,8 +49,7 @@ judgment.*
 
 - Choose the module that owns the outcome and use its three-letter prefix.
 - Keep one living `<PREFIX>-<n>.md` issue record in the module's `wip/`
-  directory. Planning, implementation, useful review findings, and confirmation
-  belong in that record.
+  directory using `docs/general/templates/ISSUE.md`.
 - Move the same record to the module's `issues/` directory after completion.
 - Update the module ROADMAP when current behavior, direction, dependencies, or
   a lasting decision changes.
@@ -58,6 +57,7 @@ judgment.*
 
 ## Git Conventions
 
+- All work should happen inside the designated branch, nothing on main.
 - **Branch format:** `<name>/<PREFIX>-<n>/<revision>`; for example,
   `felixf/ALA-002/0`.
 - **Commit format:**
@@ -78,24 +78,7 @@ judgment.*
 
 ### Completing Issue Work
 
-1. Ensure the module issue record in `docs/<module>/wip/` contains current **What**,
-   **Acceptance Criteria**, **Implementation Walkthrough**, **Problems
-   Encountered**, **Confirmation**, and **Notes** sections.
-   - The implementation walkthrough must explain the completed work in a useful
-     order and include the repository scripts, configuration paths, and exact
-     operator commands needed to reconstruct or redeploy it.
-   - Problems encountered must record the symptom, diagnosis or root cause,
-     resolution, and any remaining caveat. Keep useful failed approaches, but
-     omit raw transcripts, credentials, and host-specific identifiers.
-   - Confirmation must separate automated checks from manual testing.
-   - Manual testing must tell the reviewer how to start the feature, what
-     changed from the previous behavior or appearance, which actions to
-     perform, and exactly what should be visible or happen after each action.
-   - Cover every user-facing acceptance criterion, including relevant loading,
-     empty, error, responsive, and keyboard states. Do not use vague
-     instructions such as "run the app and inspect it."
-   - Use unchecked task boxes for judgments only the user can make so approval
-     remains with the reviewer.
+1. Ensure the documentation is updated.
 2. Update the owning module ROADMAP when the completed work changes current
    behavior, direction, or lasting decisions.
 3. Run the repository's relevant checks and ensure the worktree is clean.

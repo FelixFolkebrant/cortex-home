@@ -50,11 +50,11 @@ belong in the issue record when work starts.
 1. Allocate the next number within the owning module by checking its `issues/`
    and `wip/` directories.
 2. Copy `docs/general/templates/ISSUE.md` to the module's `wip/` directory.
-3. Record the intended outcome, exclusions, acceptance criteria, dependencies,
-   and important decisions before substantial implementation.
+3. Record the before-and-after outcome, exclusions, important decisions, and
+   manual test path before substantial implementation.
 4. Use `<name>/<PREFIX>-<n>/<revision>` for the branch when a branch is useful.
-5. Keep the same issue document current with implementation, problems, review
-   findings when useful, and confirmation.
+5. Keep the same issue document current with useful implementation notes,
+   problems, checks, review findings, and confirmation.
 
 Issues may use worktrees when work is concurrent. Every worktree keeps its own
 normal checkout; do not share mutable documentation, dependencies, or build
@@ -64,9 +64,10 @@ at a time against the shared room hardware.
 ## Decisions And Reviews
 
 Record a decision in the module roadmap when future work should inherit it.
-Keep issue-local choices in the issue record. No heat classification, separate
-style catalog, pattern catalog, Planpoint, or mandatory review document is
-required.
+Keep issue-local choices in the issue record. Use the optional issue heatmap to
+direct review attention; it does not replace severity or create a separate
+planning artifact. No style catalog, pattern catalog, Planpoint, or mandatory
+review document is required.
 
 When a review is substantial, add a `Review Findings` section to the living
 issue. Otherwise the code, checks, and issue confirmation are enough.
@@ -87,7 +88,7 @@ history cleanup are optional; do not spend work manufacturing perfect history.
 
 1. Ensure the issue record explains what changed, important problems and
    decisions, exact reconstruction or deployment commands, and automated and
-   manual confirmation.
+   manual confirmation. Keep that detail skimmable under the shared template.
 2. Update the module roadmap's `Current`, `Next`, and decision sections where
    needed.
 3. Run checks relevant to the affected modules and ensure the worktree is clean.

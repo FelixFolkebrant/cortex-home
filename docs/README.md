@@ -20,3 +20,12 @@ what may happen next. Completed work lives in `issues/`; active work lives in
 
 The lightweight issue process and naming rules live in
 [WORKFLOW.md](general/WORKFLOW.md).
+
+## Design Guidelines
+
+The design language is deliberately minimal while it is still evolving.
+
+- Show as little information as the interaction needs.
+- Do not explain controls the sole user already knows.
+- Identify a view when it changes, like a television channel, rather than
+  labeling it continuously.
