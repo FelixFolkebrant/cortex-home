@@ -16,7 +16,7 @@
 - [VOI-004](issues/VOI-004.md) establishes explicit browser voice sessions,
   provisional local turn detection, and endpoint-bound turn epochs. Its
   IdeaPad path is repeatable through the local development room.
-- [VOI-007](wip/VOI-007.md) keeps one coordinator-owned Pi dialogue child for
+- [VOI-007](issues/VOI-007.md) keeps one coordinator-owned Pi dialogue child for
   an active session, bounds its in-memory history, and streams local synthesis
   segments to the browser before the complete response finishes.
 
