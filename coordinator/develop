@@ -3,15 +3,21 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+project_dir=$(dirname -- "$script_dir")
+python="$project_dir/.venv/bin/python"
 
 if ! command -v pnpm >/dev/null 2>&1; then
   echo "Cortex Home local development requires pnpm." >&2
   exit 1
 fi
+if [ ! -x "$python" ]; then
+  echo "Cortex Home local development requires .venv/bin/python." >&2
+  exit 1
+fi
 
 ready_directory=$(mktemp -d)
 ready_file=$ready_directory/coordinator-ready
-python3 "$script_dir/development.py" --ready-file "$ready_file" "$@" &
+"$python" "$script_dir/development.py" --ready-file "$ready_file" "$@" &
 coordinator_pid=$!
 client_pid=
 

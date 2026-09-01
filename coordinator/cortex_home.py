@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import base64
 import json
 import mimetypes
 import os
@@ -159,6 +160,7 @@ class VoiceSession:
     epoch: int = 0
     state: str = "listening"
     cancelled: threading.Event = field(default_factory=threading.Event)
+    dialogue: object | None = None
 
     def payload(self):
         return {
@@ -407,7 +409,19 @@ class Coordinator:
                     "duplicate_session_id",
                     "The voice session ID has already been used.",
                 )
-            session = VoiceSession(session_id, endpoint_token)
+            try:
+                dialogue = (
+                    self.agent.start_session(session_id)
+                    if getattr(self.agent, "start_session", None)
+                    else None
+                )
+            except AgentError as error:
+                raise ApiError(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    error.code,
+                    "The voice agent is unavailable.",
+                ) from error
+            session = VoiceSession(session_id, endpoint_token, dialogue=dialogue)
             self.voice_sessions[session_id] = session
             self.active_voice_session = session
             self._trim_voice_sessions_locked()
@@ -428,6 +442,7 @@ class Coordinator:
             if session.state in {"ended", "failed"}:
                 return session.payload()
             session.cancelled.set()
+            self._close_voice_dialogue_locked(session)
             session.state = "ending"
             self._publish_voice_session_locked(session)
             if (
@@ -440,6 +455,100 @@ class Coordinator:
             session.state = "ended"
             self._publish_voice_session_locked(session)
             return session.payload()
+
+    def stream_interaction(
+        self, endpoint_token, request_id, audio_data, session_id, turn_epoch
+    ):
+        self._validate_request_id(request_id)
+        with self.lock:
+            self._require_endpoint_locked(endpoint_token)
+            if request_id in self.requests or request_id in self.interactions:
+                raise ApiError(HTTPStatus.CONFLICT, "duplicate_request_id", "The request ID has already been used.")
+            if self.active_request_id or self.active_interaction:
+                raise ApiError(HTTPStatus.CONFLICT, "interaction_busy", "The room is already handling an interaction.")
+            if not self.recognizer or not self.synthesizer or not self.agent:
+                raise ApiError(HTTPStatus.SERVICE_UNAVAILABLE, "agent_unavailable", "The voice agent is unavailable.")
+            self._validate_session_turn_locked(endpoint_token, session_id, turn_epoch)
+            session = self.active_voice_session
+            session.epoch = turn_epoch
+            session.state = "user-speaking"
+            self._publish_voice_session_locked(session)
+            interaction = AgentInteraction(request_id, endpoint_token, session_id, turn_epoch)
+            self.interactions[request_id] = interaction
+            self.active_interaction = interaction
+            self._trim_interactions_locked()
+            self._publish_interaction_locked(interaction)
+
+        def emit_segment(text):
+            if not text:
+                return
+            self._ensure_interaction_current(interaction)
+            try:
+                wav = read_synthesis(self.synthesizer.synthesize(text).data)
+            except (AttributeError, SpeechError):
+                self._raise_interaction_error(interaction, HTTPStatus.BAD_GATEWAY, "synthesis_failed", "Speech synthesis failed.")
+            with self.lock:
+                self._require_interaction_current_locked(interaction)
+                self._publish_interaction_audio_locked(interaction, wav.data)
+
+        def worker():
+            buffered = ""
+            emitted = False
+
+            def feed(delta, final=False):
+                nonlocal buffered, emitted
+                buffered += delta
+                while True:
+                    boundary = max(buffered.rfind("."), buffered.rfind("!"), buffered.rfind("?"))
+                    if boundary < 0 and len(buffered) >= 160:
+                        boundary = buffered.rfind(" ")
+                    if boundary < 0 or (not final and boundary == len(buffered) - 1 and len(buffered) < 24):
+                        break
+                    segment, buffered = buffered[: boundary + 1].strip(), buffered[boundary + 1 :].lstrip()
+                    emit_segment(segment)
+                    emitted = True
+                if final and buffered.strip():
+                    emit_segment(buffered.strip())
+                    emitted = True
+                    buffered = ""
+
+            try:
+                try:
+                    audio = read_capture(audio_data)
+                except SpeechError:
+                    self._raise_interaction_error(interaction, HTTPStatus.BAD_REQUEST, "invalid_audio", "The captured audio is invalid.")
+                self._ensure_interaction_current(interaction)
+                try:
+                    transcript = self.recognizer.transcribe(audio)
+                except SpeechError:
+                    self._raise_interaction_error(interaction, HTTPStatus.BAD_GATEWAY, "transcription_failed", "Speech transcription failed.")
+                with self.lock:
+                    self._require_interaction_current_locked(interaction)
+                    context = build_answer_context(self.channel.get("active"), self.today, self.playback)
+                    interaction.phase = "thinking"
+                    self._publish_interaction_locked(interaction)
+                if session.dialogue:
+                    session.dialogue.answer(request_id, transcript, context, interaction.cancelled, feed)
+                else:
+                    answer = self.agent.answer(request_id, transcript, context, interaction.cancelled, session_id, turn_epoch)
+                    feed(answer)
+                self._ensure_interaction_current(interaction)
+                feed("", final=True)
+                if not emitted:
+                    self._raise_interaction_error(interaction, HTTPStatus.BAD_GATEWAY, "synthesis_failed", "Speech synthesis failed.")
+                with self.lock:
+                    self._require_interaction_current_locked(interaction)
+                    timer = threading.Timer(self.playback_timeout, self._expire_interaction, args=(request_id, endpoint_token))
+                    timer.daemon = True
+                    interaction.playback_timer = timer
+                    timer.start()
+                    self._publish_interaction_audio_complete_locked(interaction)
+            except Exception:
+                with self.lock:
+                    self._fail_stream_interaction_locked(interaction, session)
+
+        threading.Thread(target=worker, daemon=True).start()
+        return interaction.payload()
 
     def interact(
         self,
@@ -637,7 +746,11 @@ class Coordinator:
                 )
             if interaction.phase in {"completed", "failed"}:
                 return interaction.payload()
-            self._finish_interaction_locked(interaction, "failed")
+            session = self.active_voice_session
+            if session and interaction.session_id == session.session_id:
+                self._fail_stream_interaction_locked(interaction, session)
+            else:
+                self._finish_interaction_locked(interaction, "failed")
             return interaction.payload()
 
     def update_interaction(self, endpoint_token, request_id, phase):
@@ -771,6 +884,8 @@ class Coordinator:
                     self.active_interaction,
                     "failed",
                 )
+            if self.active_voice_session:
+                self._close_voice_dialogue_locked(self.active_voice_session)
         close_agent = getattr(self.agent, "close", None)
         if close_agent:
             close_agent()
@@ -1083,6 +1198,23 @@ class Coordinator:
         ):
             self.endpoint.send("agent.interaction", interaction.payload())
 
+    def _publish_interaction_audio_locked(self, interaction, audio):
+        if self.endpoint and self.endpoint.token == interaction.endpoint_token:
+            self.endpoint.send(
+                "agent.audio",
+                {
+                    "audio": base64.b64encode(audio).decode("ascii"),
+                    "requestId": interaction.request_id,
+                },
+            )
+
+    def _publish_interaction_audio_complete_locked(self, interaction):
+        if self.endpoint and self.endpoint.token == interaction.endpoint_token:
+            self.endpoint.send(
+                "agent.audio.complete",
+                {"requestId": interaction.request_id},
+            )
+
     def _publish_voice_session_locked(self, session):
         if self.endpoint and self.endpoint.token == session.endpoint_token:
             self.endpoint.send("voice.session", session.payload())
@@ -1125,8 +1257,15 @@ class Coordinator:
         session = self.active_voice_session
         if session and session.endpoint_token == endpoint_token:
             session.cancelled.set()
+            self._close_voice_dialogue_locked(session)
             session.state = "ended"
             self.active_voice_session = None
+
+    @staticmethod
+    def _close_voice_dialogue_locked(session):
+        if session.dialogue:
+            session.dialogue.close()
+            session.dialogue = None
 
     def _trim_voice_sessions_locked(self):
         while len(self.voice_sessions) > MAX_REQUESTS:
@@ -1156,6 +1295,17 @@ class Coordinator:
             session.state = "listening"
             self._publish_voice_session_locked(session)
 
+    def _fail_stream_interaction_locked(self, interaction, session):
+        if self.active_voice_session is session:
+            session.cancelled.set()
+        if self.active_interaction is interaction:
+            self._finish_interaction_locked(interaction, "failed")
+        if self.active_voice_session is session:
+            self._close_voice_dialogue_locked(session)
+            session.state = "ended"
+            self.active_voice_session = None
+            self._publish_voice_session_locked(session)
+
     def _fail_endpoint_interaction_locked(self, endpoint_token):
         interaction = self.active_interaction
         if interaction and interaction.endpoint_token == endpoint_token:
@@ -1169,7 +1319,11 @@ class Coordinator:
                 and interaction.endpoint_token == endpoint_token
                 and self.active_interaction is interaction
             ):
-                self._finish_interaction_locked(interaction, "failed")
+                session = self.active_voice_session
+                if session and interaction.session_id == session.session_id:
+                    self._fail_stream_interaction_locked(interaction, session)
+                else:
+                    self._finish_interaction_locked(interaction, "failed")
 
     def _trim_interactions_locked(self):
         while len(self.interactions) > MAX_REQUESTS:
@@ -1320,6 +1474,17 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                 request_id = interaction_match.group(1)
                 self._validate_request_path(request_id)
                 endpoint_token = self.headers.get("X-Endpoint-Token")
+                session_id, turn_epoch = self._voice_turn_headers()
+                if session_id:
+                    payload = self.server.coordinator.stream_interaction(
+                        endpoint_token,
+                        request_id,
+                        self._read_audio(),
+                        session_id,
+                        turn_epoch,
+                    )
+                    self._send_json(HTTPStatus.OK, payload)
+                    return
                 debug_metrics = {}
                 started = time.perf_counter()
                 audio = self._read_audio()
@@ -1329,7 +1494,8 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                     request_id,
                     audio,
                     debug_metrics,
-                    *self._voice_turn_headers(),
+                    session_id,
+                    turn_epoch,
                 )
                 try:
                     self._send_audio(result, debug_metrics)

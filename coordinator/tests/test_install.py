@@ -54,6 +54,7 @@ class InstallTests(unittest.TestCase):
         for artifact in [
             "agent-turn.js",
             "answer-child.js",
+            "dialogue-child.js",
             "package.json",
             "pnpm-lock.yaml",
         ]:

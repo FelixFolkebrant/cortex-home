@@ -1312,6 +1312,107 @@ class AgentInteractionTests(unittest.TestCase):
             "state": "listening",
         })
 
+    def test_session_streams_safe_synthesis_segments_before_completion(self):
+        class Dialogue:
+            def __init__(self):
+                self.closed = False
+
+            def answer(self, _request_id, _transcript, _context, _cancelled, delta):
+                delta("The first sentence is useful. The second")
+                return "The first sentence is useful. The second"
+
+            def close(self):
+                self.closed = True
+
+        class StreamingAgent(FakeAgent):
+            def __init__(self):
+                super().__init__()
+                self.dialogue = Dialogue()
+
+            def start_session(self, _session_id):
+                return self.dialogue
+
+        self.coordinator.agent = StreamingAgent()
+        self.coordinator.start_voice_session(self.endpoint.token, "voice-stream")
+        self.endpoint.events.get(timeout=1)
+        payload = self.coordinator.stream_interaction(
+            self.endpoint.token,
+            "voice-stream-turn",
+            wave_audio().data,
+            "voice-stream",
+            1,
+        )
+        events = []
+        while not events or events[-1][0] != "agent.audio.complete":
+            events.append(self.endpoint.events.get(timeout=1))
+
+        self.assertEqual(payload["requestId"], "voice-stream-turn")
+        self.assertEqual(
+            [event for event, _payload in events],
+            [
+                "voice.session",
+                "agent.interaction",
+                "agent.interaction",
+                "agent.audio",
+                "agent.audio",
+                "agent.audio.complete",
+            ],
+        )
+        self.assertEqual(
+            self.synthesizer.text,
+            "The second",
+        )
+        self.coordinator.cancel_interaction(self.endpoint.token, "voice-stream-turn")
+        self.assertTrue(self.coordinator.agent.dialogue.closed)
+
+    def test_failed_session_dialogue_is_closed_and_cannot_resume(self):
+        class Dialogue:
+            def __init__(self):
+                self.closed = False
+
+            def answer(self, *_arguments):
+                raise AgentError("agent_timeout")
+
+            def close(self):
+                self.closed = True
+
+        class FailingAgent(FakeAgent):
+            def __init__(self):
+                super().__init__()
+                self.dialogue = Dialogue()
+
+            def start_session(self, _session_id):
+                return self.dialogue
+
+        self.coordinator.agent = FailingAgent()
+        self.coordinator.start_voice_session(self.endpoint.token, "voice-failed")
+        self.endpoint.events.get(timeout=1)
+        self.coordinator.stream_interaction(
+            self.endpoint.token,
+            "voice-failed-turn",
+            wave_audio().data,
+            "voice-failed",
+            1,
+        )
+
+        events = []
+        while not events or events[-1] != ("voice.session", "ended"):
+            event, payload = self.endpoint.events.get(timeout=1)
+            events.append((event, payload.get("state", payload.get("phase"))))
+
+        self.assertIn(("agent.interaction", "failed"), events)
+        self.assertTrue(self.coordinator.agent.dialogue.closed)
+        self.assertIsNone(self.coordinator.active_voice_session)
+        with self.assertRaises(ApiError) as raised:
+            self.coordinator.stream_interaction(
+                self.endpoint.token,
+                "voice-failed-late",
+                wave_audio().data,
+                "voice-failed",
+                2,
+            )
+        self.assertEqual(raised.exception.code, "stale_voice_session")
+
     def test_ending_or_replacing_a_session_rejects_late_turns(self):
         self.coordinator.start_voice_session(self.endpoint.token, "voice-session-end")
         self.endpoint.events.get(timeout=1)
@@ -1593,6 +1694,63 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(event, "agent.interaction")
         self.assertEqual(completed["phase"], "completed")
         self.server.coordinator.disconnect_endpoint(ready["endpointToken"])
+
+    def test_session_audio_stream_keeps_the_event_connection_open(self):
+        class Dialogue:
+            def answer(self, _request_id, _transcript, _context, _cancelled, delta):
+                delta("A streamed development answer.")
+                return "A streamed development answer."
+
+            def close(self):
+                return None
+
+        class StreamingAgent(FakeAgent):
+            def start_session(self, _session_id):
+                return Dialogue()
+
+        events_connection = http.client.HTTPConnection(
+            "127.0.0.1",
+            self.port,
+            timeout=1,
+        )
+        self.addCleanup(events_connection.close)
+        events_connection.request("GET", "/api/events")
+        events_response = events_connection.getresponse()
+        ready, _snapshots = self.read_initial_events(events_response)
+        previous = self.server.coordinator.agent
+        self.server.coordinator.agent = StreamingAgent()
+        self.addCleanup(setattr, self.server.coordinator, "agent", previous)
+        token = ready["endpointToken"]
+
+        status, session = self.request(
+            "POST",
+            "/api/voice/sessions/http-stream-session",
+            headers={"X-Endpoint-Token": token},
+        )
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(session["state"], "listening")
+        self.assertEqual(self.read_event(events_response)[0], "voice.session")
+
+        status, headers, body = self.request_raw(
+            "POST",
+            "/api/agent/interactions/http-stream-turn",
+            body=wave_audio().data,
+            headers={
+                "Content-Type": "audio/wav",
+                "X-Endpoint-Token": token,
+                "X-Voice-Session": "http-stream-session",
+                "X-Voice-Turn-Epoch": "1",
+            },
+        )
+        self.assertEqual(status, HTTPStatus.OK)
+        self.assertEqual(headers["Content-Type"], "application/json")
+        self.assertEqual(json.loads(body)["requestId"], "http-stream-turn")
+        self.assertEqual(self.read_event(events_response)[0], "voice.session")
+        self.assertEqual(self.read_event(events_response)[0], "agent.interaction")
+        self.assertEqual(self.read_event(events_response)[0], "agent.interaction")
+        self.assertEqual(self.read_event(events_response)[0], "agent.audio")
+        self.assertEqual(self.read_event(events_response)[0], "agent.audio.complete")
+        self.server.coordinator.disconnect_endpoint(token)
 
     def test_agent_http_boundary_requires_auth_and_exact_audio(self):
         status, payload = self.request(

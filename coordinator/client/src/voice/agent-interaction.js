@@ -55,6 +55,17 @@ function captureDuration(capturedAudio) {
     : 0;
 }
 
+function encodedAudio(encoded) {
+  if (typeof encoded !== "string") {
+    throw new Error("Coordinator returned invalid streamed audio.");
+  }
+  const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+  if (bytes.length < 45) {
+    throw new Error("Coordinator returned empty answer audio.");
+  }
+  return new Blob([bytes], { type: "audio/wav" });
+}
+
 export class SpokenInteraction {
   constructor({
     createAudio = (url) => new Audio(url),
@@ -96,6 +107,7 @@ export class SpokenInteraction {
       requestId,
       sessionId,
       startedAt: this.now(),
+      playback: Promise.resolve(),
       url: null,
       turnEpoch,
     };
@@ -132,7 +144,11 @@ export class SpokenInteraction {
       if (!response.ok) {
         throw responseError(await response.json().catch(() => null), response.status);
       }
-      if (response.headers.get("Content-Type") !== "audio/wav") {
+      const contentType = response.headers.get("Content-Type");
+      if (sessionId && contentType === "application/json") {
+        return true;
+      }
+      if (contentType !== "audio/wav") {
         throw new Error("Coordinator returned invalid answer audio.");
       }
 
@@ -256,6 +272,81 @@ export class SpokenInteraction {
     if (!response.ok) {
       throw responseError(await response.json().catch(() => null), response.status);
     }
+  }
+
+  enqueue(requestId, encoded) {
+    const session = this.session;
+    if (!session || session.requestId !== requestId) {
+      return false;
+    }
+    session.playback = session.playback.then(() => {
+      if (!this.isCurrent(session)) {
+        return;
+      }
+      return this.playAudio(
+        session,
+        encodedAudio(encoded),
+        session.playbackStartedAt === null,
+      );
+    });
+    session.playback.catch((error) => this.fail(session, error));
+    return true;
+  }
+
+  async complete(requestId) {
+    const session = this.session;
+    if (!session || session.requestId !== requestId) {
+      return false;
+    }
+    try {
+      await session.playback;
+      if (!this.isCurrent(session)) {
+        return false;
+      }
+      this.debug(session, { phase: "completed" });
+      await this.report(session, "completed");
+      this.finish(session);
+      this.onCompleted?.(requestId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async playAudio(session, answerAudio, reportSpeaking) {
+    if (!this.isCurrent(session)) {
+      return;
+    }
+    session.url = this.createObjectURL(answerAudio);
+    session.audio = this.createAudio(session.url);
+    const playback = this.waitForPlayback(session);
+    await session.audio.play();
+    if (!this.isCurrent(session)) {
+      return;
+    }
+    if (reportSpeaking) {
+      session.playbackStartedAt = this.now();
+      this.debug(session, { phase: "speaking" });
+      await this.report(session, "speaking");
+    }
+    await playback;
+    this.releasePlayback(session);
+  }
+
+  async fail(session, error) {
+    if (!this.isCurrent(session)) {
+      return;
+    }
+    const message =
+      error instanceof Error ? error.message : "Voice interaction failed.";
+    this.debug(session, { phase: "failed" });
+    try {
+      await this.report(session, "failed");
+    } catch {
+      // The local failure remains visible when the coordinator is offline.
+    }
+    this.finish(session);
+    this.onFailed?.(session.requestId, new Error(message));
   }
 
   waitForPlayback(session) {

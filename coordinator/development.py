@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 
 import argparse
-import io
-import math
-import wave
-from array import array
+import os
 from pathlib import Path
 
-from agent_runtime import AgentError
+from agent_runtime import AgentError, NodeAgent
 from cortex_home import CortexHomeServer, Coordinator
-from speech import CAPTURE_SAMPLE_RATE, WaveAudio
+from speech import SpeechError, load_selected_speech
 from today import TIME_ZONE, unavailable_summary
 
 
@@ -45,46 +42,19 @@ DEVELOPMENT_LIGHTING = {
     "scenes": ["Bright", "Relax", "Warm low"],
     "activeScenes": ["Relax"],
 }
-DEVELOPMENT_ANSWER = "This is a simulated local answer."
+DEVELOPMENT_VOSK_MODEL = (
+    Path.home() / ".local" / "share" / "cortex-home" / "vosk-model-small-en-us-0.15"
+)
 
 
-class DevelopmentRecognizer:
-    def transcribe(self, _audio):
-        return "Test the local room."
-
-
-class DevelopmentAgent:
-    def answer(
-        self,
-        _request_id,
-        _transcript,
-        _context,
-        cancelled,
-        _session_id=None,
-        _turn_epoch=None,
-    ):
-        if cancelled.is_set():
-            raise AgentError("cancelled")
-        return DEVELOPMENT_ANSWER
-
-
-class DevelopmentSynthesizer:
-    def synthesize(self, _text):
-        frames = round(CAPTURE_SAMPLE_RATE * 0.2)
-        samples = array(
-            "h",
-            (
-                round(2_400 * math.sin(2 * math.pi * 440 * frame / CAPTURE_SAMPLE_RATE))
-                for frame in range(frames)
-            ),
-        )
-        output = io.BytesIO()
-        with wave.open(output, "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(CAPTURE_SAMPLE_RATE)
-            wav.writeframes(samples.tobytes())
-        return WaveAudio(output.getvalue(), CAPTURE_SAMPLE_RATE, frames)
+def development_voice_runtime():
+    agent = NodeAgent(
+        "node",
+        Path(__file__).parent / "agent" / "answer-child.js",
+        os.environ.get("OPENROUTER_API_KEY"),
+    )
+    recognizer, synthesizer = load_selected_speech(DEVELOPMENT_VOSK_MODEL)
+    return agent, recognizer, synthesizer
 
 
 class DevelopmentScenes:
@@ -97,15 +67,22 @@ class DevelopmentScenes:
         )
 
 
-def development_coordinator(scenario=ROOM_SCENARIO):
+def development_coordinator(
+    scenario=ROOM_SCENARIO,
+    agent=None,
+    recognizer=None,
+    synthesizer=None,
+):
     if scenario not in SCENARIOS:
         raise ValueError("Unknown development scenario.")
+    if agent is None or recognizer is None or synthesizer is None:
+        agent, recognizer, synthesizer = development_voice_runtime()
 
     coordinator = Coordinator(
         action_timeout=1,
-        agent=DevelopmentAgent(),
-        recognizer=DevelopmentRecognizer(),
-        synthesizer=DevelopmentSynthesizer(),
+        agent=agent,
+        recognizer=recognizer,
+        synthesizer=synthesizer,
         alarm_state_path=None,
     )
     if scenario == ROOM_SCENARIO:
@@ -124,10 +101,17 @@ def development_coordinator(scenario=ROOM_SCENARIO):
     return coordinator
 
 
-def development_server(port, scenario, client_directory):
+def development_server(
+    port,
+    scenario,
+    client_directory,
+    agent=None,
+    recognizer=None,
+    synthesizer=None,
+):
     return CortexHomeServer(
         ("127.0.0.1", port),
-        development_coordinator(scenario),
+        development_coordinator(scenario, agent, recognizer, synthesizer),
         client_directory,
     )
 
@@ -149,7 +133,14 @@ def parse_args():
 
 def main():
     args = parse_args()
-    server = development_server(args.port, args.scenario, args.client)
+    try:
+        server = development_server(args.port, args.scenario, args.client)
+    except AgentError as error:
+        print(f"error: {error.code}", flush=True)
+        return 1
+    except SpeechError:
+        print("error: speech_unavailable", flush=True)
+        return 1
     if args.ready_file:
         args.ready_file.touch(exist_ok=False)
     try:
@@ -162,4 +153,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

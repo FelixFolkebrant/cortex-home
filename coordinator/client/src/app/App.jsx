@@ -617,6 +617,20 @@ export function App() {
       );
     });
 
+    events.addEventListener("agent.audio", (event) => {
+      const message = parseMessage(event);
+      if (message?.requestId === voiceRequestId.current) {
+        spokenInteraction.enqueue(message.requestId, message.audio);
+      }
+    });
+
+    events.addEventListener("agent.audio.complete", (event) => {
+      const message = parseMessage(event);
+      if (message?.requestId === voiceRequestId.current) {
+        void spokenInteraction.complete(message.requestId);
+      }
+    });
+
     events.addEventListener("voice.session", (event) => {
       const session = parseMessage(event);
       if (!session || session.sessionId !== voiceSessionId.current) {
