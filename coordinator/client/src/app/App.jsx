@@ -256,6 +256,12 @@ export function App() {
         });
       },
       onError: (requestId, error) => {
+        if (voiceSessionId.current === requestId) {
+          subtitleRequestId.current = null;
+          setSubtitle("");
+          void endVoiceSession(error.message, true);
+          return;
+        }
         if (voiceRequestId.current !== requestId) {
           return;
         }
