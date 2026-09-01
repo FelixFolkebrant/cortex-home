@@ -129,6 +129,13 @@ export function App() {
   const subtitleRequestId = useRef(null);
 
   useEffect(() => {
+    let partialTranscriptRequest = null;
+
+    function cancelPartialTranscript() {
+      partialTranscriptRequest?.abort();
+      partialTranscriptRequest = null;
+    }
+
     function clearInteractionTimer() {
       if (interactionTimer.current) {
         window.clearTimeout(interactionTimer.current);
@@ -235,9 +242,15 @@ export function App() {
         }
       },
       onPartialTurn: (sessionId, turnEpoch, audio) => {
-        if (voiceSessionId.current !== sessionId || !endpointToken.current) {
+        if (
+          voiceSessionId.current !== sessionId ||
+          !endpointToken.current ||
+          partialTranscriptRequest
+        ) {
           return;
         }
+        const controller = new AbortController();
+        partialTranscriptRequest = controller;
         void fetch(`/api/voice/sessions/${encodeURIComponent(sessionId)}/transcript`, {
           body: audio,
           headers: {
@@ -247,7 +260,14 @@ export function App() {
             "X-Voice-Turn-Epoch": String(turnEpoch),
           },
           method: "POST",
-        });
+          signal: controller.signal,
+        })
+          .catch(() => {})
+          .finally(() => {
+            if (partialTranscriptRequest === controller) {
+              partialTranscriptRequest = null;
+            }
+          });
       },
       onError: (requestId, error) => {
         if (voiceSessionId.current === requestId) {
@@ -278,6 +298,7 @@ export function App() {
     });
 
     function cancelVoice(message, showFailure = false) {
+      cancelPartialTranscript();
       const sessionId = voiceSessionId.current;
       const captureCancelled = sessionId && voiceCapture.end(sessionId);
       const interactionCancelled = Boolean(spokenInteraction.session);
@@ -299,6 +320,7 @@ export function App() {
     }
 
     async function endVoiceSession(message, showFailure = false) {
+      cancelPartialTranscript();
       const sessionId = voiceSessionId.current;
       if (!sessionId) {
         return false;
@@ -838,6 +860,7 @@ export function App() {
 
     return () => {
       clearInteractionTimer();
+      cancelPartialTranscript();
       voiceCapture.dispose();
       spokenInteraction.dispose();
       alarmAction.current = null;

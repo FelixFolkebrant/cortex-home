@@ -1731,7 +1731,7 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
                 event, data = item
                 self._write_event(event, data)
         except (BrokenPipeError, ConnectionResetError):
-            pass
+            self._log_event_stream_disconnect()
         finally:
             self.close_connection = True
             self.server.coordinator.disconnect_endpoint(endpoint.token)
@@ -1859,6 +1859,10 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         pass
+
+    @staticmethod
+    def _log_event_stream_disconnect():
+        print("cortex-home: event stream disconnected", flush=True)
 
 
 def validate_playback(observation):
