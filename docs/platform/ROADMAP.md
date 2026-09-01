@@ -14,6 +14,10 @@
 
 ## Next
 
+- [PLT-004](wip/PLT-004.md) will make the normal development loop an IdeaPad
+  browser client plus a loopback-only simulated coordinator. It will reuse the
+  production HTTP and SSE boundary, but will never contact room hardware or be
+  included in the production installer.
 - Reorganize the flat Python runtime and deployment payloads only when that can
   remove real installer coupling without obscuring operator entry points.
 - Keep production deployment checks aligned with every runtime module so a new
