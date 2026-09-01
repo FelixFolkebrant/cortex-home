@@ -8,7 +8,7 @@ local room integrations, and module-owned documentation.
 
 [GEN-002](issues/GEN-002.md) replaced the former project-wide planning hierarchy
 with this module-owned documentation and issue system.
-[GEN-003](wip/GEN-003.md) makes the shared issue record shorter and restores an
+[GEN-003](issues/GEN-003.md) makes the shared issue record shorter and restores an
 optional heatmap for decisions that need focused review.
 
 | Module | Current state |
