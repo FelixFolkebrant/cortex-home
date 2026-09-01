@@ -46,8 +46,34 @@ three-day forecast, then displays the required MET Norway / CC BY 4.0
 attribution. If the forecast cannot be refreshed, Today says weather is
 unavailable without changing Music, Hue, or the coordinator health endpoint.
 
-For local client development, keep the installed coordinator running and
-forward its private loopback port:
+For normal IdeaPad development, install the locked client dependencies once,
+then start a local room:
+
+```sh
+pnpm --dir coordinator/client install --frozen-lockfile
+./coordinator/develop
+```
+
+The command starts Vite at `http://127.0.0.1:5173` and its loopback-only
+coordinator at port 8080. It uses a deterministic simulated room: available
+Today, Music, Lighting, and disarmed Alarm state; normal channel and scene
+actions; and a short fixed local voice answer. It starts no coordinator
+service, iMac bridge, Hue adapter, Spotify receiver, weather refresh, model,
+credential, or networked room hardware. `Control`+`C` stops both processes.
+Camera is a normal local-browser permission flow; AirPlay, endpoint audio, and
+sleep show unavailable because the iMac bridge is intentionally absent.
+
+Use the fixed unavailable presentation when working on empty or degraded UI:
+
+```sh
+./coordinator/develop --scenario unavailable
+```
+
+The local room is development-host evidence only. Deploy and test the physical
+room before treating an integration or room behavior as confirmed.
+
+For client work that specifically needs installed coordinator state, keep the
+installed coordinator running and forward its private loopback port:
 
 ```sh
 ssh -N -L 8080:127.0.0.1:8080 <server-ssh-host>
