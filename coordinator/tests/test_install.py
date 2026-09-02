@@ -52,9 +52,9 @@ class InstallTests(unittest.TestCase):
         ).read_text()
 
         for artifact in [
-            "agent-turn.js",
-            "answer-child.js",
-            "dialogue-child.js",
+            "agent-turn.ts",
+            "answer-child.ts",
+            "dialogue-child.ts",
             "package.json",
             "pnpm-lock.yaml",
         ]:

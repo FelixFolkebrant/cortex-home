@@ -19,7 +19,7 @@ class NodeAgentTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
-        self.child = self.root / "answer-child.js"
+        self.child = self.root / "answer-child.ts"
         self.child.write_text("")
 
     def executable(self, body):

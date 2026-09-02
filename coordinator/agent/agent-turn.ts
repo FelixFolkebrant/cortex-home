@@ -9,7 +9,9 @@ const TOOL_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const MAX_TOOL_RESULT_CHARACTERS = 512;
 
 export class AgentTurnError extends Error {
-  constructor(code) {
+  code: string;
+
+  constructor(code: string) {
     super(code);
     this.code = code;
   }
@@ -149,7 +151,7 @@ function agentTool(tool, state, signal, onAction) {
   };
 }
 
-export async function runTurn(value, options) {
+export async function runTurn(value: any, options: any) {
   const request = validateTurnRequest(value);
   if (!options || typeof options.systemPrompt !== "string" || !options.runtime) {
     throw new AgentTurnError("agent_failed");

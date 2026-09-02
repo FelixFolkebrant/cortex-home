@@ -15,8 +15,8 @@ import {
   MAX_ANSWER_CHARACTERS,
   MAX_OUTPUT_TOKENS,
   validateRequest,
-} from "./answer-child.js";
-import { AgentTurnError, runTurn } from "./agent-turn.js";
+} from "./answer-child.ts";
+import { AgentTurnError, runTurn } from "./agent-turn.ts";
 
 const request = {
   context: {

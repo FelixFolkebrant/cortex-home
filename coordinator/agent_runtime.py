@@ -160,7 +160,7 @@ class NodeAgent:
                 raise AgentError("cancelled")
         return DialogueSession(
             self.node,
-            self.child.with_name("dialogue-child.js"),
+            self.child.with_name("dialogue-child.ts"),
             self.api_key,
             self.timeout,
             self.stop_timeout,

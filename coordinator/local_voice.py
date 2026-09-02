@@ -269,7 +269,7 @@ def arguments():
     parser.add_argument("--node", default="node")
     parser.add_argument(
         "--agent-child",
-        default=Path(__file__).parent / "agent" / "local-agent-child.js",
+        default=Path(__file__).parent / "agent" / "local-agent-child.ts",
         type=Path,
     )
     return parser.parse_args()

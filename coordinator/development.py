@@ -50,7 +50,7 @@ DEVELOPMENT_VOSK_MODEL = (
 def development_voice_runtime():
     agent = NodeAgent(
         "node",
-        Path(__file__).parent / "agent" / "answer-child.js",
+        Path(__file__).parent / "agent" / "answer-child.ts",
         os.environ.get("OPENROUTER_API_KEY"),
     )
     recognizer, synthesizer = load_selected_speech(DEVELOPMENT_VOSK_MODEL)

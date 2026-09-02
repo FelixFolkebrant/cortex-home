@@ -249,9 +249,9 @@ for the selected speech path. The Vosk archive is checksum-verified. The
 coordinator preloads both speech engines and validates the private agent
 configuration before it opens port 8080.
 
-One-shot interactions retain the fresh `/opt/cortex-home/agent/answer-child.js`
+One-shot interactions retain the fresh `/opt/cortex-home/agent/answer-child.ts`
 process. An explicit voice session instead owns one
-`/opt/cortex-home/agent/dialogue-child.js` process from session activation to
+`/opt/cortex-home/agent/dialogue-child.ts` process from session activation to
 its terminal event. It receives only each bounded transcript and fresh reduced
 active-view context through standard input. That context contains exactly
 `activeChannel` and `channel`; lighting remains internal until later accepted

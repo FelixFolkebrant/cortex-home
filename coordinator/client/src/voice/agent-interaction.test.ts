@@ -5,7 +5,7 @@ import {
   isVoiceDebugShortcut,
   parseDebugMetrics,
   SpokenInteraction,
-} from "./agent-interaction.js";
+} from "./agent-interaction.ts";
 
 function response({
   body = new Blob([new Uint8Array(45)], { type: "audio/wav" }),

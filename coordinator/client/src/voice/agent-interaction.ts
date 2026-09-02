@@ -67,10 +67,21 @@ function encodedAudio(encoded) {
 }
 
 export class SpokenInteraction {
+  createAudio: any;
+  createObjectURL: any;
+  fetch: any;
+  now: any;
+  onCompleted: any;
+  onDebug: any;
+  onFailed: any;
+  revokeObjectURL: any;
+  generation: number;
+  session: any;
+
   constructor({
     createAudio = (url) => new Audio(url),
     createObjectURL = (blob) => URL.createObjectURL(blob),
-    fetch: request = (...arguments_) => globalThis.fetch(...arguments_),
+    fetch: request = (...arguments_: any[]) => (globalThis.fetch as any)(...arguments_),
     now = () => performance.now(),
     onCompleted,
     onDebug,

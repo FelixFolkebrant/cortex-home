@@ -37,9 +37,9 @@ trap 'exit 1' HUP INT TERM
 
 ssh "$server_host" "mkdir '$remote_dir/agent'"
 scp -q \
-  "$script_dir/agent/agent-turn.js" \
-  "$script_dir/agent/answer-child.js" \
-  "$script_dir/agent/dialogue-child.js" \
+  "$script_dir/agent/agent-turn.ts" \
+  "$script_dir/agent/answer-child.ts" \
+  "$script_dir/agent/dialogue-child.ts" \
   "$script_dir/agent/package.json" \
   "$script_dir/agent/pnpm-lock.yaml" \
   "$server_host:$remote_dir/agent/"

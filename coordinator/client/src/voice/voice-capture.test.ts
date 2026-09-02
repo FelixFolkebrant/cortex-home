@@ -12,7 +12,7 @@ import {
   VoiceCapture,
   voiceCaptureTransition,
   voiceSessionTransition,
-} from "./voice-capture.js";
+} from "./voice-capture.ts";
 
 function shortcut(overrides = {}) {
   return {

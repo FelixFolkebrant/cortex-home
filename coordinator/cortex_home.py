@@ -79,7 +79,7 @@ PLAYBACK_STATUSES = {"paused", "playing", "stopped", "unavailable"}
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 CLIENT_ENTRY_PATTERN = re.compile(r'<script\b[^>]*\bsrc="(?P<src>/assets/[^"]+)"')
 AGENT_NODE = Path("/opt/cortex-home/node/bin/node")
-AGENT_CHILD = Path("/opt/cortex-home/agent/answer-child.js")
+AGENT_CHILD = Path("/opt/cortex-home/agent/answer-child.ts")
 VOSK_MODEL = Path("/opt/cortex-home/models/vosk-model-small-en-us-0.15")
 SPOTIFY_URI_PATTERN = re.compile(
     r"^spotify:(?P<type>track|episode):[A-Za-z0-9]{1,64}$"

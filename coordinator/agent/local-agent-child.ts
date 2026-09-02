@@ -6,14 +6,14 @@ import {
   readRequest,
   runTurn,
   validateTurnRequest,
-} from "./agent-turn.js";
+} from "./agent-turn.ts";
 import {
   MAX_INPUT_BYTES,
   MAX_OUTPUT_TOKENS,
   OPENROUTER_MODEL,
   lockProviderPayload,
-} from "./answer-child.js";
-import { developmentTool } from "./development-tool.js";
+} from "./answer-child.ts";
+import { developmentTool } from "./development-tool.ts";
 
 const LOCAL_CONTEXT = Object.freeze({
   activeChannel: "today",

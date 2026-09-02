@@ -9,7 +9,7 @@ import {
   readRequest,
   runTurn,
   validateTurnRequest,
-} from "./agent-turn.js";
+} from "./agent-turn.ts";
 
 export const MODEL_ID = "google/gemini-3.5-flash-lite";
 export const MAX_INPUT_BYTES = 24_576;
@@ -56,7 +56,7 @@ export const OPENROUTER_MODEL = Object.freeze({
 
 export { AgentTurnError as AgentRequestError, MAX_ANSWER_CHARACTERS, MAX_CONTEXT_BYTES, MAX_TRANSCRIPT_CHARACTERS };
 
-export function validateRequest(value) {
+export function validateRequest(value: any): any {
   const hasSession =
     value &&
     typeof value === "object" &&
@@ -84,7 +84,7 @@ export function validateRequest(value) {
   return hasSession ? { ...request, sessionId, turnEpoch } : request;
 }
 
-export function lockProviderPayload(payload, allowTool = false) {
+export function lockProviderPayload(payload: any, allowTool = false): any {
   if (
     payload === null ||
     typeof payload !== "object" ||
@@ -130,7 +130,7 @@ function productionRuntime() {
   };
 }
 
-export async function answerRequest(value, options = {}) {
+export async function answerRequest(value: any, options: any = {}) {
   const request = validateRequest(value);
   const runtime = options.runtime || productionRuntime();
   const { sessionId, turnEpoch, ...turn } = request;

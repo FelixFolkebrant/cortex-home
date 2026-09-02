@@ -6,7 +6,7 @@ import {
   createDialogue,
   MAX_HISTORY_CHARACTERS,
   MAX_HISTORY_EXCHANGES,
-} from "./dialogue-child.js";
+} from "./dialogue-child.ts";
 
 function runtime(responses) {
   const faux = fauxProvider();

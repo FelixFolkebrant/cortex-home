@@ -230,7 +230,7 @@ class DevelopmentCoordinatorTests(unittest.TestCase):
         self.assertEqual(runtime, ("agent", "recognizer", "synthesizer"))
         node_agent.assert_called_once_with(
             "node",
-            Path(__file__).parents[1] / "agent" / "answer-child.js",
+            Path(__file__).parents[1] / "agent" / "answer-child.ts",
             "private-key",
         )
         selected_speech.assert_called_once_with(DEVELOPMENT_VOSK_MODEL)

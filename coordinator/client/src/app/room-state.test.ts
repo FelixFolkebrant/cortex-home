@@ -5,7 +5,7 @@ import {
   keyboardAction,
   nextScene,
   roomReducer,
-} from "./room-state.js";
+} from "./room-state.ts";
 
 const item = {
   artworkUrl: "https://example.test/cover.jpg",

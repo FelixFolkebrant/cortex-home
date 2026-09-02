@@ -137,6 +137,22 @@ function stopTracks(stream) {
 }
 
 export class VoiceCapture {
+  AudioContext: any;
+  AudioWorkletNode: any;
+  mediaDevices: any;
+  onCaptured: any;
+  onError: any;
+  onLevel: any;
+  onPartialTurn: any;
+  onStarted: any;
+  onTurn: any;
+  onTurnStarted: any;
+  setTimer: any;
+  clearTimer: any;
+  workletUrl: any;
+  generation: number;
+  session: any;
+
   constructor({
     audioContext,
     audioWorkletNode = globalThis.AudioWorkletNode,
@@ -150,7 +166,7 @@ export class VoiceCapture {
     onTurnStarted,
     setTimer = (callback, delay) => globalThis.setTimeout(callback, delay),
     clearTimer = (timer) => globalThis.clearTimeout(timer),
-    workletUrl = new URL("./pcm-capture-worklet.js", import.meta.url),
+    workletUrl = new URL("./pcm-capture-worklet.ts", import.meta.url),
   }) {
     this.AudioContext = audioContext;
     this.AudioWorkletNode = audioWorkletNode;

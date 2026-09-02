@@ -6,8 +6,8 @@ import {
   AgentTurnError,
   MAX_ANSWER_CHARACTERS,
   validateTurnRequest,
-} from "./agent-turn.js";
-import { OPENROUTER_MODEL, lockProviderPayload } from "./answer-child.js";
+} from "./agent-turn.ts";
+import { OPENROUTER_MODEL, lockProviderPayload } from "./answer-child.ts";
 
 export const MAX_HISTORY_CHARACTERS = 6_000;
 export const MAX_HISTORY_EXCHANGES = 6;
@@ -57,7 +57,10 @@ function answerFrom(agent) {
   return answer;
 }
 
-export function createDialogue(runtime = productionRuntime(), emit = () => {}) {
+export function createDialogue(
+  runtime: any = productionRuntime(),
+  emit: (delta: string) => void = () => {},
+) {
   const agent = new Agent({
     followUpMode: "one-at-a-time",
     initialState: {
@@ -68,7 +71,7 @@ export function createDialogue(runtime = productionRuntime(), emit = () => {}) {
       tools: [],
     },
     maxRetryDelayMs: 0,
-    onPayload: lockProviderPayload,
+    onPayload: lockProviderPayload as any,
     steeringMode: "one-at-a-time",
     streamFn: runtime.streamFn,
   });
