@@ -26,21 +26,6 @@ class AirPlayControlTests(unittest.TestCase):
         self.origin = "http://coordinator.test:8080"
         coordinator_url = temporary_path / "coordinator-url"
         coordinator_url.write_text(f"{self.origin}\n")
-        state_file = temporary_path / "state"
-        state_file.write_text("off\n")
-        helper = temporary_path / "airplay-helper"
-        helper.write_text(
-            "#!/bin/sh\n"
-            "set -eu\n"
-            f"state_file={state_file}\n"
-            'case "$1" in\n'
-            '  status) sed -n "1p" "$state_file" ;;\n'
-            '  receiver-on) printf "on\\n" > "$state_file" ;;\n'
-            '  receiver-off) printf "off\\n" > "$state_file" ;;\n'
-            "  *) exit 1 ;;\n"
-            "esac\n"
-        )
-        helper.chmod(0o755)
         alarm_helper = temporary_path / "alarm-helper"
         alarm_helper.write_text(
             "#!/bin/sh\n"
@@ -71,10 +56,6 @@ class AirPlayControlTests(unittest.TestCase):
                 f"coordinator_url_file={coordinator_url}",
             )
             .replace(
-                "airplay_helper=/usr/local/bin/cortex-endpoint-airplay",
-                f"airplay_helper={helper}",
-            )
-            .replace(
                 "alarm_helper=/usr/local/bin/cortex-endpoint-alarm",
                 f"alarm_helper={alarm_helper}",
             )
@@ -99,7 +80,7 @@ class AirPlayControlTests(unittest.TestCase):
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
             try:
-                status, _ = self.request("GET", "/status")
+                status, _ = self.request("GET", "/stats")
                 if status == 200:
                     return
             except OSError:
@@ -138,11 +119,15 @@ class AirPlayControlTests(unittest.TestCase):
                     raise
                 time.sleep(0.01)
 
-    def test_controls_receiver_and_rejects_another_origin(self):
-        self.assertEqual(self.request("GET", "/status"), (200, {"state": "off"}))
-        self.assertEqual(self.request("POST", "/on"), (200, {"state": "on"}))
-        self.assertEqual(self.request("GET", "/status"), (200, {"state": "on"}))
-        self.assertEqual(self.request("POST", "/off"), (200, {"state": "off"}))
+    def test_rejects_receiver_control_and_another_origin(self):
+        self.assertEqual(
+            self.request("GET", "/status"),
+            (404, {"error": "Route not found."}),
+        )
+        self.assertEqual(
+            self.request("POST", "/on"),
+            (404, {"error": "Route not found."}),
+        )
         self.assertEqual(
             self.request("POST", "/on", "http://untrusted.test"),
             (403, {"error": "Origin not allowed."}),
@@ -406,6 +391,7 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("-avdec", helper)
         self.assertIn("-vsync no", helper)
         self.assertIn("-vs xvimagesink", helper)
+        self.assertIn("-reset 1", helper)
         self.assertIn("-as pulsesink", helper)
         self.assertNotIn("-pin", helper)
         self.assertNotIn("-reg", helper)
@@ -424,6 +410,10 @@ class ProvisioningTests(unittest.TestCase):
         )
         self.assertIn(
             "/usr/local/bin/cortex-endpoint-airplay stop-local",
+            session,
+        )
+        self.assertIn(
+            "/usr/local/bin/cortex-endpoint-airplay start-local",
             session,
         )
         self.assertIn("/usr/local/bin/cortex-airplay-control &", session)
@@ -502,12 +492,11 @@ class ProvisioningTests(unittest.TestCase):
         self.assertNotIn("0.0.0.0", control)
         self.assertIn('if [[ $origin != "$coordinator_url" ]]', control)
         self.assertIn("Access-Control-Allow-Private-Network: true", control)
-        self.assertIn("GET && $path == /status", control)
         self.assertIn("GET && $path == /stats", control)
-        self.assertIn("POST && $path == /on", control)
-        self.assertIn("POST && $path == /off", control)
-        self.assertIn('"$airplay_helper" receiver-on', control)
-        self.assertIn('"$airplay_helper" receiver-off', control)
+        self.assertNotIn("GET && $path == /status", control)
+        self.assertNotIn("POST && $path == /on", control)
+        self.assertNotIn("POST && $path == /off", control)
+        self.assertNotIn("airplay_helper=", control)
         self.assertIn("POST && $path == /alarm/start", control)
         self.assertIn("POST && $path == /alarm/stop", control)
         self.assertIn("GET && $path == /alarm/files", control)

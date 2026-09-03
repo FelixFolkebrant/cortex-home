@@ -425,11 +425,11 @@ coordinator starts on Today, publishes the selected `channel.active` snapshot
 to every endpoint connection, and returns completion after it publishes that
 state. On the iMac endpoint, Openbox owns all four channel chords globally:
 `Ctrl`+`Alt`+`1` selects Today, `Ctrl`+`Alt`+`2` selects Music, and
-`Ctrl`+`Alt`+`3` selects the local Camera mirror after ensuring UxPlay is
-stopped. `Ctrl`+`Alt`+`4` selects the AirPlay control view without starting the
-receiver. Its on-screen switch controls the receiver through an origin-bound
-loopback bridge on the iMac; plain `Enter` toggles it while AirPlay is active.
-Browser-only environments can render the view but cannot control a local
+`Ctrl`+`Alt`+`3` selects the local Camera mirror; UxPlay remains available.
+`Ctrl`+`Alt`+`4` selects the AirPlay view. The receiver starts with
+the iMac kiosk and remains discoverable as `Skärmen` from every channel; the
+AirPlay view identifies it without a switch or local control request.
+Browser-only environments can render the view but do not advertise a local
 receiver. `Ctrl`+`Alt`+`S` activates the next detected
 room scene in
 case-insensitive name order and wraps after the last scene. While Music is

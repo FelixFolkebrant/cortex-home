@@ -3,16 +3,16 @@
 set -eu
 
 if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 <airplay|camera|music|receiver-off|receiver-on|status|stop-local|today>" >&2
+  echo "Usage: $0 <airplay|camera|music|start-local|stop-local|today>" >&2
   exit 1
 fi
 
 mode=$1
 
 case "$mode" in
-  airplay | camera | music | receiver-off | receiver-on | status | stop-local | today) ;;
+  airplay | camera | music | start-local | stop-local | today) ;;
   *)
-    echo "Usage: $0 <airplay|camera|music|receiver-off|receiver-on|status|stop-local|today>" >&2
+    echo "Usage: $0 <airplay|camera|music|start-local|stop-local|today>" >&2
     exit 1
     ;;
 esac
@@ -51,15 +51,6 @@ receiver_running() {
     [ "$(sed -n '1p' "/proc/$airplay_pid/comm")" = uxplay ] &&
     kill -0 "$airplay_pid" 2>/dev/null
 }
-
-if [ "$mode" = status ]; then
-  if receiver_running; then
-    echo on
-  else
-    echo off
-  fi
-  exit 0
-fi
 
 if ! mkdir "$lock_dir" 2>/dev/null; then
   echo "Another AirPlay operation is already running." >&2
@@ -172,6 +163,7 @@ start_receiver() {
     -avdec \
     -vsync no \
     -vs xvimagesink \
+    -reset 1 \
     -as pulsesink \
     </dev/null \
     >/dev/null \
@@ -191,16 +183,12 @@ case "$mode" in
   airplay)
     post_channel airplay
     ;;
-  receiver-on)
+  start-local)
     if ! receiver_running; then
       start_receiver
     fi
     ;;
-  receiver-off)
-    stop_receiver
-    ;;
   camera | music | today)
-    stop_receiver
     post_channel "$mode"
     ;;
   stop-local)

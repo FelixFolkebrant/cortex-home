@@ -68,8 +68,8 @@ for the existing `imac` account's sudo password. It does not change Wi-Fi or
 unrelated endpoint configuration. It installs Ubuntu's UxPlay and the required
 GStreamer runtime packages, but no AirPlay service, compositor, or window
 watcher. On the stripped iMac baseline, the simulated install adds 135 packages
-for codecs and runtime libraries. These packages use disk space but no CPU or
-RAM while AirPlay is stopped.
+for codecs and runtime libraries. UxPlay runs while the kiosk session is active
+so `Skärmen` remains discoverable, even outside the AirPlay channel.
 
 The command restores the qualified room mixer baseline—Master 80% and unmuted,
 built-in Speaker muted, rear Headphone 60% and unmuted—and pins room output to
@@ -128,16 +128,14 @@ built-in analog PulseAudio sink rather than writing beneath PulseAudio through
 ALSA, so increases and decreases apply coherently to both Raspotify and speech
 playback without selecting the Anker output or changing microphone input.
 
-`Control`+`Option`+`4` selects the AirPlay view without starting UxPlay. The
-screen contains only the AirPlay mark, title, and an Apple-style switch. Turn
-the switch on with `Enter` or a pointer to start the receiver; it shows a loader
-during startup, then `Select tv Skärmen to cast screen`. Use `Enter` again or
-click the switch to stop UxPlay while remaining on the AirPlay view. Open Screen
-Mirroring on the iPhone and choose `Skärmen`.
+`Control`+`Option`+`4` selects the AirPlay view. The kiosk starts UxPlay when
+the session begins, and `Skärmen` remains available from any channel. The
+AirPlay view identifies the receiver with `Select tv Skärmen to cast screen`;
+it has no switch. Open Screen Mirroring on the iPhone and choose `Skärmen`.
 The receiver deliberately does not request a PIN or retain a pairing key, so
 there is no password to display or enter. Any device on the same trusted LAN
-can connect while the switch is on. Selecting Today, Music, or Camera with its
-global shortcut also stops UxPlay before changing views.
+can connect while the kiosk session is active. A mirror therefore appears above
+the current Cortex channel, not only while the AirPlay channel is selected.
 
 The X11 receiver forces UxPlay's software H.264 decoder, disables audio/video
 timestamp synchronization, and renders through XVideo. This is the stable
@@ -146,11 +144,11 @@ stack; it does not use an NVIDIA or Wayland pipeline.
 
 The browser calls an origin-bound control bridge at
 `http://127.0.0.1:38019`. The bridge listens only on loopback, accepts only the
-configured coordinator origin, and exposes status, on, and off operations. It
-uses the already-installed OpenBSD netcat and a shell process rather than
-another browser runtime. The measured netcat listener used approximately
-2 MiB resident memory and 0% sampled idle CPU; together with its supervising
-shell, the bridge is approximately 6 MiB.
+configured coordinator origin, and exposes endpoint alarm controls and current
+system statistics; it does not control AirPlay. It uses the already-installed
+OpenBSD netcat and a shell process rather than another browser runtime. The
+measured netcat listener used approximately 2 MiB resident memory and 0% sampled
+idle CPU; together with its supervising shell, the bridge is approximately 6 MiB.
 
 The same bridge exposes `GET /stats` for the `Control`+`Option`+`M` performance
 overview. It returns only current aggregate CPU, memory, temperature, one-minute
@@ -172,9 +170,10 @@ UxPlay creates its native GStreamer window only after a client begins
 mirroring. Openbox makes every matching window borderless, fullscreen, focused,
 and above Chromium. The native mirror therefore replaces the browser while
 connected; this design intentionally has no browser HUD, compositor, or
-per-pixel transparency. Stopping mirroring reveals the AirPlay control view
-again while leaving UxPlay ready for a reconnect until the switch is turned
-off. A prior moving-mirror sample observed approximately 16–56% UxPlay CPU and
+per-pixel transparency. Stopping mirroring reveals the current Cortex view.
+UxPlay reinitializes its receiver after a normal client teardown; `-reset 1`
+also resets an unresponsive connection after its first three-second NTP timeout.
+A prior moving-mirror sample observed approximately 16–56% UxPlay CPU and
 87–90 MiB resident memory; a more static sample observed approximately 132 MiB.
 Those measurements are indicative, not resource limits.
 

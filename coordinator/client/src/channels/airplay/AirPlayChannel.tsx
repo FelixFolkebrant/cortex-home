@@ -1,6 +1,3 @@
-import { useEffect, useState } from "react";
-import { requestEndpointControl } from "../../shared/endpoint-control";
-
 function AirPlayLogo({ className = "" }) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 52 52">
@@ -34,130 +31,7 @@ function AppleTvLogo() {
   );
 }
 
-export function isAirPlayToggleShortcut(event) {
-  return (
-    event.key === "Enter" &&
-    !event.altKey &&
-    !event.ctrlKey &&
-    !event.metaKey &&
-    !event.shiftKey &&
-    !event.repeat
-  );
-}
-
-export async function requestAirPlay(path, fetcher = fetch, wait = undefined) {
-  let response;
-
-  try {
-    response = await requestEndpointControl(
-      path,
-      { method: path === "/status" ? "GET" : "POST" },
-      fetcher,
-      wait,
-    );
-  } catch {
-    throw new Error("AirPlay control is unavailable.");
-  }
-
-  const result = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(result.error || "AirPlay is unavailable.");
-  }
-  if (!["off", "on"].includes(result.state)) {
-    throw new Error("AirPlay returned an invalid state.");
-  }
-
-  return result.state;
-}
-
-export function AirPlayStatus({ state, error }) {
-  if (state === "starting") {
-    return (
-      <span
-        aria-label="Starting AirPlay"
-        className="h-10 w-10 animate-spin rounded-full border-4 border-white/25 border-t-white"
-        role="status"
-      />
-    );
-  }
-  if (state === "on") {
-    return (
-      <p className="text-2xl font-medium tracking-[-0.025em] text-white/80">
-        Select{" "}
-        <span className="mx-1 inline-flex items-center gap-2 text-white">
-          <AppleTvLogo />
-          <span>Skärmen</span>
-        </span>{" "}
-        to cast screen
-      </p>
-    );
-  }
-  if (error) {
-    return <p className="text-lg font-medium text-[#ff6961]">{error}</p>;
-  }
-
-  return null;
-}
-
 export function AirPlayChannel() {
-  const [state, setState] = useState("off");
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    let current = true;
-
-    requestAirPlay("/status")
-      .then((nextState) => {
-        if (current) {
-          setState(nextState);
-        }
-      })
-      .catch((requestError) => {
-        if (current) {
-          setError(requestError.message);
-        }
-      });
-
-    return () => {
-      current = false;
-    };
-  }, []);
-
-  const enabled = state === "on" || state === "starting";
-  const working = state === "starting" || state === "stopping";
-
-  async function toggle() {
-    const nextEnabled = !enabled;
-    setError(null);
-    setState(nextEnabled ? "starting" : "stopping");
-
-    try {
-      setState(await requestAirPlay(nextEnabled ? "/on" : "/off"));
-    } catch (requestError) {
-      setState(nextEnabled ? "off" : "on");
-      setError(requestError.message);
-    }
-  }
-
-  useEffect(() => {
-    function onKeyDown(event) {
-      if (
-        working ||
-        !isAirPlayToggleShortcut(event) ||
-        event.target?.closest?.('[role="switch"]')
-      ) {
-        return;
-      }
-
-      event.preventDefault();
-      toggle();
-    }
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  });
-
   return (
     <main
       aria-label="AirPlay screen mirror"
@@ -168,29 +42,14 @@ export function AirPlayChannel() {
         <h1 className="text-6xl font-semibold tracking-[-0.055em]">AirPlay</h1>
       </div>
 
-      <button
-        aria-checked={enabled}
-        aria-keyshortcuts="Enter"
-        aria-label="AirPlay receiver"
-        className={`relative mx-auto mt-16 h-[4.25rem] w-[7.5rem] rounded-full p-1.5 shadow-inner transition-colors duration-300 focus-visible:outline-4 focus-visible:outline-offset-8 focus-visible:outline-white ${
-          enabled ? "bg-[#30d158]" : "bg-[#3a3a3c]"
-        }`}
-        disabled={working}
-        onClick={toggle}
-        role="switch"
-        type="button"
-      >
-        <span
-          aria-hidden="true"
-          className={`block aspect-square h-full rounded-full bg-white shadow-[0_2px_8px_rgb(0_0_0_/_45%)] transition-transform duration-300 ${
-            enabled ? "translate-x-[3.25rem]" : "translate-x-0"
-          }`}
-        />
-      </button>
-
-      <div aria-live="polite" className="mt-14 grid min-h-20 place-content-center">
-        <AirPlayStatus error={error} state={state} />
-      </div>
+      <p className="mt-14 text-2xl font-medium tracking-[-0.025em] text-white/80">
+        Select{" "}
+        <span className="mx-1 inline-flex items-center gap-2 text-white">
+          <AppleTvLogo />
+          <span>Skärmen</span>
+        </span>{" "}
+        to cast screen
+      </p>
     </main>
   );
 }

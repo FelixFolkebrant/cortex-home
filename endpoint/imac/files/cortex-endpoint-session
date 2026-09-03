@@ -70,6 +70,8 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 0' HUP INT TERM
 
+/usr/local/bin/cortex-endpoint-airplay start-local
+
 while true; do
   /snap/bin/chromium \
     --autoplay-policy=no-user-gesture-required \

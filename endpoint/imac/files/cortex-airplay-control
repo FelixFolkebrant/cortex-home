@@ -9,7 +9,6 @@ if [[ $# -ne 0 ]]; then
 fi
 
 coordinator_url_file=/etc/cortex-endpoint/coordinator-url
-airplay_helper=/usr/local/bin/cortex-endpoint-airplay
 alarm_helper=/usr/local/bin/cortex-endpoint-alarm
 rtc_suspend_helper=/usr/local/bin/cortex-endpoint-rtc-suspend
 connection_pid=
@@ -32,11 +31,6 @@ coordinator_url=${coordinator_url_lines[0]%/}
 
 if [[ ! $coordinator_url =~ ^http://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]]; then
   echo "The endpoint coordinator URL must be a local HTTP origin." >&2
-  exit 1
-fi
-
-if [[ ! -x $airplay_helper ]]; then
-  echo "The endpoint AirPlay helper is not installed." >&2
   exit 1
 fi
 
@@ -212,26 +206,9 @@ while true; do
       send_response "403 Forbidden" '{"error":"Origin not allowed."}'
     elif [[ $method == OPTIONS ]]; then
       send_response "204 No Content" ""
-    elif [[ $method == GET && $path == /status ]]; then
-      state=$("$airplay_helper" status)
-      send_response "200 OK" "{\"state\":\"$state\"}"
     elif [[ $method == GET && $path == /stats ]]; then
       system_stats
       send_response "200 OK" "$stats_body"
-    elif [[ $method == POST && $path == /on ]]; then
-      if "$airplay_helper" receiver-on >/dev/null 2>&1; then
-        send_response "200 OK" '{"state":"on"}'
-      else
-        send_response "500 Internal Server Error" \
-          '{"error":"AirPlay could not start."}'
-      fi
-    elif [[ $method == POST && $path == /off ]]; then
-      if "$airplay_helper" receiver-off >/dev/null 2>&1; then
-        send_response "200 OK" '{"state":"off"}'
-      else
-        send_response "500 Internal Server Error" \
-          '{"error":"AirPlay could not stop."}'
-      fi
     elif [[ $method == POST && $path == /alarm/start ]]; then
       if "$alarm_helper" start >/dev/null 2>&1; then
         send_response "200 OK" '{"state":"playing"}'
@@ -262,8 +239,6 @@ while true; do
       now=$(/usr/bin/date +%s)
       if (( wake_epoch < now + 60 || wake_epoch > now + 93600 )); then
         send_response "400 Bad Request" '{"error":"Wake time is out of range."}'
-      elif ! "$airplay_helper" stop-local >/dev/null 2>&1; then
-        send_response "500 Internal Server Error" '{"error":"AirPlay could not stop."}'
       elif ! "$alarm_helper" ready >/dev/null 2>&1; then
         send_response "500 Internal Server Error" '{"error":"Alarm audio is unavailable."}'
       else

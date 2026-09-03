@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { AirPlayChannel, requestAirPlay } from "../channels/airplay/AirPlayChannel";
+import { AirPlayChannel } from "../channels/airplay/AirPlayChannel";
 import { AlarmChannel, requestSleep } from "../channels/alarm/AlarmChannel";
 import { CameraChannel } from "../channels/camera/CameraChannel";
 import { MusicChannel, MusicFullscreen } from "../channels/music/MusicChannel";
@@ -499,9 +499,6 @@ export function App() {
       showInteraction(CHANNEL_ACTION, "working");
 
       try {
-        if (channel === "alarm" && activeChannel.current === "airplay") {
-          await requestAirPlay("/off");
-        }
         const response = await fetch("/api/actions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

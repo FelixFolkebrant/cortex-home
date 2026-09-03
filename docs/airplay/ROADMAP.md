@@ -3,19 +3,17 @@
 ## Current
 
 - [AIR-001](issues/AIR-001.md) records the physical UxPlay and Chromium
-  composition investigation and implements the resulting on-demand receiver.
-- AirPlay is the fourth fixed channel. Chromium remains the waiting and control
-  view; each connected UxPlay mirror window temporarily appears above it.
+  composition investigation that introduced the receiver.
+- AirPlay is the fourth fixed channel. Chromium identifies the always-ready
+  receiver; each connected UxPlay mirror window temporarily appears above it.
 - Passwordless discovery, a temporary runtime home, exact lifecycle cleanup,
   and the shared Sonos route are qualified on the iMac.
-- [AIR-002](wip/AIR-002.md) uses software H.264 decoding, no timestamp
-  synchronization, and the endpoint's X11 XVideo sink to avoid rotation-time
-  mirror freezes.
+- [AIR-002](wip/AIR-002.md) starts UxPlay with the kiosk, removes its control
+  toggle, and uses UxPlay's connection reset for automatic recovery.
 
 ## Next
 
-- Address only observed discovery, reconnect, audio, or lifecycle failures.
-- Preserve the explicit on-demand boundary when endpoint provisioning changes.
+- Physically qualify reconnect and stalled-connection recovery on the iMac.
 
 ## Later
 
@@ -35,8 +33,9 @@
   inside the browser.
 - Put the native mirror above Chromium while connected; stock Chromium on this
   endpoint cannot provide the required transparent surface with an opaque HUD.
-- Start and stop UxPlay from one explicit AirPlay view through a narrow
-  loopback helper, with no always-on receiver service or compositor.
+- Start UxPlay with the kiosk and keep it available across channel changes. Its
+  built-in connection teardown and reset are the recovery path; do not add a
+  process or window watcher.
 - Use passwordless home-LAN discovery without retained pairing identity.
 - Use UxPlay's software decoder, no-timestamp mirror mode, and XVideo sink on
   the iMac. Its Openbox session uses X11 with the Radeon driver; no NVIDIA or
