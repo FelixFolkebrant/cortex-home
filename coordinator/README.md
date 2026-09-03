@@ -46,22 +46,38 @@ three-day forecast, then displays the required MET Norway / CC BY 4.0
 attribution. If the forecast cannot be refreshed, Today says weather is
 unavailable without changing Music, Hue, or the coordinator health endpoint.
 
-For normal IdeaPad development, install the locked client dependencies once,
-then start a local room:
+For normal IdeaPad development, install the locked client dependencies and
+voice runtime once, export the real provider key in the current shell, then
+start a local room:
 
 ```sh
 pnpm --dir coordinator/client install --frozen-lockfile
+export OPENROUTER_API_KEY=<private-key>
+./coordinator/develop
+```
+
+If the repository's ignored `.env` already holds the key, load it into just the
+current shell before the last command:
+
+```sh
+set -a
+. ./.env
+set +a
 ./coordinator/develop
 ```
 
 The command starts Vite at `http://127.0.0.1:5173` and its loopback-only
-coordinator at port 8080. It uses a deterministic simulated room: available
-Today, Music, Lighting, and disarmed Alarm state; normal channel and scene
-actions; and a short fixed local voice answer. It starts no coordinator
-service, iMac bridge, Hue adapter, Spotify receiver, weather refresh, model,
-credential, or networked room hardware. `Control`+`C` stops both processes.
-Camera is a normal local-browser permission flow; AirPlay, endpoint audio, and
-sleep show unavailable because the iMac bridge is intentionally absent.
+coordinator at port 8080. It uses deterministic local room observations for
+Today, Music, Lighting, and Alarm, but voice is real: browser capture, Vosk,
+Pocket TTS, Pi Agent Core, and the pinned OpenRouter route. It needs the Vosk
+model at `$HOME/.local/share/cortex-home/vosk-model-small-en-us-0.15`; it fails
+with a content-free error when the key or speech runtime is unavailable. It
+uses the repository `.venv`; follow the Local Voice Workbench setup below once
+to create it and install the selected speech engines. It
+starts no coordinator service, iMac bridge, Hue adapter, Spotify receiver, or
+weather refresh. `Control`+`C` stops both processes. Camera is a normal
+local-browser permission flow; AirPlay, endpoint audio, and sleep show
+unavailable because the iMac bridge is intentionally absent.
 
 Use the fixed unavailable presentation when working on empty or degraded UI:
 
@@ -233,14 +249,18 @@ for the selected speech path. The Vosk archive is checksum-verified. The
 coordinator preloads both speech engines and validates the private agent
 configuration before it opens port 8080.
 
-Each accepted turn owns one fresh
-`/opt/cortex-home/agent/answer-child.js` process. The child receives only its
-request ID, session ID and epoch, bounded transcript, and fresh reduced
+One-shot interactions retain the fresh `/opt/cortex-home/agent/answer-child.ts`
+process. An explicit voice session instead owns one
+`/opt/cortex-home/agent/dialogue-child.ts` process from session activation to
+its terminal event. It receives only each bounded transcript and fresh reduced
 active-view context through standard input. That context contains exactly
 `activeChannel` and `channel`; lighting remains internal until later accepted
-work. The child has no tools or history and returns only one bounded answer
-through standard output. The coordinator terminates its process group on
-replacement, disconnect, timeout, malformed output, or shutdown.
+work. The dialogue retains at most six complete exchanges and 6,000 text
+characters in memory, removing the oldest complete exchange before each
+provider request. It emits ordered text deltas and one bounded final answer;
+the coordinator terminates its process group and discards its history on
+replacement, disconnect, cancellation, session end, timeout, malformed output,
+or shutdown.
 
 The locked child uses `@earendil-works/pi-agent-core` and
 `@earendil-works/pi-ai` `0.82.1` with
@@ -256,8 +276,9 @@ The endpoint contract is:
   one explicit session; `DELETE` ends it and invalidates its microphone and
   turn ownership.
 - `POST /api/agent/interactions/<request-id>` with the active endpoint token,
-  `audio/wav`, `X-Voice-Session`, and `X-Voice-Turn-Epoch` returns the current
-  synthesized `audio/wav`. The coordinator accepts only the next exact epoch.
+  `audio/wav`, `X-Voice-Session`, and `X-Voice-Turn-Epoch` returns an
+  accepted JSON interaction. The coordinator accepts only the next exact epoch
+  and sends local `audio/wav` segments over the owning endpoint event stream.
 - `DELETE /api/agent/interactions/<request-id>` cancels or reserves that
   endpoint-owned request ID.
 - `POST /api/agent/interactions/<request-id>/status` reports `speaking`,
@@ -266,12 +287,15 @@ The endpoint contract is:
   `user-speaking`, `ending`, or `ended` state. `agent.interaction` publishes only the
   request ID, session ID, epoch, and `transcribing`, `thinking`, `speaking`,
   `completed`, or `failed`.
+- `agent.audio` SSE delivers one local answer WAV segment for the active request;
+  `agent.audio.complete` says no further segment will arrive. Neither event
+  includes transcript, answer text, or provider content.
 
 The coordinator, browser, and Node child all reject stale session or epoch
 data. Endpoint replacement, disconnect, an explicit session end, invalid audio,
 recognition, provider, synthesis, and playback failures cannot publish work into
-a replacement session. Sessions retain no audio or conversation data; VOI-007
-will add bounded in-memory dialogue only after its lifecycle is implemented.
+a replacement session. Sessions retain no audio and only their bounded,
+in-memory dialogue until their terminal lifecycle event.
 
 Exact non-repeating `Ctrl`+`Alt`+`D` toggles a local voice diagnostics panel.
 It is hidden by default and renders only numeric timing, duration, byte, and

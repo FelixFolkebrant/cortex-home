@@ -1,9 +1,11 @@
 import io
+import os
 import subprocess
 import threading
 import unittest
 import wave
 from pathlib import Path
+from unittest.mock import patch
 
 import sys
 
@@ -12,16 +14,17 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from cortex_home import CHANNEL_ACTION, SCENE_ACTION, ApiError
 from development import (
-    DEVELOPMENT_ANSWER,
     DEVELOPMENT_LIGHTING,
     DEVELOPMENT_PLAYBACK,
     DEVELOPMENT_TODAY,
+    DEVELOPMENT_VOSK_MODEL,
     ROOM_SCENARIO,
     UNAVAILABLE_SCENARIO,
     development_coordinator,
     development_server,
+    development_voice_runtime,
 )
-from speech import read_synthesis
+from speech import WaveAudio, read_synthesis
 
 
 def capture_audio():
@@ -34,7 +37,44 @@ def capture_audio():
     return output.getvalue()
 
 
+class DevelopmentTestDialogue:
+    def answer(self, _request_id, _transcript, _context, _cancelled, on_delta):
+        on_delta("A local test answer.")
+        return "A local test answer."
+
+    def close(self):
+        pass
+
+
+class DevelopmentTestAgent:
+    def answer(self, _request_id, _transcript, _context, cancelled, **_session):
+        if cancelled.is_set():
+            raise RuntimeError("cancelled")
+        return "A local test answer."
+
+    def start_session(self, _session_id):
+        return DevelopmentTestDialogue()
+
+
+class DevelopmentTestRecognizer:
+    def transcribe(self, _audio):
+        return "Test the local room."
+
+
+class DevelopmentTestSynthesizer:
+    def synthesize(self, _text):
+        return WaveAudio(capture_audio(), 16_000, 1_600)
+
+
 class DevelopmentCoordinatorTests(unittest.TestCase):
+    def coordinator(self, scenario=ROOM_SCENARIO):
+        return development_coordinator(
+            scenario,
+            DevelopmentTestAgent(),
+            DevelopmentTestRecognizer(),
+            DevelopmentTestSynthesizer(),
+        )
+
     def initial_snapshots(self, coordinator):
         endpoint = coordinator.connect_endpoint()
         snapshots = {}
@@ -44,7 +84,7 @@ class DevelopmentCoordinatorTests(unittest.TestCase):
         return endpoint, snapshots
 
     def test_room_scenario_uses_deterministic_available_state(self):
-        coordinator = development_coordinator(ROOM_SCENARIO)
+        coordinator = self.coordinator()
         try:
             endpoint, snapshots = self.initial_snapshots(coordinator)
 
@@ -76,36 +116,49 @@ class DevelopmentCoordinatorTests(unittest.TestCase):
             self.assertEqual(coordinator.lighting["activeScenes"], ["Warm low"])
 
             answer = coordinator.interact(endpoint.token, "voice-1", capture_audio())
-            self.assertEqual(read_synthesis(answer).duration_ms, 200)
-            self.assertEqual(
-                coordinator.agent.answer("id", "text", {}, threading.Event()),
-                DEVELOPMENT_ANSWER,
-            )
+            self.assertEqual(read_synthesis(answer).duration_ms, 100)
         finally:
             coordinator.close()
 
     def test_room_scenario_accepts_a_session_turn(self):
-        coordinator = development_coordinator(ROOM_SCENARIO)
+        coordinator = self.coordinator()
         try:
             endpoint, _snapshots = self.initial_snapshots(coordinator)
             coordinator.start_voice_session(endpoint.token, "development-session")
             endpoint.events.get(timeout=1)
 
-            answer = coordinator.interact(
+            interaction = coordinator.stream_interaction(
                 endpoint.token,
                 "development-turn-1",
                 capture_audio(),
-                session_id="development-session",
-                turn_epoch=1,
+                "development-session",
+                1,
             )
+            self.assertEqual(interaction["requestId"], "development-turn-1")
 
-            self.assertEqual(read_synthesis(answer).duration_ms, 200)
+            events = []
+            while True:
+                event, _payload = endpoint.events.get(timeout=1)
+                events.append(event)
+                if event == "agent.audio.complete":
+                    break
+
+            self.assertEqual(
+                events,
+                [
+                    "voice.session",
+                    "agent.interaction",
+                    "agent.interaction",
+                    "agent.audio",
+                    "agent.audio.complete",
+                ],
+            )
             self.assertEqual(coordinator.active_voice_session.epoch, 1)
         finally:
             coordinator.close()
 
     def test_unavailable_scenario_has_no_scene_activator(self):
-        coordinator = development_coordinator(UNAVAILABLE_SCENARIO)
+        coordinator = self.coordinator(UNAVAILABLE_SCENARIO)
         try:
             _endpoint, snapshots = self.initial_snapshots(coordinator)
 
@@ -125,6 +178,9 @@ class DevelopmentCoordinatorTests(unittest.TestCase):
             0,
             ROOM_SCENARIO,
             Path(__file__).parents[1] / "client",
+            DevelopmentTestAgent(),
+            DevelopmentTestRecognizer(),
+            DevelopmentTestSynthesizer(),
         )
         try:
             self.assertEqual(server.server_address[0], "127.0.0.1")
@@ -144,9 +200,12 @@ class DevelopmentCoordinatorTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         source = launcher.read_text()
+        self.assertIn('project_dir=$(dirname -- "$script_dir")', source)
+        self.assertIn('python="$project_dir/.venv/bin/python"', source)
+        self.assertIn('if [ ! -x "$python" ]; then', source)
         self.assertIn('ready_directory=$(mktemp -d)', source)
         self.assertIn('ready_file=$ready_directory/coordinator-ready', source)
-        self.assertIn('python3 "$script_dir/development.py" --ready-file "$ready_file" "$@" &', source)
+        self.assertIn('"$python" "$script_dir/development.py" --ready-file "$ready_file" "$@" &', source)
         self.assertIn('if [ -f "$ready_file" ]; then', source)
         self.assertIn('trap cleanup EXIT', source)
         self.assertIn("trap 'exit 0' HUP INT TERM", source)
@@ -156,6 +215,25 @@ class DevelopmentCoordinatorTests(unittest.TestCase):
         )
         self.assertIn('while kill -0 "$client_pid" 2>/dev/null; do', source)
         self.assertIn('wait "$client_pid"', source)
+
+    def test_development_voice_uses_the_real_agent_and_speech_runtimes(self):
+        with (
+            patch.dict(os.environ, {"OPENROUTER_API_KEY": "private-key"}, clear=True),
+            patch("development.NodeAgent", return_value="agent") as node_agent,
+            patch(
+                "development.load_selected_speech",
+                return_value=("recognizer", "synthesizer"),
+            ) as selected_speech,
+        ):
+            runtime = development_voice_runtime()
+
+        self.assertEqual(runtime, ("agent", "recognizer", "synthesizer"))
+        node_agent.assert_called_once_with(
+            "node",
+            Path(__file__).parents[1] / "agent" / "answer-child.ts",
+            "private-key",
+        )
+        selected_speech.assert_called_once_with(DEVELOPMENT_VOSK_MODEL)
 
 
 if __name__ == "__main__":

@@ -287,7 +287,7 @@ function dimmedMonochrome(color, opacity) {
 }
 
 function ProgressiveTitle({
-  children,
+  children = "",
   className,
   progress,
   accent,
@@ -359,7 +359,16 @@ export function updateFullscreenTracks(tracks, playback) {
   };
 }
 
-function FullscreenTrack({ playback, palette, phase }) {
+function FullscreenTrack({
+  playback,
+  palette,
+  phase,
+}: {
+  key?: string;
+  playback: any;
+  palette: any;
+  phase: string;
+}) {
   const { item, nextItem } = playback;
   const position = useProjectedPosition(playback);
   const nextArtworkPalette = useArtworkPalette(nextItem).palette;

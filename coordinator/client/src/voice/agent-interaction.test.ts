@@ -5,7 +5,7 @@ import {
   isVoiceDebugShortcut,
   parseDebugMetrics,
   SpokenInteraction,
-} from "./agent-interaction.js";
+} from "./agent-interaction.ts";
 
 function response({
   body = new Blob([new Uint8Array(45)], { type: "audio/wav" }),
@@ -227,6 +227,45 @@ test("one captured WAV plays and reports speaking then completion", async () => 
   });
 });
 
+test("a session plays endpoint audio after its accepted upload", async () => {
+  const requests = [];
+  const audio = new FakeAudio();
+  const encoded = Buffer.from(new Uint8Array(45)).toString("base64");
+  const interaction = new SpokenInteraction({
+    createAudio: () => audio,
+    createObjectURL: () => "blob:stream",
+    fetch: async (url, options) => {
+      requests.push({ options, url });
+      return response({ contentType: "application/json" });
+    },
+    revokeObjectURL: () => {},
+  });
+
+  assert.equal(
+    await interaction.start(
+      "voice-stream",
+      new Blob([new Uint8Array(45)]),
+      "endpoint-token",
+      "voice-session",
+      1,
+    ),
+    true,
+  );
+  assert.equal(interaction.enqueue("voice-stream", encoded), true);
+  await until(() => audio.played === 1);
+  const completed = interaction.complete("voice-stream");
+  audio.emit("ended");
+  assert.equal(await completed, true);
+  assert.deepEqual(
+    requests.map(({ options, url }) => [options.method, url]),
+    [
+      ["POST", "/api/agent/interactions/voice-stream"],
+      ["POST", "/api/agent/interactions/voice-stream/status"],
+      ["POST", "/api/agent/interactions/voice-stream/status"],
+    ],
+  );
+});
+
 test("cancellation aborts fetch, stops playback, revokes audio, and deletes", async () => {
   const requests = [];
   const audio = new FakeAudio();
@@ -294,6 +333,38 @@ test("cancellation settles active playback without completing", async () => {
   assert.equal(audio.paused, 1);
   assert.equal(revoked, "blob:answer");
   assert.equal(completed, false);
+});
+
+test("cancellation discards every queued session segment", async () => {
+  const audios = [];
+  const encoded = Buffer.from(new Uint8Array(45)).toString("base64");
+  const interaction = new SpokenInteraction({
+    createAudio: () => {
+      const audio = new FakeAudio();
+      audios.push(audio);
+      return audio;
+    },
+    createObjectURL: () => `blob:segment-${audios.length}`,
+    fetch: async () => response({ contentType: "application/json" }),
+    revokeObjectURL: () => {},
+  });
+
+  await interaction.start(
+    "voice-queued",
+    new Blob([new Uint8Array(45)]),
+    "endpoint-token",
+    "voice-session",
+    1,
+  );
+  interaction.enqueue("voice-queued", encoded);
+  interaction.enqueue("voice-queued", encoded);
+  await until(() => audios[0]?.played === 1);
+
+  assert.equal(await interaction.cancel(), true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(audios.length, 1);
+  assert.equal(audios[0].played, 1);
 });
 
 test("a server failure remains content-free and reports failed once", async () => {

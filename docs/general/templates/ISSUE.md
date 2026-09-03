@@ -1,53 +1,37 @@
 # ABC-001: Title
 
+<!-- Keep the issue skimmable. Lead with short bold labels and put optional
+detail after them. Use simple language and explain only what cannot be inferred. -->
+
 # What
 
-- Describe the outcome this issue should produce.
+What will be implemented.
+
+Before:
+
+After:
 
 ## Out Of Scope
 
 - State nearby work this issue deliberately does not own.
 
-## Dependencies
+# Heatmap
 
-- Link another module or issue only when this work genuinely depends on it.
+<!-- Use docs/general/templates/HEATMAP.md. Include only decisions that need
+review attention. -->
 
-# Acceptance Criteria
+# How to test
 
-- [ ] Use observable criteria. Leave reviewer judgments unchecked until they
-  are actually confirmed.
+<!-- Give the reviewer clear actions and expected results. Prefer a few broad
+feature checks over minor implementation details. -->
 
-# Approach And Decisions
+### Feature X
 
-- Explain the intended implementation and decisions that matter for review.
-
-# Implementation Walkthrough
-
-- Keep this current as work proceeds. Include stable repository commands and
-  configuration paths needed to reconstruct or deploy the result.
-
-# Problems Encountered
-
-- Record useful symptoms, causes, resolutions, and remaining caveats. Omit raw
-  transcripts, credentials, and host-specific identifiers.
-
-# Review Findings
-
-- Add findings here only when a durable review record is useful.
-
-# Confirmation
-
-## Automated Checks
-
-- Command:
-- Result:
-
-## Manual Testing
-
-- Start:
-- Action:
-- Expected result:
+- **Start** -
+- **Action** -
+- **Expected** -
 
 # Notes
 
-- Add anything a future maintainer should know.
+<!-- Record useful deviations, limitations, automated checks, and completion
+evidence that a future maintainer may need. -->

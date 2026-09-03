@@ -19,7 +19,7 @@ class NodeAgentTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
-        self.child = self.root / "answer-child.js"
+        self.child = self.root / "answer-child.ts"
         self.child.write_text("")
 
     def executable(self, body):
@@ -201,6 +201,50 @@ class NodeAgentTests(unittest.TestCase):
             ),
             "Safe.",
         )
+
+    def test_one_session_child_streams_multiple_turns_until_closed(self):
+        agent = self.agent(
+            "import json, sys\n"
+            "for line in sys.stdin:\n"
+            " request = json.loads(line)\n"
+            " print(json.dumps({'type': 'delta', 'requestId': request['requestId'], 'delta': 'Early. '}), flush=True)\n"
+            " print(json.dumps({'type': 'completed', 'status': 'completed', 'requestId': request['requestId'], 'answer': 'Early.'}), flush=True)\n"
+        )
+        session = agent.start_session("voice-session-1")
+        deltas = []
+        try:
+            self.assertEqual(
+                session.answer("voice-1", "Question", {}, threading.Event(), deltas.append),
+                "Early.",
+            )
+            self.assertEqual(
+                session.answer("voice-2", "Follow-up", {}, threading.Event(), deltas.append),
+                "Early.",
+            )
+        finally:
+            session.close()
+        self.assertEqual(deltas, ["Early. ", "Early. "])
+
+    def test_session_timeout_closes_the_child(self):
+        session = self.agent(
+            "import sys, time\n"
+            "for _line in sys.stdin:\n"
+            " time.sleep(30)\n",
+            timeout=0.05,
+        ).start_session("voice-session-timeout")
+
+        with self.assertRaises(AgentError) as raised:
+            session.answer(
+                "voice-timeout",
+                "Question",
+                {},
+                threading.Event(),
+                lambda _delta: None,
+            )
+
+        self.assertEqual(raised.exception.code, "agent_timeout")
+        self.assertTrue(session.closed)
+        self.assertIsNotNone(session.process.poll())
 
 
 if __name__ == "__main__":

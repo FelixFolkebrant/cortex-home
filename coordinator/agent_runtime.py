@@ -1,5 +1,6 @@
 import json
 import os
+import queue
 import signal
 import subprocess
 import threading
@@ -105,7 +106,7 @@ class NodeAgent:
                     raise AgentError("agent_timeout")
             except (OSError, subprocess.SubprocessError) as error:
                 self._stop(process)
-                raise AgentError("agent_failed") from error
+                raise AgentError("cancelled" if self._is_closed() else "agent_failed") from error
 
         if cancelled.is_set() or self._is_closed():
             raise AgentError("cancelled")
@@ -151,6 +152,21 @@ class NodeAgent:
             raise AgentError("agent_protocol_failed")
         return answer
 
+    def start_session(self, session_id):
+        if not isinstance(session_id, str) or not session_id:
+            raise AgentError("invalid_request")
+        with self.lock:
+            if self.closed:
+                raise AgentError("cancelled")
+        return DialogueSession(
+            self.node,
+            self.child.with_name("dialogue-child.ts"),
+            self.api_key,
+            self.timeout,
+            self.stop_timeout,
+            self.popen,
+        )
+
     def close(self):
         with self.lock:
             self.closed = True
@@ -187,3 +203,118 @@ class NodeAgent:
         for pipe in (process.stdin, process.stdout, process.stderr):
             if pipe and not pipe.closed:
                 pipe.close()
+
+
+class DialogueSession:
+    _close_pipes = staticmethod(NodeAgent._close_pipes)
+
+    def __init__(self, node, child, api_key, timeout, stop_timeout, popen):
+        self.node = Path(node)
+        self.child = Path(child)
+        self.api_key = api_key
+        self.timeout = timeout
+        self.stop_timeout = stop_timeout
+        self.popen = popen
+        self.lock = threading.Lock()
+        self.stop_lock = threading.Lock()
+        self.events = queue.Queue()
+        self.closed = False
+        self.process = self._start()
+        self.reader = threading.Thread(target=self._read_events, daemon=True)
+        self.reader.start()
+
+    def _start(self):
+        environment = {"LANG": "C.UTF-8", "OPENROUTER_API_KEY": self.api_key}
+        if certificate := os.environ.get("NODE_EXTRA_CA_CERTS"):
+            environment["NODE_EXTRA_CA_CERTS"] = certificate
+        try:
+            return self.popen(
+                [str(self.node), str(self.child)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                env=environment,
+                start_new_session=True,
+            )
+        except OSError as error:
+            raise AgentError("agent_start_failed") from error
+
+    def _read_events(self):
+        try:
+            for line in self.process.stdout:
+                try:
+                    event = json.loads(line)
+                except (json.JSONDecodeError, UnicodeError):
+                    self.events.put(("invalid", None))
+                    return
+                self.events.put(("event", event))
+        finally:
+            self.events.put(("closed", None))
+
+    def answer(self, request_id, transcript, context, cancelled, on_delta):
+        try:
+            request = json.dumps(
+                {"requestId": request_id, "transcript": transcript, "context": context},
+                separators=(",", ":"),
+            )
+            with self.lock:
+                if self.closed or self.process.poll() is not None:
+                    raise AgentError("cancelled" if self.closed else "agent_failed")
+                try:
+                    self.process.stdin.write(f"{request}\n")
+                    self.process.stdin.flush()
+                except OSError as error:
+                    raise AgentError("agent_failed") from error
+
+            started = time.monotonic()
+            while True:
+                if cancelled.is_set():
+                    raise AgentError("cancelled")
+                if time.monotonic() - started >= self.timeout:
+                    raise AgentError("agent_timeout")
+                try:
+                    kind, event = self.events.get(timeout=0.05)
+                except queue.Empty:
+                    continue
+                if kind != "event" or not isinstance(event, dict):
+                    raise AgentError("agent_protocol_failed")
+                if event.get("requestId") != request_id:
+                    raise AgentError("agent_protocol_failed")
+                if event.get("type") == "delta":
+                    delta = event.get("delta")
+                    if not isinstance(delta, str) or not delta:
+                        raise AgentError("agent_protocol_failed")
+                    on_delta(delta)
+                    continue
+                if event.get("type") == "completed":
+                    answer = event.get("answer")
+                    if (
+                        set(event) != {"answer", "requestId", "status", "type"}
+                        or event.get("status") != "completed"
+                        or not isinstance(answer, str)
+                        or answer.strip() != answer
+                        or not 1 <= len(answer) <= MAX_ANSWER_CHARACTERS
+                    ):
+                        raise AgentError("agent_protocol_failed")
+                    return answer
+                if event.get("type") == "failed":
+                    code = event.get("code")
+                    raise AgentError(
+                        code
+                        if code in {"agent_failed", "cancelled", "invalid_answer", "invalid_request", "provider_payload_failed"}
+                        else "agent_failed"
+                    )
+                raise AgentError("agent_protocol_failed")
+        except Exception:
+            self.close()
+            raise
+
+    def close(self):
+        with self.lock:
+            if self.closed:
+                return
+            self.closed = True
+            process = self.process
+        NodeAgent._stop(self, process)

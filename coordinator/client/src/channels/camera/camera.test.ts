@@ -10,7 +10,7 @@ import {
   cycleCameraLight,
   DEFAULT_CAMERA_LIGHT_WIDTH,
   startCameraCapture,
-} from "./camera.js";
+} from "./camera.ts";
 
 class FakeTrack {
   constructor(kind = "video") {

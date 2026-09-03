@@ -1,3 +1,12 @@
+declare class AudioWorkletProcessor {
+  port: MessagePort;
+}
+
+declare function registerProcessor(
+  name: string,
+  processor: typeof AudioWorkletProcessor,
+): void;
+
 class PcmCaptureProcessor extends AudioWorkletProcessor {
   process(inputs) {
     const channels = inputs[0];

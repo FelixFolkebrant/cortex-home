@@ -5,7 +5,7 @@ import {
   formatTime,
   isMusicFullscreenShortcut,
   projectPosition,
-} from "./music-state.js";
+} from "./music-state.ts";
 
 const item = {
   artworkUrl: "https://example.test/cover.jpg",

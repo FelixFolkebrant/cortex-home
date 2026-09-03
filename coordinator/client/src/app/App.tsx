@@ -30,6 +30,12 @@ import {
   SCENE_ACTION,
 } from "./room-state";
 
+function frontendDiagnostic(event, details = {}) {
+  if (import.meta.env.DEV) {
+    console.info("cortex-home client:", event, details);
+  }
+}
+
 function writeWavLabel(view, offset, label) {
   for (const [index, character] of [...label].entries()) {
     view.setUint8(offset + index, character.charCodeAt(0));
@@ -111,6 +117,7 @@ export function App() {
   const [systemStatsVisible, setSystemStatsVisible] = useState(false);
   const [voiceDebug, setVoiceDebug] = useState(null);
   const [voiceDebugVisible, setVoiceDebugVisible] = useState(false);
+  const [subtitle, setSubtitle] = useState("");
   const currentClientEntry = document
     .querySelector('script[type="module"][src]')
     ?.getAttribute("src");
@@ -125,8 +132,19 @@ export function App() {
   const systemStatsVisibleRef = useRef(false);
   const voiceRequestId = useRef(null);
   const voiceSessionId = useRef(null);
+  const subtitleRequestId = useRef(null);
 
   useEffect(() => {
+    let partialTranscriptRequest = null;
+
+    function cancelPartialTranscript() {
+      if (partialTranscriptRequest) {
+        frontendDiagnostic("partial transcript cancelled");
+      }
+      partialTranscriptRequest?.abort();
+      partialTranscriptRequest = null;
+    }
+
     function clearInteractionTimer() {
       if (interactionTimer.current) {
         window.clearTimeout(interactionTimer.current);
@@ -134,7 +152,13 @@ export function App() {
       }
     }
 
-    function showInteraction(action, state, message, duration, scene) {
+    function showInteraction(
+      action,
+      state,
+      message = null,
+      duration = null,
+      scene = null,
+    ) {
       clearInteractionTimer();
       dispatch({ type: "interaction", action, state, message, scene });
 
@@ -178,7 +202,10 @@ export function App() {
     });
 
     const voiceCapture = new VoiceCapture({
-      audioContext: window.AudioContext || window.webkitAudioContext,
+      audioContext:
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext,
       mediaDevices: navigator.mediaDevices,
       onCaptured: (requestId, audio) => {
         if (voiceRequestId.current !== requestId) {
@@ -225,12 +252,63 @@ export function App() {
           turnEpoch,
         );
       },
-      onTurnStarted: (sessionId) => {
+      onTurnStarted: (sessionId, turnEpoch) => {
         if (voiceSessionId.current === sessionId && !voiceRequestId.current) {
+          subtitleRequestId.current = `voice-${sessionId}-${turnEpoch}`;
+          setSubtitle("");
           showInteraction(VOICE_CAPTURE_ACTION, "user-speaking");
         }
       },
+      onPartialTurn: (sessionId, turnEpoch, audio) => {
+        if (
+          voiceSessionId.current !== sessionId ||
+          !endpointToken.current ||
+          partialTranscriptRequest
+        ) {
+          return;
+        }
+        const controller = new AbortController();
+        partialTranscriptRequest = controller;
+        frontendDiagnostic("partial transcript started", {
+          bytes: audio.size,
+          turnEpoch,
+        });
+        void fetch(`/api/voice/sessions/${encodeURIComponent(sessionId)}/transcript`, {
+          body: audio,
+          headers: {
+            "Content-Type": "audio/wav",
+            "X-Endpoint-Token": endpointToken.current,
+            "X-Voice-Session": sessionId,
+            "X-Voice-Turn-Epoch": String(turnEpoch),
+          },
+          method: "POST",
+          signal: controller.signal,
+        })
+          .then((response) => {
+            frontendDiagnostic("partial transcript completed", {
+              status: response.status,
+              turnEpoch,
+            });
+          })
+          .catch((error) => {
+            frontendDiagnostic("partial transcript failed", {
+              error: error instanceof Error ? error.name : "UnknownError",
+              turnEpoch,
+            });
+          })
+          .finally(() => {
+            if (partialTranscriptRequest === controller) {
+              partialTranscriptRequest = null;
+            }
+          });
+      },
       onError: (requestId, error) => {
+        if (voiceSessionId.current === requestId) {
+          subtitleRequestId.current = null;
+          setSubtitle("");
+          void endVoiceSession(error.message, true);
+          return;
+        }
         if (voiceRequestId.current !== requestId) {
           return;
         }
@@ -253,6 +331,7 @@ export function App() {
     });
 
     function cancelVoice(message, showFailure = false) {
+      cancelPartialTranscript();
       const sessionId = voiceSessionId.current;
       const captureCancelled = sessionId && voiceCapture.end(sessionId);
       const interactionCancelled = Boolean(spokenInteraction.session);
@@ -264,6 +343,8 @@ export function App() {
         voiceRequestId.current = null;
         voiceSessionId.current = null;
         activeRequestId.current = null;
+        subtitleRequestId.current = null;
+        setSubtitle("");
       }
       if (interactionCancelled && showFailure) {
         showInteraction(AGENT_INTERACTION_ACTION, "failed", message, 5000);
@@ -272,6 +353,7 @@ export function App() {
     }
 
     async function endVoiceSession(message, showFailure = false) {
+      cancelPartialTranscript();
       const sessionId = voiceSessionId.current;
       if (!sessionId) {
         return false;
@@ -281,6 +363,8 @@ export function App() {
       const completion = spokenInteraction.cancel();
       voiceRequestId.current = null;
       activeRequestId.current = null;
+      subtitleRequestId.current = null;
+      setSubtitle("");
       showInteraction(VOICE_CAPTURE_ACTION, "ending");
       try {
         if (endpointToken.current) {
@@ -353,7 +437,7 @@ export function App() {
       }
     }
 
-    async function postStatus(requestId, status, error) {
+    async function postStatus(requestId, status, error = null) {
       const response = await fetch(
         `/api/requests/${encodeURIComponent(requestId)}/status`,
         {
@@ -514,6 +598,11 @@ export function App() {
     }
 
     const events = new EventSource("/api/events");
+    frontendDiagnostic("event stream created", { readyState: events.readyState });
+
+    events.onopen = () => {
+      frontendDiagnostic("event stream opened", { readyState: events.readyState });
+    };
 
     events.addEventListener("ready", (event) => {
       const message = parseMessage(event);
@@ -532,6 +621,7 @@ export function App() {
       }
 
       endpointToken.current = message.endpointToken;
+      frontendDiagnostic("event stream ready", { readyState: events.readyState });
       actionGeneration.current += 1;
       const { cancelled } = cancelVoice(
         "Microphone capture was cancelled by reconnection.",
@@ -617,6 +707,30 @@ export function App() {
       );
     });
 
+    events.addEventListener("agent.transcript", (event) => {
+      const message = parseMessage(event);
+      if (
+        message?.requestId === subtitleRequestId.current &&
+        typeof message.text === "string"
+      ) {
+        setSubtitle(message.text);
+      }
+    });
+
+    events.addEventListener("agent.audio", (event) => {
+      const message = parseMessage(event);
+      if (message?.requestId === voiceRequestId.current) {
+        spokenInteraction.enqueue(message.requestId, message.audio);
+      }
+    });
+
+    events.addEventListener("agent.audio.complete", (event) => {
+      const message = parseMessage(event);
+      if (message?.requestId === voiceRequestId.current) {
+        void spokenInteraction.complete(message.requestId);
+      }
+    });
+
     events.addEventListener("voice.session", (event) => {
       const session = parseMessage(event);
       if (!session || session.sessionId !== voiceSessionId.current) {
@@ -627,6 +741,8 @@ export function App() {
         voiceRequestId.current = null;
         voiceCapture.end(session.sessionId);
         activeRequestId.current = null;
+        subtitleRequestId.current = null;
+        setSubtitle("");
         showInteraction(VOICE_CAPTURE_ACTION, "ended", null, 2500);
       }
     });
@@ -702,6 +818,7 @@ export function App() {
     });
 
     events.onerror = () => {
+      frontendDiagnostic("event stream error", { readyState: events.readyState });
       endpointToken.current = null;
       actionGeneration.current += 1;
       const { cancelled } = cancelVoice(
@@ -783,9 +900,13 @@ export function App() {
 
     return () => {
       clearInteractionTimer();
+      cancelPartialTranscript();
       voiceCapture.dispose();
       spokenInteraction.dispose();
       alarmAction.current = null;
+      frontendDiagnostic("event stream closed by cleanup", {
+        readyState: events.readyState,
+      });
       events.close();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("blur", onBlur);
@@ -838,6 +959,7 @@ export function App() {
           connection={room.connection}
           lighting={room.lighting}
           interaction={room.interaction}
+          subtitle={subtitle}
           showLightingStatus={channel !== "music"}
           voiceDebug={voiceDebug}
           voiceDebugVisible={voiceDebugVisible}

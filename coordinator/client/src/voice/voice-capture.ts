@@ -3,6 +3,7 @@ export const PCM_SAMPLE_RATE = 16_000;
 export const MAX_CAPTURE_SECONDS = 15;
 export const MIN_SPEECH_MILLISECONDS = 400;
 export const END_OF_TURN_MILLISECONDS = 850;
+export const PARTIAL_TRANSCRIPT_MILLISECONDS = 500;
 export const SPEECH_THRESHOLD = 0.018;
 
 const AUTHORITY_KEYS = new Set([
@@ -136,6 +137,22 @@ function stopTracks(stream) {
 }
 
 export class VoiceCapture {
+  AudioContext: any;
+  AudioWorkletNode: any;
+  mediaDevices: any;
+  onCaptured: any;
+  onError: any;
+  onLevel: any;
+  onPartialTurn: any;
+  onStarted: any;
+  onTurn: any;
+  onTurnStarted: any;
+  setTimer: any;
+  clearTimer: any;
+  workletUrl: any;
+  generation: number;
+  session: any;
+
   constructor({
     audioContext,
     audioWorkletNode = globalThis.AudioWorkletNode,
@@ -143,12 +160,13 @@ export class VoiceCapture {
     onCaptured,
     onError,
     onLevel,
+    onPartialTurn,
     onStarted,
     onTurn,
     onTurnStarted,
     setTimer = (callback, delay) => globalThis.setTimeout(callback, delay),
     clearTimer = (timer) => globalThis.clearTimeout(timer),
-    workletUrl = new URL("./pcm-capture-worklet.js", import.meta.url),
+    workletUrl = new URL("./pcm-capture-worklet.ts", import.meta.url),
   }) {
     this.AudioContext = audioContext;
     this.AudioWorkletNode = audioWorkletNode;
@@ -156,6 +174,7 @@ export class VoiceCapture {
     this.onCaptured = onCaptured;
     this.onError = onError;
     this.onLevel = onLevel;
+    this.onPartialTurn = onPartialTurn;
     this.onStarted = onStarted;
     this.onTurn = onTurn;
     this.onTurnStarted = onTurnStarted;
@@ -427,6 +446,27 @@ export class VoiceCapture {
       (total, chunk) => total + chunk.length,
       0,
     );
+    const partialSamples = Math.round(
+      (PARTIAL_TRANSCRIPT_MILLISECONDS / 1000) * PCM_SAMPLE_RATE,
+    );
+    if (
+      session.turn.startedReported &&
+      totalSamples - (session.turn.partialSamples || 0) >= partialSamples
+    ) {
+      session.turn.partialSamples = totalSamples;
+      try {
+        this.onPartialTurn?.(
+          session.requestId,
+          session.turnEpoch + 1,
+          createPcmWav(session.turn.chunks),
+        );
+      } catch (error) {
+        this.onError(
+          session.requestId,
+          error instanceof Error ? error : new Error("Microphone capture failed."),
+        );
+      }
+    }
     const reachedEnd =
       session.turn.silenceMs >= END_OF_TURN_MILLISECONDS ||
       totalSamples >= PCM_SAMPLE_RATE * MAX_CAPTURE_SECONDS;

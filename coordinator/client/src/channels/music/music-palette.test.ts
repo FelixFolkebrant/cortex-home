@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { contrastingMonochrome, paletteFromPixels } from "./music-palette.js";
+import { contrastingMonochrome, paletteFromPixels } from "./music-palette.ts";
 
 function pixels(...entries) {
   const values = [];

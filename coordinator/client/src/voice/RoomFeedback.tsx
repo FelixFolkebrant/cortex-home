@@ -220,6 +220,20 @@ function VoiceCaptureBar({ interaction }) {
   );
 }
 
+export function VoiceSubtitles({ text }) {
+  if (!text) {
+    return null;
+  }
+
+  return (
+    <div className="pointer-events-none absolute right-0 bottom-[clamp(7rem,13vh,11rem)] left-0 z-50 flex justify-center px-6">
+      <p className="max-w-[min(90vw,58rem)] rounded-lg bg-black/65 px-5 py-2 text-center text-[clamp(1.25rem,2.4vw,2.5rem)] font-bold leading-snug text-[#fff8e8] shadow-[0_2px_2px_black,0_0_3px_black]">
+        {text}
+      </p>
+    </div>
+  );
+}
+
 function formatMilliseconds(value) {
   if (!Number.isFinite(value)) {
     return "—";
@@ -325,6 +339,7 @@ export function RoomFeedback({
   connection,
   lighting,
   interaction,
+  subtitle,
   showLightingStatus,
   voiceDebug,
   voiceDebugVisible = false,
@@ -337,6 +352,7 @@ export function RoomFeedback({
       {!voiceOnly && <ChannelToast interaction={interaction} />}
       {!voiceOnly && <InteractionOverlay interaction={interaction} />}
       <VoiceDebugPanel debug={voiceDebug} visible={voiceDebugVisible} />
+      <VoiceSubtitles text={subtitle} />
       <VoiceCaptureBar interaction={interaction} />
     </>
   );

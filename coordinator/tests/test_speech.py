@@ -166,6 +166,24 @@ class SpeechTests(unittest.TestCase):
         self.assertEqual(received["sample_rate"], 16_000)
         self.assertEqual(len(received["pcm"]), 20)
 
+    def test_vosk_returns_a_bounded_partial_result(self):
+        class FakeRecognizer:
+            def __init__(self, _model, _sample_rate):
+                pass
+
+            def AcceptWaveform(self, _pcm):
+                pass
+
+            def PartialResult(self):
+                return '{"partial":"turn on the warm light"}'
+
+        recognizer = VoskRecognizer("model", FakeRecognizer)
+
+        self.assertEqual(
+            recognizer.partial_transcribe(read_capture(wav_bytes(frames=10))),
+            "turn on the warm light",
+        )
+
     def test_piper_implements_the_synthesizer_contract(self):
         class FakeVoice:
             def synthesize_wav(self, text, wav):

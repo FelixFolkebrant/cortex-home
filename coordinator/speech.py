@@ -203,6 +203,23 @@ class VoskRecognizer:
             raise SpeechError("Vosk returned an invalid transcript.")
         return transcript
 
+    def partial_transcribe(self, audio):
+        audio = read_capture(audio.data)
+        with wave.open(io.BytesIO(audio.data), "rb") as wav:
+            pcm = wav.readframes(wav.getnframes())
+
+        try:
+            recognizer = self.recognizer_type(self.model, CAPTURE_SAMPLE_RATE)
+            recognizer.AcceptWaveform(pcm)
+            result = json.loads(recognizer.PartialResult())
+        except (RuntimeError, TypeError, ValueError, json.JSONDecodeError) as error:
+            raise SpeechError("Vosk recognition failed.") from error
+
+        transcript = result.get("partial")
+        if not isinstance(transcript, str):
+            raise SpeechError("Vosk returned an invalid partial transcript.")
+        return transcript.strip()[:MAX_TRANSCRIPT_CHARACTERS]
+
 
 class PiperSynthesizer:
     def __init__(self, voice):

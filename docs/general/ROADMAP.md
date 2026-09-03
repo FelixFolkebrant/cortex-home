@@ -8,6 +8,11 @@ local room integrations, and module-owned documentation.
 
 [GEN-002](issues/GEN-002.md) replaced the former project-wide planning hierarchy
 with this module-owned documentation and issue system.
+[GEN-003](issues/GEN-003.md) makes the shared issue record shorter and restores an
+optional heatmap for decisions that need focused review.
+[GEN-004](issues/GEN-004.md) converted the coordinator agent and client source
+tree, including React `.tsx` components, from JavaScript to TypeScript while
+preserving the existing runtime boundaries.
 
 | Module | Current state |
 |---|---|
@@ -16,14 +21,15 @@ with this module-owned documentation and issue system.
 | [Today](../today/ROADMAP.md) | Local clock and Linköping weather dashboard |
 | [Music](../music/ROADMAP.md) | Spotify Connect playback and room-scale presentation |
 | [Lighting](../lighting/ROADMAP.md) | Observed Hue scene catalog and exact scene actions |
-| [Voice](../voice/ROADMAP.md) | Deliberate local and room speech paths with one-turn agent core |
+| [Voice](../voice/ROADMAP.md) | One-turn local and room baseline; natural duplex dialogue is the active priority |
 | [Camera](../camera/ROADMAP.md) | Endpoint-local full-screen mirror |
 | [AirPlay](../airplay/ROADMAP.md) | On-demand iPhone screen receiver |
 | [Alarm](../alarm/ROADMAP.md) | One-shot wake alarm with endpoint sleep and local audio |
 
 ## Current Direction
 
-- Improve the fluent Voice core before adding more room-agent permissions.
+- Establish natural Voice dialogue with continuous active-session listening and
+  barge-in before adding any room-agent permissions.
 - Finish reviewer-owned physical confirmation recorded in active Shell and
   Alarm issues.
 - Let each view evolve through its own roadmap without introducing a generic

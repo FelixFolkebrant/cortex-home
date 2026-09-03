@@ -39,7 +39,7 @@ if [ ! -f "$script_dir/dist/index.html" ]; then
   exit 1
 fi
 
-for agent_file in agent-turn.js answer-child.js package.json pnpm-lock.yaml; do
+for agent_file in agent-turn.ts answer-child.ts dialogue-child.ts package.json pnpm-lock.yaml; do
   if [ ! -f "$script_dir/agent/$agent_file" ]; then
     echo "The Cortex Home agent package is incomplete." >&2
     exit 1
@@ -137,8 +137,9 @@ chown -R root:root /opt/cortex-home/node
 install -d --owner=root --group=root --mode=755 /opt/cortex-home/agent
 find /opt/cortex-home/agent -mindepth 1 -delete
 cp \
-  "$script_dir/agent/agent-turn.js" \
-  "$script_dir/agent/answer-child.js" \
+  "$script_dir/agent/agent-turn.ts" \
+  "$script_dir/agent/answer-child.ts" \
+  "$script_dir/agent/dialogue-child.ts" \
   "$script_dir/agent/package.json" \
   "$script_dir/agent/pnpm-lock.yaml" \
   /opt/cortex-home/agent/

@@ -7,11 +7,12 @@ import {
   MAX_CAPTURE_SECONDS,
   MIN_SPEECH_MILLISECONDS,
   microphoneLevel,
+  PARTIAL_TRANSCRIPT_MILLISECONDS,
   PCM_SAMPLE_RATE,
   VoiceCapture,
   voiceCaptureTransition,
   voiceSessionTransition,
-} from "./voice-capture.js";
+} from "./voice-capture.ts";
 
 function shortcut(overrides = {}) {
   return {
@@ -92,6 +93,40 @@ test("turn detection requires sustained local speech and a natural pause", async
   assert.equal(turns[0].epoch, 1);
   assert.equal(turns[0].audio.type, "audio/wav");
   assert.equal(session.turnDetectionSuspended, true);
+});
+
+test("turn detection sends bounded partial audio before the natural pause", () => {
+  const partials = [];
+  const capture = new VoiceCapture({
+    audioContext: class {},
+    audioWorkletNode: class {},
+    mediaDevices: {},
+    onError: (_requestId, error) => assert.fail(error),
+    onPartialTurn: (sessionId, epoch, audio) =>
+      partials.push({ audio, epoch, sessionId }),
+  });
+  const session = {
+    continuous: true,
+    requestId: "session-1",
+    turn: null,
+    turnDetectionSuspended: false,
+    turnEpoch: 0,
+  };
+  const firstSamples = new Float32Array(
+    Math.ceil((MIN_SPEECH_MILLISECONDS / 1000) * PCM_SAMPLE_RATE),
+  ).fill(0.08);
+  const secondSamples = new Float32Array(
+    Math.ceil((PARTIAL_TRANSCRIPT_MILLISECONDS / 1000) * PCM_SAMPLE_RATE),
+  ).fill(0.08);
+
+  capture.detectTurn(session, firstSamples);
+  capture.detectTurn(session, secondSamples);
+
+  assert.equal(partials.length, 1);
+  assert.equal(partials[0].sessionId, "session-1");
+  assert.equal(partials[0].epoch, 1);
+  assert.equal(partials[0].audio.type, "audio/wav");
+  assert.equal(session.turnDetectionSuspended, false);
 });
 
 test("capture output is bounded mono 16 kHz signed 16-bit PCM WAV", async () => {

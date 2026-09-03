@@ -5,7 +5,7 @@ import {
   alarmTime,
   initialAlarmEditor,
   reduceAlarmEditor,
-} from "./alarm-editor.js";
+} from "./alarm-editor.ts";
 
 const disarmed = { status: "disarmed", time: null };
 const armed = { status: "armed", time: "07:30" };

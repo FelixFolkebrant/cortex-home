@@ -61,7 +61,7 @@ export function paletteFromPixels(pixels) {
     }
 
     const color = [pixels[index], pixels[index + 1], pixels[index + 2]];
-    const key = colorKey(...color);
+    const key = colorKey(color[0], color[1], color[2]);
     const cluster = clusters.get(key) || {
       count: 0,
       totals: [0, 0, 0],
