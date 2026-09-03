@@ -8,7 +8,7 @@
   receiver; each connected UxPlay mirror window temporarily appears above it.
 - Passwordless discovery, a temporary runtime home, exact lifecycle cleanup,
   and the shared Sonos route are qualified on the iMac.
-- [AIR-002](wip/AIR-002.md) starts UxPlay with the kiosk, removes its control
+- [AIR-002](issues/AIR-002.md) starts UxPlay with the kiosk, removes its control
   toggle, and uses UxPlay's connection reset for automatic recovery.
 
 ## Next
