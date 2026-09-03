@@ -10,7 +10,8 @@ and shared audio and media access.
 ## Current Topology
 
 - The ThinkPad runs the Python coordinator, serves the built React client,
-  owns integrations and durable state, and supervises the Node agent child.
+  owns integrations and durable state, and supervises the Node agent child. Its
+  operator SSH hostname is `homelab`.
 - The `iMac8,1` runs Ubuntu 24.04 LTS, LightDM, Openbox, and a full-screen
   Chromium session at 1920 × 1200.
 - The iMac is a replaceable endpoint. Repository provisioning reconstructs its

@@ -24,7 +24,7 @@ After the first deployment, pair the coordinator with the Hue bridge from a
 machine that can reach the server over SSH:
 
 ```sh
-./coordinator/pair-hue <server-ssh-host> <bridge-host>
+./coordinator/pair-hue homelab <bridge-host>
 ```
 
 The command validates the supplied local bridge host, asks for a deliberate
@@ -95,7 +95,7 @@ For client work that specifically needs installed coordinator state, keep the
 installed coordinator running and forward its private loopback port:
 
 ```sh
-ssh -N -L 8080:127.0.0.1:8080 <server-ssh-host>
+ssh -N -L 8080:127.0.0.1:8080 homelab
 ```
 
 Then start the Vite client in another terminal:
@@ -191,7 +191,7 @@ comparable. Run the commands on the ThinkPad from a session that forwards the
 operator's existing SSH agent, then verify the one endpoint hop before playback:
 
 ```sh
-ssh -A <server-ssh-host>
+ssh -A homelab
 ssh -o StrictHostKeyChecking=accept-new imac@imac.local true
 ```
 

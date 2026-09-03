@@ -10,7 +10,8 @@ failure without exposing the system outside the home network.
 
 ## Current Hardware
 
-- Coordinator: 2020 Lenovo ThinkPad running Ubuntu Server.
+- Coordinator: 2020 Lenovo ThinkPad running Ubuntu Server, reached through the
+  `homelab` SSH hostname.
 - Room endpoint: Apple `iMac8,1` running Ubuntu 24.04.4 LTS with hostname and
   administrative username `imac`.
 - Room audio: Sonos Play:5 Gen 1 connected through its analog line-in.

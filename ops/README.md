@@ -15,7 +15,7 @@ python -m pip install --disable-pip-version-check -r ops/requirements.txt
 cp ops/inventory.example.yml ops/inventory.yml
 ```
 
-The example uses the `cortex-coordinator` and `imac` aliases from
+The example uses the `homelab` and `imac` aliases from
 `~/.ssh/config`, so it needs no private host values when those aliases already
 work. Otherwise, edit only the ignored `ops/inventory.yml` to add the required
 `ansible_host` and `ansible_user` values. Do not add passwords, private keys,

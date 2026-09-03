@@ -247,7 +247,7 @@ sudo journalctl \
 On the coordinator, capture the same two-minute window:
 
 ```sh
-ssh <server-ssh-host>
+ssh homelab
 sudo journalctl \
   --unit=cortex-home.service \
   --since="-2 minutes" \

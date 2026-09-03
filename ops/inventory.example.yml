@@ -2,7 +2,7 @@ all:
   children:
     coordinators:
       hosts:
-        cortex-coordinator: {}
+        homelab: {}
     endpoints:
       hosts:
         imac: {}
