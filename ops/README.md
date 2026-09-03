@@ -15,10 +15,11 @@ python -m pip install --disable-pip-version-check -r ops/requirements.txt
 cp ops/inventory.example.yml ops/inventory.yml
 ```
 
-Edit the ignored `ops/inventory.yml` so `ansible_host` and `ansible_user`
-contain the local SSH destination and administrative account for each machine.
-Do not add passwords, private keys, API keys, Wi-Fi credentials, or private
-addresses to the committed example.
+The example uses the `cortex-coordinator` and `imac` aliases from
+`~/.ssh/config`, so it needs no private host values when those aliases already
+work. Otherwise, edit only the ignored `ops/inventory.yml` to add the required
+`ansible_host` and `ansible_user` values. Do not add passwords, private keys,
+API keys, Wi-Fi credentials, or private addresses to the committed example.
 
 Check unprivileged connectivity before provisioning:
 
