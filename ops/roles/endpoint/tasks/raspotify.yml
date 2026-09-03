@@ -1,0 +1,100 @@
+---
+- name: Find the endpoint runtime account
+  ansible.builtin.getent:
+    database: passwd
+    key: cortex-endpoint
+    fail_key: false
+
+- name: Require a provisioned endpoint before installing Raspotify
+  ansible.builtin.assert:
+    that: ansible_facts.getent_passwd['cortex-endpoint'] is defined
+    fail_msg: Provision the Cortex Home endpoint before Raspotify.
+
+- name: Create Raspotify configuration directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+    state: directory
+  loop:
+    - /etc/raspotify
+    - /etc/systemd/system/raspotify.service.d
+    - /var/cache/cortex-endpoint
+
+- name: Install Raspotify integration files
+  ansible.builtin.copy:
+    src: "{{ cortex_project_root }}/endpoint/imac/files/{{ item.source }}"
+    dest: "{{ item.destination }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {source: cortex-raspotify, destination: /usr/local/bin/cortex-raspotify, mode: "0755"}
+    - {source: cortex-endpoint-audio-route, destination: /usr/local/bin/cortex-endpoint-audio-route, mode: "0755"}
+    - {source: cortex_playback_event.py, destination: /usr/local/bin/cortex-playback-event, mode: "0755"}
+    - {source: raspotify.conf, destination: /etc/raspotify/conf, mode: "0600"}
+    - {source: raspotify.service.conf, destination: /etc/systemd/system/raspotify.service.d/50-cortex-endpoint.conf, mode: "0644"}
+  notify:
+    - Reload endpoint systemd
+    - Restart endpoint receiver
+
+- name: Inspect the installed Raspotify version
+  ansible.builtin.command:
+    argv:
+      - dpkg-query
+      - --show
+      - "--showformat=${Version}"
+      - raspotify
+  register: endpoint_installed_raspotify
+  failed_when: false
+  changed_when: false
+
+- name: Install the reviewed Raspotify package
+  when: endpoint_installed_raspotify.stdout != endpoint_raspotify_version
+  block:
+    - name: Download the reviewed Raspotify package
+      ansible.builtin.get_url:
+        url: https://dtcooper.github.io/raspotify/raspotify-latest_amd64.deb
+        dest: /var/cache/cortex-endpoint/raspotify-reviewed_amd64.deb
+        checksum: "sha256:{{ endpoint_raspotify_checksum }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Read the reviewed Raspotify package fields
+      ansible.builtin.command:
+        argv:
+          - dpkg-deb
+          - --field
+          - /var/cache/cortex-endpoint/raspotify-reviewed_amd64.deb
+          - "{{ item }}"
+      loop:
+        - Package
+        - Version
+        - Architecture
+        - Depends
+      register: endpoint_raspotify_fields
+      changed_when: false
+
+    - name: Require the reviewed Raspotify package metadata
+      ansible.builtin.assert:
+        that:
+          - endpoint_raspotify_fields.results[0].stdout == "raspotify"
+          - endpoint_raspotify_fields.results[1].stdout == endpoint_raspotify_version
+          - endpoint_raspotify_fields.results[2].stdout == "amd64"
+          - endpoint_raspotify_fields.results[3].stdout is search('libasound2t64')
+        fail_msg: The downloaded Raspotify package metadata has not been reviewed.
+
+    - name: Install the reviewed Raspotify package
+      ansible.builtin.apt:
+        deb: /var/cache/cortex-endpoint/raspotify-reviewed_amd64.deb
+        dpkg_options: force-confold
+        state: present
+
+- name: Keep Raspotify enabled and active
+  ansible.builtin.systemd_service:
+    name: raspotify.service
+    daemon_reload: true
+    enabled: true
+    state: started

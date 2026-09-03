@@ -9,9 +9,10 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
-PROVISION_HOST = Path(__file__).parents[1] / "provision-host"
-ENDPOINT_DIR = PROVISION_HOST.parent
+ENDPOINT_DIR = Path(__file__).parents[1]
+PROJECT_DIR = ENDPOINT_DIR.parents[1]
 FILES = ENDPOINT_DIR / "files"
+ENDPOINT_ROLE = PROJECT_DIR / "ops" / "roles" / "endpoint"
 
 
 @unittest.skipUnless(
@@ -174,65 +175,47 @@ class AirPlayControlTests(unittest.TestCase):
 class ProvisioningTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.script = PROVISION_HOST.read_text()
+        cls.main_tasks = (ENDPOINT_ROLE / "tasks" / "main.yml").read_text()
+        cls.media_tasks = (ENDPOINT_ROLE / "tasks" / "media.yml").read_text()
+        cls.alarm_tasks = (ENDPOINT_ROLE / "tasks" / "alarm.yml").read_text()
+        cls.mixer_tasks = (ENDPOINT_ROLE / "tasks" / "mixer.yml").read_text()
+        cls.role_defaults = (ENDPOINT_ROLE / "defaults" / "main.yml").read_text()
+        cls.media_policy = (
+            ENDPOINT_ROLE / "templates" / "cortex-home-media.json.j2"
+        ).read_text()
 
     def test_media_policy_uses_the_validated_coordinator_origin(self):
         self.assertIn(
-            'coordinator_origin="$coordinator_url/"',
-            self.script,
+            "endpoint_effective_coordinator_origin",
+            self.media_tasks,
         )
+        self.assertIn('"AudioCaptureAllowedUrls"', self.media_policy)
         self.assertIn(
-            '"AudioCaptureAllowedUrls": ["%s"]',
-            self.script,
+            '"OverrideSecurityRestrictionsOnInsecureOrigin"',
+            self.media_policy,
         )
-        self.assertIn(
-            '"OverrideSecurityRestrictionsOnInsecureOrigin": ["%s"]',
-            self.script,
-        )
-        self.assertIn(
-            '"VideoCaptureAllowedUrls": ["%s"]',
-            self.script,
-        )
+        self.assertIn('"VideoCaptureAllowedUrls"', self.media_policy)
         self.assertEqual(
-            self.script.count('"$coordinator_origin"'),
+            self.media_policy.count("endpoint_effective_coordinator_origin"),
             3,
         )
 
     def test_media_policy_does_not_grant_wildcard_or_global_media_access(self):
-        policy_template = self.script[
-            self.script.index("AudioCaptureAllowedUrls") :
-            self.script.index(
-                "> /var/snap/chromium/current/policies/managed/"
-                "cortex-home-media.json"
-            )
-        ]
-
-        self.assertNotIn("*", policy_template)
-        self.assertNotIn("MediaStream", policy_template)
-        self.assertNotIn('"VideoCaptureAllowed": true', policy_template)
+        self.assertNotIn("*", self.media_policy)
+        self.assertNotIn("MediaStream", self.media_policy)
+        self.assertNotIn('"VideoCaptureAllowed": true', self.media_policy)
 
     def test_focused_media_provision_uses_existing_exact_origin(self):
-        focused_script = (ENDPOINT_DIR / "provision-media-host").read_text()
-
+        self.assertIn("/etc/cortex-endpoint/coordinator-url", self.media_tasks)
+        self.assertIn("endpoint_effective_coordinator_origin", self.media_tasks)
         self.assertIn(
-            "coordinator_url_file=/etc/cortex-endpoint/coordinator-url",
-            focused_script,
+            "cortex-home-media.json.j2",
+            self.media_tasks,
         )
-        self.assertIn('coordinator_origin="$coordinator_url/"', focused_script)
-        self.assertIn('"AudioCaptureAllowedUrls"', focused_script)
-        self.assertIn(
-            '"OverrideSecurityRestrictionsOnInsecureOrigin"',
-            focused_script,
-        )
-        self.assertIn('"VideoCaptureAllowedUrls"', focused_script)
-        self.assertEqual(
-            focused_script.count('"$coordinator_origin"'),
-            3,
-        )
-        self.assertIn("systemctl restart lightdm.service", focused_script)
-        self.assertNotIn('["*"]', focused_script)
-        self.assertNotIn('"VideoCaptureAllowed": true', focused_script)
-        self.assertNotIn("netplan", focused_script)
+        self.assertIn("Restart endpoint kiosk", self.media_tasks)
+        self.assertNotIn('["*"]', self.media_policy)
+        self.assertNotIn('"VideoCaptureAllowed": true', self.media_policy)
+        self.assertNotIn("netplan", self.media_tasks.lower())
 
     def test_qualification_playback_is_limited_to_the_kiosk_audio_session(self):
         helper = (
@@ -292,23 +275,16 @@ class ProvisioningTests(unittest.TestCase):
         )
 
     def test_focused_media_provision_restores_the_room_mixer_baseline(self):
-        focused_script = (ENDPOINT_DIR / "provision-media-host").read_text()
-
-        self.assertIn("amixer -c 0 sset Master 80% unmute", self.script)
-        self.assertIn("amixer -c 0 sset Master 80% unmute", focused_script)
-        self.assertIn("amixer -c 0 sset Speaker mute", focused_script)
+        self.assertIn("amixer -c 0 sset Master 80% unmute", self.mixer_tasks)
+        self.assertIn("amixer -c 0 sset Speaker mute", self.mixer_tasks)
         self.assertIn(
             "amixer -c 0 sset Headphone 60% unmute",
-            focused_script,
+            self.mixer_tasks,
         )
-        self.assertIn("alsactl store 0", focused_script)
+        self.assertIn("alsactl store 0", self.mixer_tasks)
         self.assertLess(
-            focused_script.index("systemctl restart raspotify.service"),
-            focused_script.index("amixer -c 0 sset Master 80% unmute"),
-        )
-        self.assertLess(
-            self.script.index("systemctl restart raspotify.service"),
-            self.script.index("amixer -c 0 sset Master 80% unmute"),
+            self.mixer_tasks.index("flush_handlers"),
+            self.mixer_tasks.index("amixer -c 0 sset Master 80% unmute"),
         )
 
     def test_openbox_binds_fixed_headphone_volume_steps(self):
@@ -349,37 +325,21 @@ class ProvisioningTests(unittest.TestCase):
         self.assertNotIn("S330", helper)
 
     def test_airplay_runtime_is_installed_without_a_compositor(self):
-        focused_script = (ENDPOINT_DIR / "provision-media-host").read_text()
-        deploy_script = (ENDPOINT_DIR / "provision-media").read_text()
-
-        for script in (self.script, focused_script):
-            self.assertIn("gstreamer1.0-libav", script)
-            self.assertIn("gstreamer1.0-plugins-bad", script)
-            self.assertIn("gstreamer1.0-plugins-base", script)
-            self.assertIn("gstreamer1.0-plugins-good", script)
-            self.assertIn("gstreamer1.0-pulseaudio", script)
-            self.assertIn("gstreamer1.0-x", script)
-            self.assertIn("netcat-openbsd", script)
-            self.assertIn("uxplay", script)
-            self.assertIn(
-                "/usr/local/bin/cortex-endpoint-airplay",
-                script,
-            )
-            self.assertIn(
-                "/usr/local/bin/cortex-airplay-control",
-                script,
-            )
-            self.assertNotIn("xcompmgr", script)
-            self.assertNotIn("wmctrl", script)
-
-        self.assertIn(
-            '"$script_dir/files/cortex-endpoint-airplay"',
-            deploy_script,
-        )
-        self.assertIn(
-            '"$script_dir/files/cortex-airplay-control"',
-            deploy_script,
-        )
+        for package in [
+            "gstreamer1.0-libav",
+            "gstreamer1.0-plugins-bad",
+            "gstreamer1.0-plugins-base",
+            "gstreamer1.0-plugins-good",
+            "gstreamer1.0-pulseaudio",
+            "gstreamer1.0-x",
+            "netcat-openbsd",
+            "uxplay",
+        ]:
+            self.assertIn(package, self.role_defaults)
+        self.assertIn("/usr/local/bin/cortex-endpoint-airplay", self.media_tasks)
+        self.assertIn("/usr/local/bin/cortex-airplay-control", self.media_tasks)
+        self.assertNotIn("xcompmgr", self.media_tasks)
+        self.assertNotIn("wmctrl", self.media_tasks)
 
     def test_airplay_helper_is_ephemeral_and_passwordless(self):
         helper = (FILES / "cortex-endpoint-airplay").read_text()
@@ -430,8 +390,8 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn('"$runtime_dir/cortex-alarm"', helper)
         self.assertIn("/usr/bin/mpg123 --loop -1", helper)
         self.assertIn("kill -TERM", helper)
-        self.assertIn('"$source_dir/files/cortex-endpoint-alarm"', self.script)
-        self.assertIn("mpg123", self.script)
+        self.assertIn("cortex-endpoint-alarm", self.alarm_tasks)
+        self.assertIn("mpg123", self.alarm_tasks)
         self.assertIn("The alarm file must be a regular file.", installer)
         self.assertIn("33554432", installer)
         self.assertIn("The alarm file does not contain an MP3 header.", installer)
@@ -439,9 +399,7 @@ class ProvisioningTests(unittest.TestCase):
             "/var/lib/cortex-endpoint/alarm-audio/wake-alarm.mp3",
             installer,
         )
-        self.assertIn("/var/lib/cortex-endpoint/alarm-audio", self.script)
-        focused_host = (ENDPOINT_DIR / "provision-alarm-host").read_text()
-        self.assertIn("/var/lib/cortex-endpoint/alarm-audio", focused_host)
+        self.assertIn("/var/lib/cortex-endpoint/alarm-audio", self.alarm_tasks)
         self.assertNotIn("/home/imac/cortex-alarm-audio", helper)
         self.assertNotIn("/home/imac/cortex-alarm-audio", installer)
         self.assertIn("ssh -tt imac", installer)
@@ -468,22 +426,35 @@ class ProvisioningTests(unittest.TestCase):
             "cortex-endpoint ALL=(root) NOPASSWD: "
             "/usr/local/bin/cortex-endpoint-rtc-suspend *\n",
         )
-        self.assertIn("cortex-endpoint-rtc-suspend.sudoers", self.script)
+        self.assertIn("cortex-endpoint-rtc-suspend.sudoers", self.alarm_tasks)
 
     def test_focused_alarm_install_changes_only_the_alarm_runtime(self):
-        deploy = (ENDPOINT_DIR / "provision-alarm").read_text()
-        host = (ENDPOINT_DIR / "provision-alarm-host").read_text()
+        self.assertIn("cortex-endpoint-alarm", self.alarm_tasks)
+        self.assertIn("cortex-endpoint-rtc-suspend", self.alarm_tasks)
+        self.assertIn("cortex-airplay-control", self.alarm_tasks)
+        self.assertIn("mpg123", self.alarm_tasks)
+        self.assertIn("cortex-endpoint-rtc-suspend.sudoers", self.alarm_tasks)
+        self.assertIn("Restart endpoint kiosk", self.alarm_tasks)
+        self.assertNotIn("netplan", self.alarm_tasks.lower())
+        self.assertNotIn("raspotify", self.alarm_tasks.lower())
 
-        self.assertIn('"$script_dir/files/cortex-endpoint-alarm"', deploy)
-        self.assertIn('"$script_dir/files/cortex-endpoint-rtc-suspend"', deploy)
-        self.assertIn('"$script_dir/files/cortex-airplay-control"', deploy)
-        self.assertIn('"$script_dir/provision-alarm-host"', deploy)
-        self.assertTrue((ENDPOINT_DIR / "provision-alarm-host").stat().st_mode & 0o111)
-        self.assertIn("mpg123", host)
-        self.assertIn("cortex-endpoint-rtc-suspend.sudoers", host)
-        self.assertIn("systemctl restart lightdm.service", host)
-        self.assertNotIn("netplan", host)
-        self.assertNotIn("raspotify", host)
+    def test_one_playbook_exposes_full_and_focused_endpoint_convergence(self):
+        playbook = (PROJECT_DIR / "ops" / "playbooks" / "endpoint.yml").read_text()
+
+        self.assertIn("hosts: endpoints", playbook)
+        for tag in ("raspotify", "media", "alarm"):
+            self.assertIn(f"        - {tag}", self.main_tasks)
+        for retired in (
+            "provision",
+            "provision-host",
+            "provision-media",
+            "provision-media-host",
+            "provision-raspotify",
+            "provision-raspotify-host",
+            "provision-alarm",
+            "provision-alarm-host",
+        ):
+            self.assertFalse((ENDPOINT_DIR / retired).exists())
 
     def test_airplay_control_is_loopback_only_and_origin_bound(self):
         control = (FILES / "cortex-airplay-control").read_text()

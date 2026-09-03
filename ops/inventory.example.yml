@@ -1,0 +1,12 @@
+all:
+  children:
+    coordinators:
+      hosts:
+        cortex-coordinator:
+          ansible_host: coordinator.example.invalid
+          ansible_user: administrator
+    endpoints:
+      hosts:
+        imac:
+          ansible_host: imac.local
+          ansible_user: imac

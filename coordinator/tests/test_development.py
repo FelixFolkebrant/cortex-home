@@ -190,8 +190,13 @@ class DevelopmentCoordinatorTests(unittest.TestCase):
 
     def test_production_installer_does_not_copy_development_runtime(self):
         coordinator_directory = Path(__file__).parents[1]
-        self.assertNotIn("development.py", coordinator_directory.joinpath("install").read_text())
-        self.assertNotIn("development.py", coordinator_directory.joinpath("install-host").read_text())
+        role_directory = coordinator_directory.parent / "ops" / "roles" / "coordinator"
+        role_source = "\n".join(
+            path.read_text()
+            for path in role_directory.rglob("*.yml")
+        )
+
+        self.assertNotIn("development.py", role_source)
 
     def test_launcher_starts_only_the_development_runtime(self):
         coordinator_directory = Path(__file__).parents[1]

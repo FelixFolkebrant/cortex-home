@@ -1,0 +1,87 @@
+---
+- name: Inspect the endpoint coordinator origin
+  ansible.builtin.stat:
+    path: /etc/cortex-endpoint/coordinator-url
+  register: endpoint_media_coordinator_url
+
+- name: Require a configured endpoint before installing media support
+  ansible.builtin.assert:
+    that: endpoint_media_coordinator_url.stat.isreg | default(false)
+    fail_msg: The endpoint coordinator URL is not configured.
+
+- name: Read the endpoint coordinator origin for its media policy
+  ansible.builtin.slurp:
+    src: /etc/cortex-endpoint/coordinator-url
+  register: endpoint_media_coordinator_url_content
+  no_log: true
+
+- name: Normalize the endpoint media origin
+  ansible.builtin.set_fact:
+    endpoint_effective_coordinator_url: "{{ (endpoint_media_coordinator_url_content.content | b64decode | trim) | regex_replace('/$', '') }}"
+    endpoint_effective_coordinator_origin: "{{ ((endpoint_media_coordinator_url_content.content | b64decode | trim) | regex_replace('/$', '')) + '/' }}"
+  no_log: true
+
+- name: Validate the endpoint media origin
+  ansible.builtin.assert:
+    that: endpoint_effective_coordinator_url is match('^http://[A-Za-z0-9.-]+(:[0-9]{1,5})?$')
+    fail_msg: The endpoint coordinator URL must be a local HTTP origin.
+  no_log: true
+
+- name: Install endpoint media packages
+  ansible.builtin.apt:
+    name: "{{ endpoint_media_packages }}"
+    install_recommends: false
+    update_cache: true
+    state: present
+
+- name: Create endpoint media directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+    state: directory
+  loop:
+    - {path: /var/snap/chromium/current/policies/managed, owner: root, group: root, mode: "0755"}
+    - {path: /home/cortex-endpoint/.config/openbox, owner: cortex-endpoint, group: cortex-endpoint, mode: "0755"}
+
+- name: Install endpoint media runtime files
+  ansible.builtin.copy:
+    src: "{{ cortex_project_root }}/endpoint/imac/files/{{ item.source }}"
+    dest: "{{ item.destination }}"
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {source: cortex-endpoint-audio-route, destination: /usr/local/bin/cortex-endpoint-audio-route, mode: "0755"}
+    - {source: cortex-endpoint-airplay, destination: /usr/local/bin/cortex-endpoint-airplay, mode: "0755"}
+    - {source: cortex-airplay-control, destination: /usr/local/bin/cortex-airplay-control, mode: "0755"}
+    - {source: cortex-endpoint-headphone-volume, destination: /usr/local/bin/cortex-endpoint-headphone-volume, mode: "0755"}
+    - {source: cortex-endpoint-session, destination: /usr/local/bin/cortex-endpoint-session, mode: "0755"}
+    - {source: cortex-raspotify, destination: /usr/local/bin/cortex-raspotify, mode: "0755"}
+    - {source: cortex-speech-qualification-capture, destination: /usr/local/bin/cortex-speech-qualification-capture, mode: "0755"}
+    - {source: cortex-speech-qualification-playback, destination: /usr/local/bin/cortex-speech-qualification-playback, mode: "0755"}
+    - {source: openbox-rc.xml, destination: /home/cortex-endpoint/.config/openbox/rc.xml, owner: cortex-endpoint, group: cortex-endpoint, mode: "0644"}
+  notify:
+    - Restart endpoint kiosk
+    - Restart endpoint receiver
+
+- name: Install the command-specific speech sudo policy
+  ansible.builtin.copy:
+    src: "{{ cortex_project_root }}/endpoint/imac/files/cortex-speech-qualification-playback.sudoers"
+    dest: /etc/sudoers.d/cortex-speech-qualification-playback
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo --check --file=%s
+  notify: Restart endpoint kiosk
+
+- name: Render the origin-bound Chromium media policy
+  ansible.builtin.template:
+    src: cortex-home-media.json.j2
+    dest: /var/snap/chromium/current/policies/managed/cortex-home-media.json
+    owner: root
+    group: root
+    mode: "0644"
+  no_log: true
+  notify: Restart endpoint kiosk

@@ -1,0 +1,432 @@
+---
+- name: Install the production coordinator
+  tags: coordinator
+  block:
+    - name: Validate coordinator host
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.architecture == "x86_64"
+          - ansible_facts.service_mgr == "systemd"
+          - ansible_facts.python.version.major == 3
+          - ansible_facts.python.version.minor >= 11
+        fail_msg: The coordinator requires x86-64 Linux, systemd, and Python 3.11 or later.
+
+    - name: Install locked client dependencies
+      ansible.builtin.command:
+        argv:
+          - pnpm
+          - --dir
+          - "{{ cortex_project_root }}/coordinator/client"
+          - install
+          - --frozen-lockfile
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: false
+
+    - name: Build the production client
+      ansible.builtin.command:
+        argv:
+          - pnpm
+          - --dir
+          - "{{ cortex_project_root }}/coordinator/client"
+          - build
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: false
+
+    - name: Verify the production client artifact
+      ansible.builtin.stat:
+        path: "{{ cortex_project_root }}/coordinator/client/dist/index.html"
+      delegate_to: localhost
+      become: false
+      run_once: true
+      register: coordinator_client_index
+
+    - name: Require the production client artifact
+      ansible.builtin.assert:
+        that: coordinator_client_index.stat.isreg
+        fail_msg: The built Cortex Home client is missing.
+
+    - name: Install coordinator host packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - libsndfile1
+          - python3-venv
+          - unzip
+          - xz-utils
+        install_recommends: false
+        update_cache: true
+        state: present
+
+    - name: Create the coordinator group
+      ansible.builtin.group:
+        name: cortex-home
+        system: true
+        state: present
+
+    - name: Create the coordinator account
+      ansible.builtin.user:
+        name: cortex-home
+        group: cortex-home
+        system: true
+        home: /nonexistent
+        create_home: false
+        shell: /usr/sbin/nologin
+        state: present
+
+    - name: Create coordinator directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+        state: directory
+      loop:
+        - {path: /etc/cortex-home, owner: root, group: cortex-home, mode: "0750"}
+        - {path: /var/cache/cortex-home, owner: root, group: cortex-home, mode: "0770"}
+        - {path: /var/cache/cortex-home/downloads, owner: root, group: root, mode: "0755"}
+        - {path: /opt/cortex-home, owner: root, group: root, mode: "0755"}
+        - {path: /opt/cortex-home/agent, owner: root, group: root, mode: "0755"}
+        - {path: /opt/cortex-home/client, owner: root, group: root, mode: "0755"}
+        - {path: /opt/cortex-home/models, owner: root, group: root, mode: "0755"}
+
+    - name: Inspect the private agent environment
+      ansible.builtin.stat:
+        path: /etc/cortex-home/agent.env
+        follow: false
+      register: coordinator_agent_environment
+
+    - name: Ask for the first-install OpenRouter key
+      ansible.builtin.pause:
+        prompt: OpenRouter API key
+        echo: false
+      register: coordinator_agent_key
+      when: not coordinator_agent_environment.stat.exists
+      no_log: true
+
+    - name: Validate the first-install OpenRouter key
+      ansible.builtin.assert:
+        that:
+          - coordinator_agent_key.user_input is match('^[A-Za-z0-9_-]{20,256}$')
+        fail_msg: The OpenRouter API key has an invalid format.
+      when: not coordinator_agent_environment.stat.exists
+      no_log: true
+
+    - name: Create the private agent environment once
+      ansible.builtin.copy:
+        content: "OPENROUTER_API_KEY={{ coordinator_agent_key.user_input }}\n"
+        dest: /etc/cortex-home/agent.env
+        owner: root
+        group: cortex-home
+        mode: "0640"
+        force: false
+      when: not coordinator_agent_environment.stat.exists
+      no_log: true
+      notify: Restart Cortex Home coordinator
+
+    - name: Reinspect the private agent environment
+      ansible.builtin.stat:
+        path: /etc/cortex-home/agent.env
+        follow: false
+      register: coordinator_agent_environment
+
+    - name: Require protected agent environment metadata
+      ansible.builtin.assert:
+        that:
+          - coordinator_agent_environment.stat.isreg
+          - not coordinator_agent_environment.stat.islnk
+          - coordinator_agent_environment.stat.pw_name == "root"
+          - coordinator_agent_environment.stat.gr_name == "cortex-home"
+          - coordinator_agent_environment.stat.mode == "0640"
+        fail_msg: The OpenRouter environment must be root:cortex-home mode 0640.
+
+    - name: Validate the private agent environment content
+      ansible.builtin.shell: |
+        set -o pipefail
+        grep -Eq '^OPENROUTER_API_KEY=[A-Za-z0-9_-]{20,256}$' /etc/cortex-home/agent.env
+        test "$(wc -l < /etc/cortex-home/agent.env)" -eq 1
+      args:
+        executable: /bin/bash
+      changed_when: false
+      no_log: true
+
+    - name: Download the pinned Node runtime
+      ansible.builtin.get_url:
+        url: "https://nodejs.org/dist/v{{ coordinator_node_version }}/{{ coordinator_node_archive }}"
+        dest: "/var/cache/cortex-home/downloads/{{ coordinator_node_archive }}"
+        checksum: "sha256:{{ coordinator_node_checksum }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Inspect the installed Node runtime version marker
+      ansible.builtin.stat:
+        path: "/opt/cortex-home/node/.cortex-version-{{ coordinator_node_version }}"
+      register: coordinator_node_marker
+
+    - name: Install the pinned Node runtime
+      when: not coordinator_node_marker.stat.exists
+      block:
+        - name: Remove the previous Node runtime
+          ansible.builtin.file:
+            path: /opt/cortex-home/node
+            state: absent
+
+        - name: Create the Node runtime directory
+          ansible.builtin.file:
+            path: /opt/cortex-home/node
+            owner: root
+            group: root
+            mode: "0755"
+            state: directory
+
+        - name: Extract the Node runtime
+          ansible.builtin.unarchive:
+            src: "/var/cache/cortex-home/downloads/{{ coordinator_node_archive }}"
+            dest: /opt/cortex-home/node
+            remote_src: true
+            extra_opts:
+              - --strip-components=1
+            owner: root
+            group: root
+
+        - name: Record the Node runtime version
+          ansible.builtin.file:
+            path: "/opt/cortex-home/node/.cortex-version-{{ coordinator_node_version }}"
+            owner: root
+            group: root
+            mode: "0644"
+            state: touch
+
+      notify: Restart Cortex Home coordinator
+
+    - name: Copy the coordinator agent sources
+      ansible.builtin.copy:
+        src: "{{ cortex_project_root }}/coordinator/agent/{{ item }}"
+        dest: "/opt/cortex-home/agent/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ coordinator_agent_files }}"
+      register: coordinator_agent_sources
+      notify: Restart Cortex Home coordinator
+
+    - name: Inspect the installed agent dependencies
+      ansible.builtin.stat:
+        path: /opt/cortex-home/agent/node_modules/@earendil-works/pi-agent-core/package.json
+      register: coordinator_agent_dependencies
+
+    - name: Install the locked agent dependencies
+      when: >-
+        not coordinator_agent_dependencies.stat.exists or
+        (coordinator_agent_sources.results | selectattr('changed') | list | length > 0) or
+        not coordinator_node_marker.stat.exists
+      block:
+        - name: Install the pinned pnpm package manager
+          ansible.builtin.command:
+            argv:
+              - /opt/cortex-home/node/bin/corepack
+              - install
+              - --global
+              - "pnpm@{{ coordinator_pnpm_version }}"
+          environment:
+            PATH: /opt/cortex-home/node/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            COREPACK_HOME: /var/cache/cortex-home/corepack
+
+        - name: Install production agent packages
+          ansible.builtin.command:
+            argv:
+              - /opt/cortex-home/node/bin/corepack
+              - pnpm
+              - --dir
+              - /opt/cortex-home/agent
+              - install
+              - --prod
+              - --frozen-lockfile
+          environment:
+            PATH: /opt/cortex-home/node/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            COREPACK_HOME: /var/cache/cortex-home/corepack
+
+      notify: Restart Cortex Home coordinator
+
+    - name: Copy the production client
+      ansible.builtin.copy:
+        src: "{{ cortex_project_root }}/coordinator/client/dist/"
+        dest: /opt/cortex-home/client/
+        owner: root
+        group: root
+        mode: preserve
+        directory_mode: "0755"
+      notify: Restart Cortex Home coordinator
+
+    - name: Copy the coordinator Python runtime
+      ansible.builtin.copy:
+        src: "{{ cortex_project_root }}/coordinator/{{ item }}"
+        dest: "/opt/cortex-home/{{ item }}"
+        owner: root
+        group: root
+        mode: "{{ '0755' if item == 'cortex_home.py' else '0644' }}"
+      loop: "{{ coordinator_runtime_modules }}"
+      notify: Restart Cortex Home coordinator
+
+    - name: Copy the Hue pairing program
+      ansible.builtin.copy:
+        src: "{{ cortex_project_root }}/coordinator/hue_pair.py"
+        dest: /opt/cortex-home/hue_pair.py
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Copy the coordinator Python requirements
+      ansible.builtin.copy:
+        src: "{{ cortex_project_root }}/coordinator/requirements.txt"
+        dest: /opt/cortex-home/requirements.txt
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart Cortex Home coordinator
+
+    - name: Install the locked coordinator Python environment
+      ansible.builtin.pip:
+        requirements: /opt/cortex-home/requirements.txt
+        virtualenv: /opt/cortex-home/venv
+        virtualenv_command: /usr/bin/python3 -m venv
+        extra_args: >-
+          --disable-pip-version-check
+          --extra-index-url https://download.pytorch.org/whl/cpu
+          --no-cache-dir
+      notify: Restart Cortex Home coordinator
+
+    - name: Check the coordinator Python environment
+      ansible.builtin.command: /opt/cortex-home/venv/bin/python -m pip check
+      changed_when: false
+
+    - name: Download the pinned Vosk model
+      ansible.builtin.get_url:
+        url: "https://alphacephei.com/vosk/models/{{ coordinator_vosk_model }}.zip"
+        dest: "/var/cache/cortex-home/downloads/{{ coordinator_vosk_model }}.zip"
+        checksum: "sha256:{{ coordinator_vosk_checksum }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Extract the pinned Vosk model
+      ansible.builtin.unarchive:
+        src: "/var/cache/cortex-home/downloads/{{ coordinator_vosk_model }}.zip"
+        dest: /opt/cortex-home/models
+        remote_src: true
+        creates: "/opt/cortex-home/models/{{ coordinator_vosk_model }}"
+        owner: root
+        group: root
+      notify: Restart Cortex Home coordinator
+
+    - name: Cache the selected Pocket TTS voice
+      ansible.builtin.command:
+        argv:
+          - /opt/cortex-home/venv/bin/python
+          - -c
+          - 'from pocket_tts import TTSModel; model = TTSModel.load_model(); model.get_state_for_audio_prompt("alba")'
+      environment:
+        HF_HOME: /opt/cortex-home/models/pocket-cache
+      changed_when: false
+
+    - name: Validate the installed Node version
+      ansible.builtin.command:
+        argv:
+          - /opt/cortex-home/node/bin/node
+          - -e
+          - 'if (process.versions.node !== "{{ coordinator_node_version }}") process.exit(1)'
+      changed_when: false
+
+    - name: Validate the installed agent package versions
+      ansible.builtin.command:
+        argv:
+          - /opt/cortex-home/node/bin/node
+          - -e
+          - 'const fs = require("node:fs"); for (const [name, version] of [["@earendil-works/pi-agent-core", "0.82.1"], ["@earendil-works/pi-ai", "0.82.1"], ["typebox", "1.1.38"]]) { const actual = JSON.parse(fs.readFileSync(`/opt/cortex-home/agent/node_modules/${name}/package.json`)).version; if (actual !== version) process.exit(1); }'
+      changed_when: false
+
+    - name: Validate the coordinator runtime and selected speech engines
+      ansible.builtin.shell: |
+        set -a
+        . /etc/cortex-home/agent.env
+        set +a
+        export HF_HOME=/opt/cortex-home/models/pocket-cache
+        export PYTHONPATH=/opt/cortex-home
+        /opt/cortex-home/venv/bin/python -c 'from agent_runtime import NodeAgent; from cortex_home import AGENT_CHILD, AGENT_NODE, VOSK_MODEL; from speech import load_selected_speech; NodeAgent(AGENT_NODE, AGENT_CHILD, __import__("os").environ["OPENROUTER_API_KEY"]); load_selected_speech(VOSK_MODEL)'
+        /opt/cortex-home/venv/bin/python -c 'import cortex_home'
+      args:
+        executable: /bin/bash
+      changed_when: false
+      no_log: true
+
+    - name: Install the coordinator systemd unit
+      ansible.builtin.copy:
+        src: "{{ cortex_project_root }}/coordinator/files/cortex-home.service"
+        dest: /etc/systemd/system/cortex-home.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart Cortex Home coordinator
+
+    - name: Inspect the coordinator firewall
+      ansible.builtin.command: ufw status
+      register: coordinator_ufw_status
+      failed_when: false
+      changed_when: false
+
+    - name: Require a coordinator LAN when UFW is active
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.default_ipv4.network is defined
+          - ansible_facts.default_ipv4.prefix is defined
+        fail_msg: Could not identify the coordinator LAN for its firewall rule.
+      when: >-
+        coordinator_ufw_status.rc == 0 and
+        coordinator_ufw_status.stdout is search('^Status: active', multiline=True)
+
+    - name: Allow the coordinator from its directly connected LAN
+      ansible.builtin.command:
+        argv:
+          - ufw
+          - allow
+          - from
+          - "{{ ansible_facts.default_ipv4.network }}/{{ ansible_facts.default_ipv4.prefix }}"
+          - to
+          - any
+          - port
+          - "8080"
+          - proto
+          - tcp
+          - comment
+          - Cortex Home coordinator
+      register: coordinator_ufw_rule
+      changed_when: coordinator_ufw_rule.stdout is not search('Skipping adding existing rule')
+      when: >-
+        coordinator_ufw_status.rc == 0 and
+        coordinator_ufw_status.stdout is search('^Status: active', multiline=True)
+      no_log: true
+
+    - name: Apply coordinator service changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Keep the coordinator service enabled and active
+      ansible.builtin.systemd_service:
+        name: cortex-home.service
+        daemon_reload: true
+        enabled: true
+        state: started
+
+- name: Install the speech qualification workbench
+  ansible.builtin.include_tasks:
+    file: speech.yml
+    apply:
+      tags:
+        - speech
+  tags:
+    - never
+    - speech

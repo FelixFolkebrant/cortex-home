@@ -1,0 +1,7 @@
+---
+- name: Converge the Cortex Home coordinator
+  hosts: coordinators
+  gather_facts: true
+  become: true
+  roles:
+    - coordinator

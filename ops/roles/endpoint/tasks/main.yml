@@ -1,0 +1,331 @@
+---
+- name: Validate the endpoint hardware
+  ansible.builtin.include_tasks:
+    file: preflight.yml
+    apply:
+      tags:
+        - always
+  tags:
+    - always
+
+- name: Install the endpoint base
+  tags: base
+  block:
+    - name: Remove incompatible Broadcom packages
+      ansible.builtin.apt:
+        name:
+          - firmware-b43-installer
+          - b43-fwcutter
+        purge: true
+        state: absent
+
+    - name: Install endpoint host packages
+      ansible.builtin.apt:
+        name: "{{ endpoint_media_packages + ['alsa-utils', 'avahi-daemon', 'bcmwl-kernel-source', 'chromium-browser', 'curl', 'dbus-x11', 'lightdm', 'mpg123', 'openbox', 'pulseaudio', 'unclutter', 'wpasupplicant', 'x11-xserver-utils', 'xinit', 'xserver-xorg-core', 'xserver-xorg-input-libinput', 'xserver-xorg-video-radeon', 'xterm'] }}"
+        install_recommends: false
+        update_cache: true
+        state: present
+
+    - name: Create the endpoint account
+      ansible.builtin.user:
+        name: cortex-endpoint
+        create_home: true
+        home: /home/cortex-endpoint
+        shell: /bin/bash
+        groups:
+          - audio
+          - render
+          - video
+        append: true
+        password_lock: true
+        state: present
+
+    - name: Create endpoint base directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+        state: directory
+      loop:
+        - {path: /etc/cortex-endpoint, owner: root, group: root, mode: "0755"}
+        - {path: /home/cortex-endpoint/.config, owner: cortex-endpoint, group: cortex-endpoint, mode: "0700"}
+        - {path: /home/cortex-endpoint/.config/openbox, owner: cortex-endpoint, group: cortex-endpoint, mode: "0755"}
+        - {path: /var/lib/cortex-endpoint, owner: root, group: root, mode: "0755"}
+        - {path: /var/lib/cortex-endpoint/alarm-audio, owner: imac, group: cortex-endpoint, mode: "0750"}
+
+    - name: Install endpoint base files
+      ansible.builtin.copy:
+        src: "{{ cortex_project_root }}/endpoint/imac/files/{{ item.source }}"
+        dest: "{{ item.destination }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - {source: cortex-endpoint.desktop, destination: /usr/share/xsessions/cortex-endpoint.desktop, mode: "0644"}
+        - {source: cortex-endpoint-session, destination: /usr/local/bin/cortex-endpoint-session, mode: "0755"}
+        - {source: lightdm.conf, destination: /etc/lightdm/lightdm.conf.d/50-cortex-endpoint.conf, mode: "0644"}
+        - {source: network-wait-online.conf, destination: /etc/systemd/system/systemd-networkd-wait-online.service.d/50-cortex-endpoint.conf, mode: "0644"}
+      notify:
+        - Restart endpoint kiosk
+        - Reload endpoint systemd
+
+    - name: Install the Broadcom driver policy
+      ansible.builtin.copy:
+        src: "{{ cortex_project_root }}/endpoint/imac/files/broadcom.conf"
+        dest: /etc/modprobe.d/50-cortex-broadcom.conf
+        owner: root
+        group: root
+        mode: "0644"
+      register: endpoint_broadcom_policy
+
+    - name: Update initramfs for a changed Broadcom policy
+      ansible.builtin.command: update-initramfs -u
+      when: endpoint_broadcom_policy.changed
+
+    - name: Inspect the active wireless driver
+      ansible.builtin.command:
+        argv:
+          - readlink
+          - -f
+          - "/sys/bus/pci/devices/{{ endpoint_wireless_pci }}/driver"
+      register: endpoint_wireless_driver
+      failed_when: false
+      changed_when: false
+
+    - name: Load the Broadcom STA driver
+      when: endpoint_wireless_driver.stdout | basename != "wl"
+      block:
+        - name: Unload conflicting wireless modules
+          ansible.builtin.command: "modprobe -r {{ item }}"
+          loop:
+            - wl
+            - b43
+            - ssb_hcd
+            - ssb
+          failed_when: false
+          changed_when: false
+
+        - name: Load the Broadcom STA module
+          ansible.builtin.command: modprobe wl
+
+    - name: Wait for the endpoint wireless interface
+      ansible.builtin.shell: |
+        set -- /sys/class/net/*/wireless
+        test "$#" -eq 1
+        test -d "$1"
+      args:
+        executable: /bin/sh
+      register: endpoint_wireless_ready
+      retries: 10
+      delay: 1
+      until: endpoint_wireless_ready.rc == 0
+      changed_when: false
+
+    - name: Identify the endpoint wireless interface
+      ansible.builtin.shell: basename "$(dirname /sys/class/net/*/wireless)"
+      args:
+        executable: /bin/sh
+      register: endpoint_wireless_interface_result
+      changed_when: false
+
+    - name: Record the endpoint wireless interface
+      ansible.builtin.set_fact:
+        endpoint_wireless_interface: "{{ endpoint_wireless_interface_result.stdout }}"
+
+    - name: Inspect the configured coordinator origin
+      ansible.builtin.stat:
+        path: /etc/cortex-endpoint/coordinator-url
+      register: endpoint_coordinator_url_file
+
+    - name: Read the configured coordinator origin
+      ansible.builtin.slurp:
+        src: /etc/cortex-endpoint/coordinator-url
+      register: endpoint_existing_coordinator_url
+      when: endpoint_coordinator_url_file.stat.exists
+      no_log: true
+
+    - name: Ask for the first-install coordinator origin
+      ansible.builtin.pause:
+        prompt: Coordinator local HTTP origin, without a path
+      register: endpoint_coordinator_url_prompt
+      when:
+        - endpoint_coordinator_url | length == 0
+        - not endpoint_coordinator_url_file.stat.exists
+      no_log: true
+
+    - name: Use the supplied coordinator origin
+      ansible.builtin.set_fact:
+        endpoint_effective_coordinator_url: "{{ endpoint_coordinator_url | regex_replace('/$', '') }}"
+      when: endpoint_coordinator_url | length > 0
+      no_log: true
+
+    - name: Preserve the configured coordinator origin
+      ansible.builtin.set_fact:
+        endpoint_effective_coordinator_url: "{{ (endpoint_existing_coordinator_url.content | b64decode | trim) | regex_replace('/$', '') }}"
+      when:
+        - endpoint_coordinator_url | length == 0
+        - endpoint_coordinator_url_file.stat.exists
+      no_log: true
+
+    - name: Use the prompted coordinator origin
+      ansible.builtin.set_fact:
+        endpoint_effective_coordinator_url: "{{ endpoint_coordinator_url_prompt.user_input | regex_replace('/$', '') }}"
+      when:
+        - endpoint_coordinator_url | length == 0
+        - not endpoint_coordinator_url_file.stat.exists
+      no_log: true
+
+    - name: Validate the coordinator origin
+      ansible.builtin.assert:
+        that: endpoint_effective_coordinator_url is match('^http://[A-Za-z0-9.-]+(:[0-9]{1,5})?$')
+        fail_msg: Coordinator URL must be a local HTTP origin without a path.
+      no_log: true
+
+    - name: Store the coordinator origin
+      ansible.builtin.copy:
+        content: "{{ endpoint_effective_coordinator_url }}\n"
+        dest: /etc/cortex-endpoint/coordinator-url
+        owner: root
+        group: root
+        mode: "0644"
+      no_log: true
+      notify: Restart endpoint kiosk
+
+    - name: Inspect the endpoint Wi-Fi configuration
+      ansible.builtin.stat:
+        path: /etc/netplan/60-cortex-wifi.yaml
+      register: endpoint_wifi_configuration
+
+    - name: Require complete explicit Wi-Fi credentials
+      ansible.builtin.assert:
+        that: >-
+          (endpoint_wifi_ssid | length == 0 and endpoint_wifi_password | length == 0) or
+          (endpoint_wifi_ssid | length > 0 and endpoint_wifi_password | length > 0)
+        fail_msg: Supply both endpoint_wifi_ssid and endpoint_wifi_password, or neither.
+      no_log: true
+
+    - name: Ask for the first-install Wi-Fi name
+      ansible.builtin.pause:
+        prompt: Wi-Fi SSID
+      register: endpoint_wifi_ssid_prompt
+      when:
+        - not endpoint_wifi_configuration.stat.exists
+        - endpoint_wifi_ssid | length == 0
+      no_log: true
+
+    - name: Ask for the first-install Wi-Fi password
+      ansible.builtin.pause:
+        prompt: Wi-Fi password
+        echo: false
+      register: endpoint_wifi_password_prompt
+      when:
+        - not endpoint_wifi_configuration.stat.exists
+        - endpoint_wifi_password | length == 0
+      no_log: true
+
+    - name: Use supplied Wi-Fi credentials
+      ansible.builtin.set_fact:
+        endpoint_effective_wifi_ssid: "{{ endpoint_wifi_ssid }}"
+        endpoint_effective_wifi_password: "{{ endpoint_wifi_password }}"
+      when: endpoint_wifi_ssid | length > 0
+      no_log: true
+
+    - name: Use prompted Wi-Fi credentials
+      ansible.builtin.set_fact:
+        endpoint_effective_wifi_ssid: "{{ endpoint_wifi_ssid_prompt.user_input }}"
+        endpoint_effective_wifi_password: "{{ endpoint_wifi_password_prompt.user_input }}"
+      when:
+        - not endpoint_wifi_configuration.stat.exists
+        - endpoint_wifi_ssid | length == 0
+      no_log: true
+
+    - name: Write the endpoint Wi-Fi configuration
+      ansible.builtin.template:
+        src: cortex-wifi.yaml.j2
+        dest: /etc/netplan/60-cortex-wifi.yaml
+        owner: root
+        group: root
+        mode: "0600"
+      when: endpoint_wifi_ssid | length > 0 or not endpoint_wifi_configuration.stat.exists
+      no_log: true
+      notify: Apply endpoint network
+
+    - name: Apply endpoint network changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for an endpoint Wi-Fi address
+      ansible.builtin.command:
+        argv:
+          - ip
+          - -4
+          - -o
+          - address
+          - show
+          - dev
+          - "{{ endpoint_wireless_interface }}"
+          - scope
+          - global
+      register: endpoint_wireless_address
+      retries: 30
+      delay: 1
+      until: endpoint_wireless_address.stdout | length > 0
+      changed_when: false
+
+    - name: Remove the retired qualification page
+      ansible.builtin.file:
+        path: /home/cortex-endpoint/qualification.html
+        state: absent
+
+    - name: Inspect the endpoint default target
+      ansible.builtin.command: systemctl get-default
+      register: endpoint_default_target
+      changed_when: false
+
+    - name: Select the graphical endpoint target
+      ansible.builtin.command: systemctl set-default graphical.target
+      when: endpoint_default_target.stdout != "graphical.target"
+
+    - name: Keep endpoint discovery enabled and active
+      ansible.builtin.systemd_service:
+        name: avahi-daemon.service
+        enabled: true
+        state: started
+
+- name: Install the endpoint Spotify receiver
+  ansible.builtin.include_tasks:
+    file: raspotify.yml
+    apply:
+      tags:
+        - raspotify
+  tags:
+    - raspotify
+
+- name: Install endpoint media support
+  ansible.builtin.include_tasks:
+    file: media.yml
+    apply:
+      tags:
+        - media
+  tags:
+    - media
+
+- name: Install endpoint alarm support
+  ansible.builtin.include_tasks:
+    file: alarm.yml
+    apply:
+      tags:
+        - alarm
+  tags:
+    - alarm
+
+- name: Restore the qualified room audio route
+  ansible.builtin.include_tasks:
+    file: mixer.yml
+    apply:
+      tags:
+        - base
+        - media
+  tags:
+    - base
+    - media

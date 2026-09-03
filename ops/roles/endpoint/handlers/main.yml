@@ -1,0 +1,28 @@
+---
+- name: Generate endpoint Netplan
+  ansible.builtin.command: netplan generate
+  listen: Apply endpoint network
+
+- name: Apply endpoint Netplan
+  ansible.builtin.command: netplan apply
+  listen: Apply endpoint network
+
+- name: Restart network wait service
+  ansible.builtin.systemd_service:
+    name: systemd-networkd-wait-online.service
+    state: restarted
+  listen: Apply endpoint network
+
+- name: Restart endpoint kiosk
+  ansible.builtin.systemd_service:
+    name: lightdm.service
+    state: restarted
+
+- name: Restart endpoint receiver
+  ansible.builtin.systemd_service:
+    name: raspotify.service
+    state: restarted
+
+- name: Reload endpoint systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true

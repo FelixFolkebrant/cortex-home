@@ -100,14 +100,17 @@ class SpeechTests(unittest.TestCase):
 
     def test_whisper_installer_builds_a_runnable_executable(self):
         installer = (
-            Path(__file__).parents[1] / "install-speech-host"
+            Path(__file__).parents[2]
+            / "ops"
+            / "roles"
+            / "coordinator"
+            / "tasks"
+            / "speech.yml"
         ).read_text()
 
         self.assertIn("-DBUILD_SHARED_LIBS=OFF", installer)
-        self.assertIn(
-            'ldd "$install_root/bin/whisper-cli" | grep -q "not found"',
-            installer,
-        )
+        self.assertIn("ldd /opt/cortex-speech/bin/whisper-cli", installer)
+        self.assertIn("speech_whisper_libraries.stdout is not search('not found')", installer)
 
     def test_whisper_uses_anonymous_memory_and_bounded_command(self):
         calls = []

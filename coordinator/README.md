@@ -1,14 +1,17 @@
 # Coordinator
 
-Install the coordinator from a machine that can reach the Ubuntu server over
-SSH:
+Install the pinned Ansible environment, create the private inventory described
+in [`ops/README.md`](../ops/README.md), then deploy the coordinator from the
+repository root:
 
 ```sh
-./coordinator/install <server-ssh-host>
+. .venv-ansible/bin/activate
+cd ops
+ansible-playbook playbooks/coordinator.yml --ask-become-pass
 ```
 
-The SSH destination is supplied at runtime so the server hostname or address
-does not enter Git. The installer uses pnpm to build the React client, copies
+The SSH destination stays in the ignored inventory so the server hostname or
+address does not enter Git. The role uses pnpm to build the React client, copies
 only the production artifacts and coordinator to `/opt/cortex-home`, installs
 the locked Python and Node answer runtimes, installs `cortex-home.service`, and
 starts the coordinator on port 8080. On the first deployment it asks for the
@@ -133,10 +136,13 @@ signed 16-bit little-endian PCM at 16 kHz. The browser sends it only to its
 authenticated coordinator interaction. No recording, transcript, or
 synthesized answer is stored or logged by the application.
 
-Install the pinned qualification candidates on the ThinkPad with:
+Install the pinned qualification candidates on the ThinkPad with the focused
+Ansible tag:
 
 ```sh
-./coordinator/install-speech <server-ssh-host>
+. .venv-ansible/bin/activate
+cd ops
+ansible-playbook playbooks/coordinator.yml --tags speech --ask-become-pass
 ```
 
 This installs Vosk `0.3.45` with `vosk-model-small-en-us-0.15`,
@@ -241,7 +247,7 @@ Piper remain pinned qualification evidence and are not runtime switches.
 
 ## Contextual Answer Runtime
 
-The production installer downloads the official Node `24.18.0` x86-64 archive,
+The production coordinator role downloads the official Node `24.18.0` x86-64 archive,
 checks its pinned SHA-256 digest, and installs it under
 `/opt/cortex-home/node`. It installs only Vosk `0.3.45`,
 `vosk-model-small-en-us-0.15`, Pocket TTS `2.1.0`, and the English `alba` voice

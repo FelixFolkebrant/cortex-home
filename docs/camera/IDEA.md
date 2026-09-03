@@ -29,5 +29,5 @@ sensor.
 ## Relevant Code
 
 - `coordinator/client/src/channels/camera/`
-- `endpoint/imac/provision-host`
-- `endpoint/imac/provision-media-host`
+- `ops/roles/endpoint/tasks/main.yml`
+- `ops/roles/endpoint/tasks/media.yml`

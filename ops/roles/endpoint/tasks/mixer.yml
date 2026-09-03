@@ -1,0 +1,12 @@
+---
+- name: Apply endpoint service changes before restoring audio
+  ansible.builtin.meta: flush_handlers
+
+- name: Restore the qualified ALSA mixer baseline
+  ansible.builtin.command: "{{ item }}"
+  loop:
+    - amixer -c 0 sset Master 80% unmute
+    - amixer -c 0 sset Speaker mute
+    - amixer -c 0 sset Headphone 60% unmute
+    - alsactl store 0
+  changed_when: false

@@ -31,6 +31,7 @@ and shared audio and media access.
 
 ## Relevant Code
 
-- `coordinator/`: service runtime, installers, integrations, and browser client.
-- `endpoint/imac/`: endpoint provisioning, native helpers, configuration, and
-  endpoint tests.
+- `coordinator/`: service runtime, integrations, and browser client.
+- `endpoint/imac/`: native helpers, configuration, and endpoint tests.
+- `ops/`: Ansible inventory example, playbooks, and shared host-provisioning
+  roles.

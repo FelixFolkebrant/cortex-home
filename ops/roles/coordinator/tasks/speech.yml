@@ -1,0 +1,207 @@
+---
+- name: Require the qualified speech host
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == "Ubuntu"
+      - ansible_facts.distribution_version == "24.04"
+    fail_msg: Speech qualification requires Ubuntu 24.04.
+
+- name: Install speech qualification host packages
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - ca-certificates
+      - cmake
+      - curl
+      - libopenblas-dev
+      - python3-venv
+      - unzip
+    install_recommends: false
+    update_cache: true
+    state: present
+
+- name: Create speech qualification directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+    state: directory
+  loop:
+    - /opt/cortex-speech
+    - /opt/cortex-speech/bin
+    - /opt/cortex-speech/models
+    - /var/cache/cortex-speech
+    - /usr/local/src/cortex-speech
+
+- name: Copy speech qualification requirements
+  ansible.builtin.copy:
+    src: "{{ cortex_project_root }}/coordinator/requirements-speech-qualification.txt"
+    dest: /opt/cortex-speech/requirements-speech-qualification.txt
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the locked speech qualification environment
+  ansible.builtin.pip:
+    requirements: /opt/cortex-speech/requirements-speech-qualification.txt
+    virtualenv: /opt/cortex-speech/qualification-venv
+    virtualenv_command: /usr/bin/python3 -m venv
+    extra_args: >-
+      --disable-pip-version-check
+      --extra-index-url https://download.pytorch.org/whl/cpu
+      --no-cache-dir
+
+- name: Check the speech qualification environment
+  ansible.builtin.command: /opt/cortex-speech/qualification-venv/bin/python -m pip check
+  changed_when: false
+
+- name: Download the pinned whisper.cpp source
+  ansible.builtin.get_url:
+    url: "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v{{ speech_whisper_version }}.tar.gz"
+    dest: "/var/cache/cortex-speech/whisper.cpp-{{ speech_whisper_version }}.tar.gz"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Extract the pinned whisper.cpp source
+  ansible.builtin.unarchive:
+    src: "/var/cache/cortex-speech/whisper.cpp-{{ speech_whisper_version }}.tar.gz"
+    dest: /usr/local/src/cortex-speech
+    remote_src: true
+    creates: "/usr/local/src/cortex-speech/whisper.cpp-{{ speech_whisper_version }}"
+    owner: root
+    group: root
+
+- name: Configure whisper.cpp
+  ansible.builtin.command:
+    argv:
+      - cmake
+      - -S
+      - "/usr/local/src/cortex-speech/whisper.cpp-{{ speech_whisper_version }}"
+      - -B
+      - "/usr/local/src/cortex-speech/whisper.cpp-{{ speech_whisper_version }}/build"
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DGGML_BLAS=ON
+      - -DGGML_BLAS_VENDOR=OpenBLAS
+    creates: "/usr/local/src/cortex-speech/whisper.cpp-{{ speech_whisper_version }}/build/CMakeCache.txt"
+
+- name: Build whisper.cpp
+  ansible.builtin.command:
+    argv:
+      - cmake
+      - --build
+      - "/usr/local/src/cortex-speech/whisper.cpp-{{ speech_whisper_version }}/build"
+      - --config
+      - Release
+      - --parallel
+    creates: "/usr/local/src/cortex-speech/whisper.cpp-{{ speech_whisper_version }}/build/bin/whisper-cli"
+
+- name: Install whisper.cpp
+  ansible.builtin.copy:
+    src: "/usr/local/src/cortex-speech/whisper.cpp-{{ speech_whisper_version }}/build/bin/whisper-cli"
+    dest: /opt/cortex-speech/bin/whisper-cli
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download the pinned Whisper model
+  ansible.builtin.get_url:
+    url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{{ speech_whisper_model }}"
+    dest: "/opt/cortex-speech/models/{{ speech_whisper_model }}"
+    checksum: "sha1:{{ speech_whisper_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Download the pinned qualification Vosk model
+  ansible.builtin.get_url:
+    url: "https://alphacephei.com/vosk/models/{{ coordinator_vosk_model }}.zip"
+    dest: "/var/cache/cortex-speech/{{ coordinator_vosk_model }}.zip"
+    checksum: "sha256:{{ coordinator_vosk_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Extract the qualification Vosk model
+  ansible.builtin.unarchive:
+    src: "/var/cache/cortex-speech/{{ coordinator_vosk_model }}.zip"
+    dest: /opt/cortex-speech/models
+    remote_src: true
+    creates: "/opt/cortex-speech/models/{{ coordinator_vosk_model }}"
+    owner: root
+    group: root
+
+- name: Download the pinned Piper voice
+  ansible.builtin.command:
+    argv:
+      - /opt/cortex-speech/qualification-venv/bin/python
+      - -m
+      - piper.download_voices
+      - --data-dir
+      - /opt/cortex-speech/models
+      - "{{ speech_piper_voice }}"
+    creates: "/opt/cortex-speech/models/{{ speech_piper_voice }}.onnx.json"
+
+- name: Check the Piper voice checksum
+  ansible.builtin.command:
+    argv:
+      - sha256sum
+      - --check
+      - --status
+      - /dev/stdin
+    stdin: "{{ speech_piper_checksum }}  /opt/cortex-speech/models/{{ speech_piper_voice }}.onnx\n"
+  changed_when: false
+
+- name: Copy speech qualification programs and metadata
+  ansible.builtin.copy:
+    src: "{{ cortex_project_root }}/coordinator/{{ item.source }}"
+    dest: "/opt/cortex-speech/{{ item.destination }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {source: qualify_speech.py, destination: qualify_speech.py, mode: "0755"}
+    - {source: speech.py, destination: speech.py, mode: "0644"}
+    - {source: speech-candidates.json, destination: speech-candidates.json, mode: "0644"}
+
+- name: Cache the Pocket TTS qualification voice
+  ansible.builtin.command:
+    argv:
+      - /opt/cortex-speech/qualification-venv/bin/python
+      - -c
+      - 'from pocket_tts import TTSModel; model = TTSModel.load_model(); model.get_state_for_audio_prompt("alba")'
+  environment:
+    HF_HOME: /opt/cortex-speech/pocket-cache
+  changed_when: false
+
+- name: Inspect the whisper.cpp shared libraries
+  ansible.builtin.command: ldd /opt/cortex-speech/bin/whisper-cli
+  register: speech_whisper_libraries
+  changed_when: false
+
+- name: Require resolved whisper.cpp shared libraries
+  ansible.builtin.assert:
+    that: speech_whisper_libraries.stdout is not search('not found')
+    fail_msg: The whisper.cpp executable has unresolved shared libraries.
+
+- name: Inspect speech qualification artifacts
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+  loop:
+    - {path: /opt/cortex-speech/bin/whisper-cli, kind: file}
+    - {path: "/opt/cortex-speech/models/{{ speech_whisper_model }}", kind: file}
+    - {path: "/opt/cortex-speech/models/{{ coordinator_vosk_model }}", kind: directory}
+    - {path: "/opt/cortex-speech/models/{{ speech_piper_voice }}.onnx", kind: file}
+    - {path: "/opt/cortex-speech/models/{{ speech_piper_voice }}.onnx.json", kind: file}
+  register: speech_qualification_artifacts
+
+- name: Require every speech qualification artifact
+  ansible.builtin.assert:
+    that:
+      - item.stat.isdir | default(false) if item.item.kind == "directory" else item.stat.isreg | default(false)
+      - item.item.kind == "directory" or item.stat.size > 0
+    fail_msg: "Missing or empty speech qualification artifact: {{ item.item.path }}"
+  loop: "{{ speech_qualification_artifacts.results }}"

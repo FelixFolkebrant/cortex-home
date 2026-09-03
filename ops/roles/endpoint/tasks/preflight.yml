@@ -1,0 +1,35 @@
+---
+- name: Require Ubuntu 24.04 on the endpoint
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == "Ubuntu"
+      - ansible_facts.distribution_version == "24.04"
+    fail_msg: Cortex Home endpoint provisioning requires Ubuntu 24.04.
+
+- name: Read the endpoint product name
+  ansible.builtin.slurp:
+    src: /sys/devices/virtual/dmi/id/product_name
+  register: endpoint_product_name
+
+- name: Require the qualified iMac
+  ansible.builtin.assert:
+    that: (endpoint_product_name.content | b64decode | trim) == "iMac8,1"
+    fail_msg: Cortex Home endpoint provisioning requires the qualified iMac8,1.
+
+- name: Find the qualified Broadcom adapter
+  ansible.builtin.shell: |
+    set -o pipefail
+    lspci -Dn -d 14e4:4328 | awk 'NR == 1 { print $1 }'
+  args:
+    executable: /bin/bash
+  register: endpoint_wireless_pci_result
+  changed_when: false
+
+- name: Require the qualified Broadcom adapter
+  ansible.builtin.assert:
+    that: endpoint_wireless_pci_result.stdout | length > 0
+    fail_msg: Cortex Home endpoint provisioning requires the qualified BCM4321 adapter.
+
+- name: Record the qualified Broadcom adapter
+  ansible.builtin.set_fact:
+    endpoint_wireless_pci: "{{ endpoint_wireless_pci_result.stdout }}"

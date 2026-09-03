@@ -1,33 +1,35 @@
 # iMac Endpoint
 
-Run the provisioning entry point from the repository root while the qualified
-iMac is reachable through the `imac` SSH host:
+Install the pinned Ansible environment and private inventory described in
+[`ops/README.md`](../../ops/README.md), then converge the qualified iMac:
 
 ```sh
-./endpoint/imac/provision
+. .venv-ansible/bin/activate
+cd ops
+ansible-playbook playbooks/endpoint.yml --ask-become-pass
 ```
 
 When the base endpoint is already provisioned, install or restore only its
 Spotify receiver:
 
 ```sh
-./endpoint/imac/provision-raspotify
+cd ops
+ansible-playbook playbooks/endpoint.yml --tags raspotify --ask-become-pass
 ```
 
 The focused command asks only for the existing `imac` account's sudo password.
 
-The command copies the fixed provisioning files to a temporary directory on
-the iMac and asks for:
+On its first run, the playbook asks for:
 
 1. The existing `imac` account's sudo password.
 2. The home Wi-Fi name.
 3. The home Wi-Fi password.
 4. The coordinator's local HTTP origin, without a path.
 
-The Wi-Fi values are read by the remote installer without echoing the password.
+The Wi-Fi values are read by Ansible without echoing the password.
 They are written only to the root-readable Netplan configuration on the iMac.
-The coordinator URL is written only to the endpoint's local configuration. The
-temporary remote copy is removed when provisioning exits.
+The coordinator URL is written only to the endpoint's local configuration.
+Ansible transfers individual reviewed files without staging a host installer.
 
 For an already provisioned endpoint, treat that configuration as the source of
 truth instead of guessing the coordinator host or copying a stale deployment
@@ -60,7 +62,8 @@ On an already provisioned endpoint, install the media policy, AirPlay runtime,
 and repository-owned media helpers, then restart the kiosk with:
 
 ```sh
-./endpoint/imac/provision-media
+cd ops
+ansible-playbook playbooks/endpoint.yml --tags media --ask-become-pass
 ```
 
 The focused command reads the endpoint's existing coordinator URL and asks only
@@ -163,8 +166,8 @@ after 75 ms, then lets the calling feature show its own clear unavailable
 message. Do not turn this into background retrying or additional polling.
 
 The browser cannot add a bridge route by itself. Before deploying a browser
-release that uses `/stats`, run `./endpoint/imac/provision-media` so the iMac
-receives the current bridge; this restarts the kiosk session.
+release that uses `/stats`, converge the `media` tag so the iMac receives the
+current bridge; a changed bridge restarts the kiosk session.
 
 UxPlay creates its native GStreamer window only after a client begins
 mirroring. Openbox makes every matching window borderless, fullscreen, focused,
@@ -183,7 +186,9 @@ Install the initial ordinary local MP3 without rebuilding or restarting Cortex
 Home:
 
 ```sh
-./endpoint/imac/provision-alarm
+cd ops
+ansible-playbook playbooks/endpoint.yml --tags alarm --ask-become-pass
+cd ..
 ./endpoint/imac/provision-alarm-audio <local-mp3>
 ```
 

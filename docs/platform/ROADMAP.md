@@ -7,8 +7,9 @@
 - [PLT-002](issues/PLT-002.md) makes the kiosk endpoint reproducible.
 - [PLT-003](issues/PLT-003.md) establishes the coordinator, React client,
   correlated action lifecycle, service installation, and physical Sonos path.
-- Focused provisioning now extends the same endpoint for Music, media capture,
-  AirPlay, alarms, and diagnostics.
+- [PLT-005](issues/PLT-005.md) consolidates coordinator and endpoint desired
+  state in two Ansible playbooks with focused speech, Music, media, and alarm
+  tags.
 - [Chromium performance findings](CHROMIUM_PERFORMANCE.md) record why channel
   replacement remains immediate on the low-end endpoint.
 
@@ -18,8 +19,6 @@
   browser client plus a loopback-only simulated coordinator. It will reuse the
   production HTTP and SSE boundary, but will never contact room hardware or be
   included in the production installer.
-- Reorganize the flat Python runtime and deployment payloads only when that can
-  remove real installer coupling without obscuring operator entry points.
 - Keep production deployment checks aligned with every runtime module so a new
   source file cannot be omitted from the installed service.
 
@@ -44,6 +43,8 @@
 - Keep compute and durable authority on the ThinkPad; treat the iMac as a
   replaceable local display and media endpoint.
 - Use Ubuntu, a minimal Xorg/Openbox kiosk, and repository-owned provisioning.
+- Use Ansible for privileged host desired state while keeping interactive
+  product operations and installed endpoint helpers as narrow executables.
 - Use React with Vite, Tailwind CSS, pnpm, `clsx`, CVA, `tailwind-merge`, and
   Biome without a router or application framework.
 - Keep the Sonos attached to the iMac and pin room output explicitly so attached

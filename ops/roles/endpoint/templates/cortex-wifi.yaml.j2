@@ -1,0 +1,8 @@
+network:
+  version: 2
+  wifis:
+    {{ endpoint_wireless_interface }}:
+      dhcp4: true
+      access-points:
+        {{ endpoint_effective_wifi_ssid | to_json }}:
+          password: {{ endpoint_effective_wifi_password | to_json }}
