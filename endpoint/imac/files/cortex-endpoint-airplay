@@ -169,6 +169,9 @@ start_receiver() {
     -nh \
     -fs \
     -s 1920x1200 \
+    -avdec \
+    -vsync no \
+    -vs xvimagesink \
     -as pulsesink \
     </dev/null \
     >/dev/null \

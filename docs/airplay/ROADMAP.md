@@ -8,6 +8,9 @@
   view; each connected UxPlay mirror window temporarily appears above it.
 - Passwordless discovery, a temporary runtime home, exact lifecycle cleanup,
   and the shared Sonos route are qualified on the iMac.
+- [AIR-002](wip/AIR-002.md) uses software H.264 decoding, no timestamp
+  synchronization, and the endpoint's X11 XVideo sink to avoid rotation-time
+  mirror freezes.
 
 ## Next
 
@@ -35,3 +38,6 @@
 - Start and stop UxPlay from one explicit AirPlay view through a narrow
   loopback helper, with no always-on receiver service or compositor.
 - Use passwordless home-LAN discovery without retained pairing identity.
+- Use UxPlay's software decoder, no-timestamp mirror mode, and XVideo sink on
+  the iMac. Its Openbox session uses X11 with the Radeon driver; no NVIDIA or
+  Wayland-specific pipeline applies.

@@ -66,6 +66,7 @@ apt-get install --yes --no-install-recommends \
   chromium-browser \
   curl \
   dbus-x11 \
+  gstreamer1.0-libav \
   gstreamer1.0-plugins-bad \
   gstreamer1.0-plugins-base \
   gstreamer1.0-plugins-good \

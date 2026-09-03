@@ -139,6 +139,11 @@ there is no password to display or enter. Any device on the same trusted LAN
 can connect while the switch is on. Selecting Today, Music, or Camera with its
 global shortcut also stops UxPlay before changing views.
 
+The X11 receiver forces UxPlay's software H.264 decoder, disables audio/video
+timestamp synchronization, and renders through XVideo. This is the stable
+mirroring baseline for iPhone orientation changes on the iMac's Radeon/X11
+stack; it does not use an NVIDIA or Wayland pipeline.
+
 The browser calls an origin-bound control bridge at
 `http://127.0.0.1:38019`. The bridge listens only on loopback, accepts only the
 configured coordinator origin, and exposes status, on, and off operations. It

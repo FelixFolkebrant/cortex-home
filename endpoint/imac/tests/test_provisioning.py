@@ -368,6 +368,7 @@ class ProvisioningTests(unittest.TestCase):
         deploy_script = (ENDPOINT_DIR / "provision-media").read_text()
 
         for script in (self.script, focused_script):
+            self.assertIn("gstreamer1.0-libav", script)
             self.assertIn("gstreamer1.0-plugins-bad", script)
             self.assertIn("gstreamer1.0-plugins-base", script)
             self.assertIn("gstreamer1.0-plugins-good", script)
@@ -402,6 +403,9 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("/usr/bin/uxplay", helper)
         self.assertIn('-n "Skärmen"', helper)
         self.assertIn("-fs", helper)
+        self.assertIn("-avdec", helper)
+        self.assertIn("-vsync no", helper)
+        self.assertIn("-vs xvimagesink", helper)
         self.assertIn("-as pulsesink", helper)
         self.assertNotIn("-pin", helper)
         self.assertNotIn("-reg", helper)
