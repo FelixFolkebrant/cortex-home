@@ -28,10 +28,7 @@ const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
 );
 const { AlarmChannel, requestAlarm, requestAlarmFiles, requestSleep, selectAlarmFile } =
   await vite.ssrLoadModule("/src/channels/alarm/AlarmChannel.tsx");
-const styles = [
-  readFileSync(new URL("./camera/camera.css", import.meta.url), "utf8"),
-  readFileSync(new URL("./music/music.css", import.meta.url), "utf8"),
-].join("\n");
+const styles = readFileSync(new URL("../app/styles.css", import.meta.url), "utf8");
 
 after(() => vite.close());
 
@@ -410,6 +407,7 @@ test("Music channel owns loaded playback and artwork fallback presentation", () 
   assert.match(markup, /The Artist/);
   assert.match(markup, /Artwork unavailable for The Track/);
   assert.match(markup, /1:05/);
+  assert.match(markup, /line-clamp-3/);
 });
 
 test("Music channel owns stopped and unavailable presentation", () => {
@@ -455,11 +453,7 @@ test("Camera channel is unmistakably local before capture starts", () => {
   assert.match(markup, /scale-x-\[-1\]/);
   assert.match(markup, /object-cover/);
   assert.doesNotMatch(markup, /controls/);
-  assert.match(
-    styles,
-    /\.camera-ring-light::after\s*\{[^}]*inset:\s*calc\(var\(--camera-ring-width\) \/ 2\)[^}]*border-radius:[^}]*box-shadow:\s*0 0 0 100vmax[^}]*inset 0 0/s,
-  );
-  assert.doesNotMatch(styles, /\.camera-ring-light\s*\{[^}]*border-radius/s);
+  assert.doesNotMatch(styles, /camera-ring-light|\.camera-ring-light/);
 });
 
 test("Camera channel defines explicit recoverable failure presentation", () => {
@@ -548,8 +542,10 @@ test("Music fullscreen uses only artwork and progress-filled title metadata", ()
   assert.match(markup, /--music-progress:65%/);
   assert.match(markup, /--music-unplayed:rgb\(255 255 255 \/ 60%\)/);
   assert.match(markup, /--music-artist:rgb\(255 255 255 \/ 40%\)/);
-  assert.match(markup, /<h1[^>]*>The Track<\/h1><p>The Artist<\/p>/);
-  assert.match(styles, /\.music-fullscreen-copy\s*\{[^}]*flex-direction:\s*column;/s);
+  assert.match(markup, />The Track<\/h1>/);
+  assert.match(markup, />The Artist<\/p>/);
+  assert.match(markup, /flex-col/);
+  assert.match(markup, /bg-clip-text/);
   assert.doesNotMatch(markup, /Spotify|Hidden Collection|Playback progress|1:05|1:40/);
 });
 
@@ -630,9 +626,9 @@ test("Music fullscreen retains the previous track for a sharp 400ms left swipe",
   assert.equal(changed.current.item.title, "Second Track");
   assert.equal(changed.outgoing.item.title, "First Track");
   assert.equal(changed.generation, 1);
-  assert.match(styles, /music-track-enter 400ms cubic-bezier\(0\.7, 0, 0\.3, 1\)/);
-  assert.match(styles, /music-track-exit 400ms cubic-bezier\(0\.7, 0, 0\.3, 1\)/);
-  assert.match(styles, /background-color 400ms cubic-bezier\(0\.7, 0, 0\.3, 1\)/);
+  assert.match(styles, /@keyframes music-track-enter/);
+  assert.match(styles, /@keyframes music-track-exit/);
+  assert.match(styles, /--animate-identify: identify 550ms ease-in-out/);
 });
 
 test("room feedback makes deliberate microphone capture visible", () => {

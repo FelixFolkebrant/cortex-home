@@ -236,7 +236,11 @@ export function AlarmChannel({ onAction, snapshot }) {
       </p>
       <div className="mt-8 flex items-baseline justify-center font-mono text-[clamp(5rem,19vw,15rem)] font-semibold leading-none tracking-[-0.09em]">
         <span
-          className={editing && editor.selected === "hours" ? "alarm-selected" : ""}
+          className={
+            editing && editor.selected === "hours"
+              ? "text-[#f3d18a] underline decoration-[0.06em] underline-offset-[0.13em]"
+              : ""
+          }
         >
           {editing && editor.selected === "hours" ? display : time.slice(0, 2)}
         </span>
@@ -244,7 +248,11 @@ export function AlarmChannel({ onAction, snapshot }) {
           :
         </span>
         <span
-          className={editing && editor.selected === "minutes" ? "alarm-selected" : ""}
+          className={
+            editing && editor.selected === "minutes"
+              ? "text-[#f3d18a] underline decoration-[0.06em] underline-offset-[0.13em]"
+              : ""
+          }
         >
           {editing && editor.selected === "minutes" ? display : time.slice(3)}
         </span>

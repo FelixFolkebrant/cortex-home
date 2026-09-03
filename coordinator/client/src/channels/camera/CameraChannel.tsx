@@ -92,7 +92,7 @@ export function CameraChannel() {
       {status === "live" && light.id !== "off" && (
         <div
           aria-hidden="true"
-          className="camera-ring-light pointer-events-none absolute inset-0 z-10"
+          className="pointer-events-none absolute inset-0 z-10 overflow-hidden after:absolute after:inset-[calc(var(--camera-ring-width)/2)] after:rounded-[clamp(2rem,4vw,5rem)] after:content-[''] after:shadow-[0_0_0_100vmax_var(--camera-ring-color),inset_0_0_calc(var(--camera-ring-width)/2)_var(--camera-ring-color)]"
           data-camera-light={light.id}
           style={{
             "--camera-ring-color": light.color,

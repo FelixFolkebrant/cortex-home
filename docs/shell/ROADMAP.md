@@ -15,6 +15,9 @@
 ## Next
 
 - Finish the reviewer-owned SHL-002 physical confirmation and archive it.
+- [SHL-004](wip/SHL-004.md) will move client styling into Tailwind utilities
+  wherever possible and document the small CSS remainder needed for browser
+  primitives and genuinely dynamic presentation.
 - Keep `App.jsx` concrete; extract stateful responsibilities only when one
   focused change has a clear owner and focused tests.
 
