@@ -29,7 +29,7 @@ export function isSystemStatsDismissShortcut(event) {
   );
 }
 
-export async function requestSystemStats(fetcher = fetch, wait) {
+export async function requestSystemStats(fetcher = fetch, wait = undefined) {
   let response;
 
   try {
@@ -85,7 +85,7 @@ function formatUptime(seconds) {
   return `${minutes}m`;
 }
 
-function Stat({ label, value, detail }) {
+function Stat({ label, value, detail = null }) {
   return (
     <div className="border-white/10 border-t pt-4">
       <dt className="text-xs font-bold tracking-[0.16em] text-[#9f9584] uppercase">

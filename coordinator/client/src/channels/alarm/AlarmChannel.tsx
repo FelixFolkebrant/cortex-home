@@ -87,7 +87,7 @@ export async function selectAlarmFile(file, fetcher = fetch) {
   }
 }
 
-export async function requestSleep(firesAt, fetcher = fetch, wait) {
+export async function requestSleep(firesAt, fetcher = fetch, wait = undefined) {
   const epoch = Math.floor(Date.parse(firesAt) / 1000);
   if (!Number.isSafeInteger(epoch)) {
     throw new Error("The alarm wake time is invalid.");

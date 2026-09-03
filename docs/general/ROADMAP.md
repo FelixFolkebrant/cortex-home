@@ -10,9 +10,9 @@ local room integrations, and module-owned documentation.
 with this module-owned documentation and issue system.
 [GEN-003](issues/GEN-003.md) makes the shared issue record shorter and restores an
 optional heatmap for decisions that need focused review.
-[GEN-004](wip/GEN-004.md) is converting the coordinator agent and client source
-tree from JavaScript to TypeScript while preserving the existing runtime
-boundaries.
+[GEN-004](wip/GEN-004.md) converted the coordinator agent and client source
+tree, including React `.tsx` components, from JavaScript to TypeScript while
+preserving the existing runtime boundaries.
 
 | Module | Current state |
 |---|---|

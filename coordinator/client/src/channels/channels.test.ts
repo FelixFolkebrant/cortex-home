@@ -10,24 +10,24 @@ const vite = await createServer({
   server: { hmr: false, middlewareMode: true },
 });
 const { MusicChannel, MusicFullscreen, updateFullscreenTracks } =
-  await vite.ssrLoadModule("/src/channels/music/MusicChannel.jsx");
+  await vite.ssrLoadModule("/src/channels/music/MusicChannel.tsx");
 const { AirPlayChannel, AirPlayStatus, isAirPlayToggleShortcut, requestAirPlay } =
-  await vite.ssrLoadModule("/src/channels/airplay/AirPlayChannel.jsx");
-const { RoomFeedback } = await vite.ssrLoadModule("/src/voice/RoomFeedback.jsx");
+  await vite.ssrLoadModule("/src/channels/airplay/AirPlayChannel.tsx");
+const { RoomFeedback } = await vite.ssrLoadModule("/src/voice/RoomFeedback.tsx");
 const {
   isSystemStatsDismissShortcut,
   isSystemStatsShortcut,
   requestSystemStats,
   SystemStats,
-} = await vite.ssrLoadModule("/src/diagnostics/SystemStats.jsx");
+} = await vite.ssrLoadModule("/src/diagnostics/SystemStats.tsx");
 const { TodayChannel } = await vite.ssrLoadModule(
-  "/src/channels/today/TodayChannel.jsx",
+  "/src/channels/today/TodayChannel.tsx",
 );
 const { CameraChannel, cameraStatusCopy } = await vite.ssrLoadModule(
-  "/src/channels/camera/CameraChannel.jsx",
+  "/src/channels/camera/CameraChannel.tsx",
 );
 const { AlarmChannel, requestAlarm, requestAlarmFiles, requestSleep, selectAlarmFile } =
-  await vite.ssrLoadModule("/src/channels/alarm/AlarmChannel.jsx");
+  await vite.ssrLoadModule("/src/channels/alarm/AlarmChannel.tsx");
 const styles = [
   readFileSync(new URL("./camera/camera.css", import.meta.url), "utf8"),
   readFileSync(new URL("./music/music.css", import.meta.url), "utf8"),

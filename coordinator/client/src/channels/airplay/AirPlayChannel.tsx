@@ -45,7 +45,7 @@ export function isAirPlayToggleShortcut(event) {
   );
 }
 
-export async function requestAirPlay(path, fetcher = fetch, wait) {
+export async function requestAirPlay(path, fetcher = fetch, wait = undefined) {
   let response;
 
   try {

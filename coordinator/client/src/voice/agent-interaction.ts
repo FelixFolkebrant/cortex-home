@@ -104,7 +104,13 @@ export class SpokenInteraction {
     return this.session?.requestId === requestId;
   }
 
-  async start(requestId, capturedAudio, endpointToken, sessionId, turnEpoch) {
+  async start(
+    requestId,
+    capturedAudio,
+    endpointToken,
+    sessionId = null,
+    turnEpoch = 0,
+  ) {
     if (this.session) {
       return false;
     }

@@ -152,7 +152,13 @@ export function App() {
       }
     }
 
-    function showInteraction(action, state, message, duration, scene) {
+    function showInteraction(
+      action,
+      state,
+      message = null,
+      duration = null,
+      scene = null,
+    ) {
       clearInteractionTimer();
       dispatch({ type: "interaction", action, state, message, scene });
 
@@ -196,7 +202,10 @@ export function App() {
     });
 
     const voiceCapture = new VoiceCapture({
-      audioContext: window.AudioContext || window.webkitAudioContext,
+      audioContext:
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext,
       mediaDevices: navigator.mediaDevices,
       onCaptured: (requestId, audio) => {
         if (voiceRequestId.current !== requestId) {
@@ -428,7 +437,7 @@ export function App() {
       }
     }
 
-    async function postStatus(requestId, status, error) {
+    async function postStatus(requestId, status, error = null) {
       const response = await fetch(
         `/api/requests/${encodeURIComponent(requestId)}/status`,
         {
