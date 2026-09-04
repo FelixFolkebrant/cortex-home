@@ -23,6 +23,9 @@
   active browser session as ephemeral movie-style subtitles, clearing it before
   the next user turn or terminal session lifecycle event and never exposing it
   to diagnostics.
+- [VOI-009](wip/VOI-009.md) makes listening motion calm, drives agent motion
+  from local synthesized playback level, and keeps an active session visibly
+  listening after each answer.
 - [SHL-005](../shell/wip/SHL-005.md) gives the active session Figma-derived
   listening and speaking suns, dims Home, and makes the live microphone level
   grow a centered black input bar.
@@ -63,6 +66,9 @@
   visible session. There is no wake word or inactive background listening.
 - Barge-in is a first-class interaction: detected user speech cancels current
   model work and assistant playback, and stale output must never resume.
+- Voice motion communicates observed activity: microphone level belongs to the
+  input bar, listening uses calm ambient motion, and agent speech follows local
+  playback level.
 - Continue with Pi Agent Core as the dialogue harness; evolve its current fresh
   child protocol into a coordinator-supervised active-session protocol.
 - Run speech processing locally and keep raw audio off the internet.

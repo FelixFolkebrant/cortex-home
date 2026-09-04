@@ -4,6 +4,7 @@ import {
   AGENT_INTERACTION_ACTION,
   isVoiceDebugShortcut,
   parseDebugMetrics,
+  playbackLevel,
   SpokenInteraction,
 } from "./agent-interaction.ts";
 
@@ -139,6 +140,106 @@ test("only exact Ctrl+Alt+D toggles voice diagnostics", () => {
   ]) {
     assert.equal(isVoiceDebugShortcut({ ...event, ...changed }), false);
   }
+});
+
+test("playback samples map silence and speech onto a bounded level", () => {
+  assert.equal(playbackLevel(new Uint8Array(32).fill(128)), 0);
+  assert.ok(
+    playbackLevel(
+      Uint8Array.from({ length: 32 }, (_, index) => (index % 2 ? 146 : 110)),
+    ) > 0.7,
+  );
+  assert.equal(
+    playbackLevel(Uint8Array.from({ length: 32 }, (_, index) => (index % 2 ? 255 : 0))),
+    1,
+  );
+});
+
+test("browser playback reports smoothed levels and releases its analyser", async () => {
+  class FakeNode {
+    connections = [];
+    disconnected = 0;
+
+    connect(node) {
+      this.connections.push(node);
+    }
+
+    disconnect() {
+      this.disconnected += 1;
+    }
+  }
+
+  class FakeAnalyser extends FakeNode {
+    fftSize = 0;
+
+    getByteTimeDomainData(samples) {
+      samples.fill(0);
+    }
+  }
+
+  let context;
+  class FakeAudioContext {
+    analyser = new FakeAnalyser();
+    destination = {};
+    source = new FakeNode();
+    state = "running";
+
+    constructor() {
+      context = this;
+    }
+
+    close() {
+      return Promise.resolve();
+    }
+
+    createAnalyser() {
+      return this.analyser;
+    }
+
+    createMediaElementSource() {
+      return this.source;
+    }
+  }
+
+  const audio = new FakeAudio();
+  const cancelledFrames = [];
+  const frames = [];
+  const levels = [];
+  const requests = [];
+  const interaction = new SpokenInteraction({
+    audioContext: FakeAudioContext,
+    cancelFrame: (frame) => cancelledFrames.push(frame),
+    createAudio: () => audio,
+    createObjectURL: () => "blob:metered",
+    fetch: async (url, options) => {
+      requests.push({ options, url });
+      return response();
+    },
+    onLevel: (_requestId, level) => levels.push(level),
+    requestFrame: (callback) => {
+      frames.push(callback);
+      return frames.length;
+    },
+    revokeObjectURL: () => {},
+  });
+
+  const running = interaction.start(
+    "voice-metered",
+    new Blob([new Uint8Array(45)]),
+    "token",
+  );
+  await until(() => requests.length === 2);
+
+  assert.ok(levels[0] > 0.5);
+  assert.deepEqual(context.source.connections, [context.destination, context.analyser]);
+  assert.deepEqual(context.analyser.connections, []);
+
+  audio.emit("ended");
+  assert.equal(await running, true);
+  assert.equal(levels.at(-1), 0);
+  assert.deepEqual(cancelledFrames, [1]);
+  assert.equal(context.source.disconnected, 1);
+  assert.equal(context.analyser.disconnected, 1);
 });
 
 test("one captured WAV plays and reports speaking then completion", async () => {

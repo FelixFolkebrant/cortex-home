@@ -19,9 +19,10 @@ ThinkPad remains authoritative for room state and future actions.
 - Assistant speech begins as soon as a useful response segment is available.
   When the person speaks over it, Cortex Home stops the current response and
   playback, then listens to the interruption as the next turn.
-- The display dims Home during a session. A small red/orange sun and centered
-  microphone-level bar express listening; a larger yellow sun expresses agent
-  speech, with subtitles retained for ephemeral turn content.
+- The display dims Home during a session. A small red/orange sun bobs calmly
+  while a centered bar expresses microphone level; a larger yellow sun follows
+  synthesized playback level while the agent speaks. After an answer it returns
+  to listening, with subtitles retained for ephemeral turn content.
 - The same dialogue core can run through the iMac room endpoint and a local
   IdeaPad development workbench.
 
