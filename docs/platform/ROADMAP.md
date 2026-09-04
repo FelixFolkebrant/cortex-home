@@ -10,6 +10,8 @@
 - [PLT-005](issues/PLT-005.md) consolidates coordinator and endpoint desired
   state in two Ansible playbooks with focused speech, Music, media, and alarm
   tags.
+- [PLT-006](wip/PLT-006.md) adds a root-level `./deploy` entry point around the
+  Ansible environment and playbooks.
 - [Chromium performance findings](CHROMIUM_PERFORMANCE.md) record why channel
   replacement remains immediate on the low-end endpoint.
 

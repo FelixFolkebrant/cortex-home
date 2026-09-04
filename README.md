@@ -31,3 +31,16 @@ The iMac's qualified hardware and operating-system baseline is recorded in
 
 Each product area has its own IDEA, ROADMAP, active work, and completed issue
 history below `docs/`.
+
+## Deployment
+
+From the repository root, deploy the coordinator and iMac with:
+
+```sh
+./deploy all
+```
+
+Use `./deploy imac --tags media` or `./deploy imac --tags raspotify` for a
+focused endpoint update. The wrapper prepares the local Ansible environment
+and ignored inventory as needed, then keeps the existing Ansible prompts for
+private values and sudo access.
