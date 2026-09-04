@@ -80,6 +80,7 @@ test("microphone level updates preserve the active interaction", () => {
   });
   const updated = roomReducer(listening, {
     type: "interaction.level",
+    action: "speech.capture",
     level: 0.65,
   });
 
@@ -90,6 +91,15 @@ test("microphone level updates preserve the active interaction", () => {
     message: null,
     scene: null,
   });
+
+  assert.equal(
+    roomReducer(updated, {
+      type: "interaction.level",
+      action: "agent.interaction",
+      level: 1,
+    }),
+    updated,
+  );
 });
 
 test("display mode and Today updates preserve Music and room feedback", () => {

@@ -201,14 +201,22 @@ export function App() {
     }
 
     const spokenInteraction = new SpokenInteraction({
+      audioContext:
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext,
       onCompleted: (requestId) => {
         if (voiceRequestId.current !== requestId) {
           return;
         }
         voiceRequestId.current = null;
         activeRequestId.current = null;
-        showInteraction(AGENT_INTERACTION_ACTION, "completed", null, 2500);
         voiceCapture.resumeTurnDetection();
+        if (voiceSessionId.current) {
+          showInteraction(VOICE_CAPTURE_ACTION, "listening");
+        } else {
+          showInteraction(null, "idle");
+        }
       },
       onDebug: (requestId, metrics) => {
         if (voiceRequestId.current !== requestId) {
@@ -228,6 +236,15 @@ export function App() {
         activeRequestId.current = null;
         showInteraction(AGENT_INTERACTION_ACTION, "failed", error.message, 5000);
         voiceCapture.resumeTurnDetection();
+      },
+      onLevel: (requestId, level) => {
+        if (voiceRequestId.current === requestId) {
+          dispatch({
+            type: "interaction.level",
+            action: AGENT_INTERACTION_ACTION,
+            level,
+          });
+        }
       },
     });
 
@@ -352,7 +369,7 @@ export function App() {
           voiceRequestId.current === requestId ||
           voiceSessionId.current === requestId
         ) {
-          dispatch({ type: "interaction.level", level });
+          dispatch({ type: "interaction.level", action: VOICE_CAPTURE_ACTION, level });
         }
       },
       onStarted: (requestId) => {
@@ -727,12 +744,20 @@ export function App() {
           ? { ...current, phase: message.phase }
           : current,
       );
-      showInteraction(
-        AGENT_INTERACTION_ACTION,
-        message.phase,
-        null,
-        terminal ? (message.phase === "completed" ? 2500 : 5000) : null,
-      );
+      if (message.phase === "completed") {
+        if (voiceSessionId.current) {
+          showInteraction(VOICE_CAPTURE_ACTION, "listening");
+        } else {
+          showInteraction(null, "idle");
+        }
+      } else {
+        showInteraction(
+          AGENT_INTERACTION_ACTION,
+          message.phase,
+          null,
+          message.phase === "failed" ? 5000 : null,
+        );
+      }
     });
 
     events.addEventListener("agent.transcript", (event) => {

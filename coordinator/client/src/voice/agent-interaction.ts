@@ -66,7 +66,23 @@ function encodedAudio(encoded) {
   return new Blob([bytes], { type: "audio/wav" });
 }
 
+export function playbackLevel(samples) {
+  if (samples.length === 0) {
+    return 0;
+  }
+
+  let sum = 0;
+  for (const sample of samples) {
+    const amplitude = (sample - 128) / 128;
+    sum += amplitude * amplitude;
+  }
+  const rootMeanSquare = Math.sqrt(sum / samples.length);
+  return Math.max(0, Math.min(1, (rootMeanSquare - 0.01) * 6));
+}
+
 export class SpokenInteraction {
+  AudioContext: any;
+  cancelFrame: any;
   createAudio: any;
   createObjectURL: any;
   fetch: any;
@@ -74,11 +90,16 @@ export class SpokenInteraction {
   onCompleted: any;
   onDebug: any;
   onFailed: any;
+  onLevel: any;
+  outputContext: any;
+  requestFrame: any;
   revokeObjectURL: any;
   generation: number;
   session: any;
 
   constructor({
+    audioContext = globalThis.AudioContext,
+    cancelFrame = (frame) => globalThis.cancelAnimationFrame(frame),
     createAudio = (url) => new Audio(url),
     createObjectURL = (blob) => URL.createObjectURL(blob),
     fetch: request = (...arguments_: any[]) => (globalThis.fetch as any)(...arguments_),
@@ -86,8 +107,12 @@ export class SpokenInteraction {
     onCompleted,
     onDebug,
     onFailed,
+    onLevel,
+    requestFrame = (callback) => globalThis.requestAnimationFrame(callback),
     revokeObjectURL = (url) => URL.revokeObjectURL(url),
   }) {
+    this.AudioContext = audioContext;
+    this.cancelFrame = cancelFrame;
     this.createAudio = createAudio;
     this.createObjectURL = createObjectURL;
     this.fetch = request;
@@ -95,6 +120,9 @@ export class SpokenInteraction {
     this.onCompleted = onCompleted;
     this.onDebug = onDebug;
     this.onFailed = onFailed;
+    this.onLevel = onLevel;
+    this.outputContext = null;
+    this.requestFrame = requestFrame;
     this.revokeObjectURL = revokeObjectURL;
     this.generation = 0;
     this.session = null;
@@ -188,6 +216,7 @@ export class SpokenInteraction {
       session.url = this.createObjectURL(answerAudio);
       session.audio = this.createAudio(session.url);
       const playback = this.waitForPlayback(session);
+      await this.startLevelMeter(session);
       await session.audio.play();
       if (!this.isCurrent(session)) {
         return false;
@@ -264,13 +293,14 @@ export class SpokenInteraction {
 
   dispose() {
     const session = this.session;
-    if (!session) {
-      return;
+    if (session) {
+      this.session = null;
+      this.generation += 1;
+      session.controller.abort();
+      this.releasePlayback(session);
     }
-    this.session = null;
-    this.generation += 1;
-    session.controller.abort();
-    this.releasePlayback(session);
+    this.outputContext?.close().catch(() => {});
+    this.outputContext = null;
   }
 
   async report(session, phase) {
@@ -337,6 +367,7 @@ export class SpokenInteraction {
     session.url = this.createObjectURL(answerAudio);
     session.audio = this.createAudio(session.url);
     const playback = this.waitForPlayback(session);
+    await this.startLevelMeter(session);
     await session.audio.play();
     if (!this.isCurrent(session)) {
       return;
@@ -399,6 +430,7 @@ export class SpokenInteraction {
   releasePlayback(session) {
     session.settlePlayback?.();
     session.settlePlayback = null;
+    this.stopLevelMeter(session);
     if (session.audio) {
       session.audio.pause();
       session.audio.removeAttribute?.("src");
@@ -409,6 +441,71 @@ export class SpokenInteraction {
       this.revokeObjectURL(session.url);
       session.url = null;
     }
+  }
+
+  async startLevelMeter(session) {
+    if (!this.AudioContext) {
+      return;
+    }
+
+    let source = null;
+    let analyser = null;
+    try {
+      this.outputContext ||= new this.AudioContext();
+      if (this.outputContext.state === "suspended") {
+        await this.outputContext.resume();
+      }
+      if (!this.isCurrent(session) || this.outputContext.state !== "running") {
+        return;
+      }
+
+      analyser = this.outputContext.createAnalyser();
+      analyser.fftSize = 256;
+      source = this.outputContext.createMediaElementSource(session.audio);
+      source.connect(this.outputContext.destination);
+      source.connect(analyser);
+      const meter = {
+        analyser,
+        frame: null,
+        level: 0,
+        samples: new Uint8Array(analyser.fftSize),
+        source,
+      };
+      session.meter = meter;
+      this.sampleLevel(session, meter);
+    } catch {
+      source?.disconnect();
+      analyser?.disconnect();
+    }
+  }
+
+  sampleLevel(session, meter) {
+    if (!this.isCurrent(session) || session.meter !== meter) {
+      return;
+    }
+    meter.analyser.getByteTimeDomainData(meter.samples);
+    const observed = playbackLevel(meter.samples);
+    const smoothing = observed > meter.level ? 0.55 : 0.18;
+    meter.level += (observed - meter.level) * smoothing;
+    if (meter.level < 0.01) {
+      meter.level = 0;
+    }
+    this.onLevel?.(session.requestId, meter.level);
+    meter.frame = this.requestFrame(() => this.sampleLevel(session, meter));
+  }
+
+  stopLevelMeter(session) {
+    const meter = session.meter;
+    if (!meter) {
+      return;
+    }
+    session.meter = null;
+    if (meter.frame !== null) {
+      this.cancelFrame(meter.frame);
+    }
+    meter.source.disconnect();
+    meter.analyser.disconnect();
+    this.onLevel?.(session.requestId, 0);
   }
 
   isCurrent(session) {

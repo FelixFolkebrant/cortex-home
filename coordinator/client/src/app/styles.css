@@ -26,14 +26,13 @@
 }
 
 @keyframes voice-listening {
-  from {
-    filter: saturate(0.96);
-    transform: scale(0.96);
+  0%,
+  100% {
+    transform: translateY(0);
   }
 
-  to {
-    filter: saturate(1.08);
-    transform: scale(1.04);
+  50% {
+    transform: translateY(-0.7rem);
   }
 }
 
@@ -49,15 +48,18 @@
   }
 }
 
-@keyframes voice-speaking {
-  from {
-    filter: brightness(0.96) saturate(0.95);
-    transform: scale(0.9);
-  }
+.voice-speaking {
+  box-shadow: 0 0 var(--voice-glow-blur) var(--voice-glow-spread)
+    rgb(255 159 75 / var(--voice-glow-opacity));
+  filter: brightness(var(--voice-brightness)) saturate(var(--voice-saturation));
+  transform: translateY(var(--voice-lift)) scale(var(--voice-scale));
+}
 
-  to {
-    filter: brightness(1.08) saturate(1.08);
-    transform: scale(1.08);
+@media (prefers-reduced-motion: reduce) {
+  .voice-speaking {
+    box-shadow: 0 0 3.2rem 1.2rem rgb(255 159 75 / 72%);
+    filter: none;
+    transform: none;
   }
 }
 

@@ -65,6 +65,9 @@ export function roomReducer(state, event) {
         },
       };
     case "interaction.level":
+      if (event.action !== state.interaction.action) {
+        return state;
+      }
       return {
         ...state,
         interaction: {

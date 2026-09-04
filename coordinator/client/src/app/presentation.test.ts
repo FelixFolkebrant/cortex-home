@@ -171,7 +171,7 @@ test("Music fullscreen retains the previous track for its sharp left swipe", () 
   assert.match(styles, /@keyframes music-track-exit/);
 });
 
-test("listening uses the small red sun and a centered level-driven black bar", () => {
+test("listening calmly bobs while only the centered black bar follows level", () => {
   const markup = renderToStaticMarkup(
     createElement(RoomFeedback, {
       connection: "connected",
@@ -185,20 +185,21 @@ test("listening uses the small red sun and a centered level-driven black bar", (
   );
 
   assert.match(markup, /aria-label="Listening"/);
-  assert.match(markup, /voice-listening/);
+  assert.match(markup, /voice-listening_1\.8s/);
   assert.match(markup, /#ff7b00/);
-  assert.match(markup, /transform:scale\(1.05\)/);
+  assert.doesNotMatch(markup, /transform:scale\(1.05\)/);
   assert.match(markup, /width:54%/);
   assert.match(markup, /bg-black/);
   assert.match(markup, /What will the weather be like today\?/);
   assert.doesNotMatch(markup, /Speak naturally|Hearing you|Microphone/);
+  assert.match(styles, /transform: translateY\(-0\.7rem\)/);
 });
 
-test("agent speech uses the large yellow sun without the input bar", () => {
+test("agent speech maps playback level onto the large yellow sun", () => {
   const markup = renderToStaticMarkup(
     createElement(RoomFeedback, {
       connection: "connected",
-      interaction: { action: "agent.interaction", level: 0, state: "speaking" },
+      interaction: { action: "agent.interaction", level: 0.5, state: "speaking" },
     }),
   );
 
@@ -206,7 +207,10 @@ test("agent speech uses the large yellow sun without the input bar", () => {
   assert.match(markup, /size-\[clamp\(10\.5rem,13\.3vw,15\.4rem\)\]/);
   assert.match(markup, /voice-speaking/);
   assert.match(markup, /#ffb100/);
+  assert.match(markup, /--voice-lift:-0\.325rem/);
+  assert.match(markup, /--voice-scale:1\.02/);
   assert.doesNotMatch(markup, /width:\d+%|Speaking\./);
+  assert.doesNotMatch(styles, /@keyframes voice-speaking/);
 });
 
 test("voice-only feedback hides room chrome but keeps the agent sun", () => {

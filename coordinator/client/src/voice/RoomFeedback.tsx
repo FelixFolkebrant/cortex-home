@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { IDENTIFY_ACTION, SCENE_ACTION } from "../app/room-state";
 import { AGENT_INTERACTION_ACTION } from "./agent-interaction";
 import { VOICE_CAPTURE_ACTION } from "./voice-capture";
@@ -72,6 +73,17 @@ function VoiceSun({ interaction }) {
   const level = Math.max(0, Math.min(1, interaction.level || 0));
   const label = speaking ? "Agent speaking" : thinking ? "Agent thinking" : "Listening";
   const sun = speaking ? "speaking" : thinking ? "thinking" : "listening";
+  const speakingStyle = speaking
+    ? ({
+        "--voice-brightness": 0.94 + level * 0.14,
+        "--voice-glow-blur": `${3.2 + level * 1.3}rem`,
+        "--voice-glow-opacity": 0.72 + level * 0.2,
+        "--voice-glow-spread": `${1.2 + level * 0.7}rem`,
+        "--voice-lift": `${-level * 0.65}rem`,
+        "--voice-saturation": 0.96 + level * 0.12,
+        "--voice-scale": 0.92 + level * 0.2,
+      } as CSSProperties)
+    : undefined;
 
   return (
     <div
@@ -79,21 +91,17 @@ function VoiceSun({ interaction }) {
       className="pointer-events-none absolute top-[47%] left-1/2 z-50 -translate-x-1/2 -translate-y-1/2"
       role="status"
     >
-      <div
-        className="transition-transform duration-75 ease-out motion-reduce:transition-none"
-        style={{ transform: `scale(${1 + (listening ? level * 0.1 : 0)})` }}
-      >
-        <span
-          aria-hidden="true"
-          className={
-            sun === "speaking"
-              ? "block size-[clamp(10.5rem,13.3vw,15.4rem)] animate-[voice-speaking_780ms_ease-in-out_infinite_alternate] rounded-full bg-[radial-gradient(circle_at_center,#faf2a3_0%,#fbe27a_25%,#fdd252_50%,#fec129_75%,#ffb100_100%)] shadow-[0_0_3.2rem_1.2rem_#ff9f4b] motion-reduce:animate-none"
-              : sun === "thinking"
-                ? "block size-[clamp(5.2rem,6.5vw,7.45rem)] animate-[voice-thinking_1.2s_ease-in-out_infinite_alternate] rounded-full bg-[radial-gradient(circle_at_center,#fff0bc_0%,#ffd57c_45%,#ffae2f_100%)] shadow-[0_0_3.2rem_1.2rem_#ffb24b] motion-reduce:animate-none"
-                : "block size-[clamp(5.2rem,6.5vw,7.45rem)] animate-[voice-listening_900ms_ease-in-out_infinite_alternate] rounded-full bg-[radial-gradient(circle_at_center,#fab6a3_0%,#fba77a_25%,#fd9952_50%,#fe8a29_75%,#ff7b00_100%)] shadow-[0_0_3.2rem_1.2rem_#ff674b] motion-reduce:animate-none"
-          }
-        />
-      </div>
+      <span
+        aria-hidden="true"
+        className={
+          sun === "speaking"
+            ? "voice-speaking block size-[clamp(10.5rem,13.3vw,15.4rem)] rounded-full bg-[radial-gradient(circle_at_center,#faf2a3_0%,#fbe27a_25%,#fdd252_50%,#fec129_75%,#ffb100_100%)] transition-[filter,box-shadow,transform] duration-75 ease-out motion-reduce:transition-none"
+            : sun === "thinking"
+              ? "block size-[clamp(5.2rem,6.5vw,7.45rem)] animate-[voice-thinking_1.2s_ease-in-out_infinite_alternate] rounded-full bg-[radial-gradient(circle_at_center,#fff0bc_0%,#ffd57c_45%,#ffae2f_100%)] shadow-[0_0_3.2rem_1.2rem_#ffb24b] motion-reduce:animate-none"
+              : "block size-[clamp(5.2rem,6.5vw,7.45rem)] animate-[voice-listening_1.8s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle_at_center,#fab6a3_0%,#fba77a_25%,#fd9952_50%,#fe8a29_75%,#ff7b00_100%)] shadow-[0_0_3.2rem_1.2rem_#ff674b] motion-reduce:animate-none"
+        }
+        style={speakingStyle}
+      />
     </div>
   );
 }
