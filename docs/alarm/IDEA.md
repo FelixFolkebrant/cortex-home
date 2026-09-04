@@ -7,13 +7,14 @@ local time while the always-on ThinkPad remains the schedule authority.
 
 ## Experience
 
-- The keyboard edits and arms one next-occurrence Europe/Stockholm alarm.
+- Home shows the next armed Europe/Stockholm alarm without a permanent editor.
+- A later on-demand Home tool will edit and arm it.
 - A second deliberate command lets the iMac sleep after the coordinator has
   observed the alarm as armed.
-- When due, Alarm shows the live time full-screen, requests one fixed warm Hue
-  scene, and loops the selected endpoint-local sound until dismissal.
-- Scheduling, display, lighting, audio, sleep, and wake failures remain visible
-  and independently recoverable.
+- When due, Alarm requests one fixed warm Hue scene and loops the selected
+  endpoint-local sound until dismissal.
+- Scheduling, lighting, audio, sleep, and wake failures remain independently
+  recoverable.
 
 ## Boundaries
 
@@ -30,6 +31,7 @@ local time while the always-on ThinkPad remains the schedule authority.
 ## Relevant Code
 
 - `coordinator/alarm.py`
-- `coordinator/client/src/channels/alarm/`
+- `coordinator/client/src/alarm/`
+- `coordinator/client/src/app/HomeSurface.tsx`
 - `endpoint/imac/files/cortex-endpoint-alarm`
 - `endpoint/imac/files/cortex-endpoint-rtc-suspend`

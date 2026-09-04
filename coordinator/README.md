@@ -259,9 +259,9 @@ One-shot interactions retain the fresh `/opt/cortex-home/agent/answer-child.ts`
 process. An explicit voice session instead owns one
 `/opt/cortex-home/agent/dialogue-child.ts` process from session activation to
 its terminal event. It receives only each bounded transcript and fresh reduced
-active-view context through standard input. That context contains exactly
-`activeChannel` and `channel`; lighting remains internal until later accepted
-work. The dialogue retains at most six complete exchanges and 6,000 text
+Home context through standard input. That context contains exactly `home`, with
+normalized `today` and `music` regions; lighting remains internal until later
+accepted work. The dialogue retains at most six complete exchanges and 6,000 text
 characters in memory, removing the oldest complete exchange before each
 provider request. It emits ordered text deltas and one bounded final answer;
 the coordinator terminates its process group and discards its history on
@@ -414,34 +414,30 @@ Hue event reports that scene active, the 10-second action bound expires, or the
 adapter reports an unavailable or rejected command. Every request needs a new
 request ID.
 
-An outside caller can select the room's active view even while the endpoint is
+An outside caller can select the room's Home or Camera display mode even while the endpoint is
 reconnecting:
 
 ```sh
 curl \
   --fail-with-body \
   --header 'Content-Type: application/json' \
-  --data '{"requestId":"show-camera-1","action":"channel.select","channel":"camera"}' \
+  --data '{"requestId":"show-camera-1","action":"display.mode.select","mode":"camera"}' \
   http://<server-host>:8080/api/actions
 ```
 
-The only accepted channel values are `today`, `music`, `camera`, and
-`airplay`. The
-coordinator starts on Today, publishes the selected `channel.active` snapshot
-to every endpoint connection, and returns completion after it publishes that
-state. On the iMac endpoint, Openbox owns all four channel chords globally:
-`Ctrl`+`Alt`+`1` selects Today, `Ctrl`+`Alt`+`2` selects Music, and
-`Ctrl`+`Alt`+`3` selects the local Camera mirror; UxPlay remains available.
-`Ctrl`+`Alt`+`4` selects the AirPlay view. The receiver starts with
-the iMac kiosk and remains discoverable as `Skärmen` from every channel; the
-AirPlay view identifies it without a switch or local control request.
-Browser-only environments can render the view but do not advertise a local
-receiver. `Ctrl`+`Alt`+`S` activates the next detected
+The only accepted mode values are `home` and `camera`. The coordinator starts
+on Home, publishes the selected `display.mode` snapshot to every endpoint
+connection, and returns completion after it publishes that state. On the iMac,
+Openbox owns the global display chords: `Ctrl`+`Alt`+`1` returns Home and
+`Ctrl`+`Alt`+`3` enters Camera. UxPlay starts with the kiosk and remains
+discoverable as `Skärmen` without an AirPlay browser screen or selection
+shortcut. Browser-only environments do not advertise a local receiver.
+`Ctrl`+`Alt`+`S` activates the next detected
 room scene in
 case-insensitive name order and wraps after the last scene. While Music is
-active, `Ctrl`+`M` locally toggles its fullscreen artwork presentation without
-sending a coordinator action. Leaving Music resets that presentation. Other
-key combinations and repeated key presses do nothing. The Hue remote remains
+playing on Home, `Ctrl`+`M` locally toggles its fullscreen artwork presentation
+without sending a coordinator action. Other key combinations and repeated key
+presses do nothing. The Hue remote remains
 exclusively native to Hue; Cortex Home does not subscribe to its button events.
 
 For a focused deployed check, use the repository-owned verifier with one exact
@@ -486,23 +482,30 @@ arrays. Hue credentials, bridge identity, room and scene resource IDs, and raw
 events remain inside the adapter.
 
 The coordinator also exposes an internal `Coordinator.context()` method for
-future local agent work. It is not an HTTP or SSE endpoint. The method returns
-one fresh reduced value with exactly these top-level keys:
+local agent work. It is not an HTTP or SSE endpoint. The method returns one
+fresh reduced value with exactly these top-level keys:
 
 ```json
 {
-  "activeChannel": "music",
-  "channel": {
-    "type": "music",
-    "available": true,
-    "playbackState": "playing",
-    "itemType": "track",
-    "title": "Never Gonna Give You Up",
-    "creators": ["Rick Astley"],
-    "collection": "Whenever You Need Somebody",
-    "positionMs": 1200,
-    "durationMs": 213573,
-    "observedAt": "2026-07-26T12:00:01.000Z"
+  "home": {
+    "today": {
+      "available": true,
+      "timeZone": "Europe/Stockholm",
+      "current": {"temperatureC": 21, "symbolCode": "partlycloudy_day"},
+      "forecast": [],
+      "observedAt": "2026-07-26T12:00:00.000Z"
+    },
+    "music": {
+      "available": true,
+      "playbackState": "playing",
+      "itemType": "track",
+      "title": "Never Gonna Give You Up",
+      "creators": ["Rick Astley"],
+      "collection": "Whenever You Need Somebody",
+      "positionMs": 1200,
+      "durationMs": 213573,
+      "observedAt": "2026-07-26T12:00:01.000Z"
+    }
   },
   "lighting": {
     "available": true,
@@ -513,19 +516,17 @@ one fresh reduced value with exactly these top-level keys:
 }
 ```
 
-Only the active channel appears in `channel`. A Today channel contains
-`type`, `available`, `timeZone`, `current`, `forecast`, and `observedAt`.
-Unavailable or invalid snapshots reduce to a small unavailable context instead
-of forwarding unknown fields. The projection omits provider objects,
+Both Home regions appear on every request. Unavailable or invalid snapshots
+reduce to small unavailable contexts instead of forwarding unknown fields. The projection omits provider objects,
 credentials, artwork URLs, Spotify URIs, endpoint tokens, Hue resource IDs, raw
 events, cache metadata, and coordinator-owned mutable dictionaries. Each
-interaction builds a still-smaller active-view projection immediately before
-its one model request and passes only `activeChannel` and `channel` to the
-supervised child.
+interaction builds a still-smaller Home projection immediately before its one
+model request and passes only `home.today` and `home.music` to the supervised
+child.
 
-The full-screen client keeps playback, lighting, coordinator connection, and
-temporary action feedback as independent state. Loaded tracks and episodes
-render as the Music view, playing progress is projected locally from
+The full-screen client keeps Home, playback, lighting, coordinator connection,
+and temporary action feedback as independent state. Loaded tracks and episodes
+render as a compact Home card, playing progress is projected locally from
 `positionMs` and `observedAt`, and terminal snapshots remove the prior item.
 The browser loads only the snapshot's HTTPS artwork; an unavailable image falls
 back to the local Cortex Home record mark.

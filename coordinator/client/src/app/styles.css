@@ -15,6 +15,52 @@
   }
 }
 
+@keyframes camera-blackout {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes voice-listening {
+  from {
+    filter: saturate(0.96);
+    transform: scale(0.96);
+  }
+
+  to {
+    filter: saturate(1.08);
+    transform: scale(1.04);
+  }
+}
+
+@keyframes voice-thinking {
+  from {
+    filter: brightness(0.94);
+    transform: scale(0.92);
+  }
+
+  to {
+    filter: brightness(1.08);
+    transform: scale(1.08);
+  }
+}
+
+@keyframes voice-speaking {
+  from {
+    filter: brightness(0.96) saturate(0.95);
+    transform: scale(0.9);
+  }
+
+  to {
+    filter: brightness(1.08) saturate(1.08);
+    transform: scale(1.08);
+  }
+}
+
 @keyframes music-track-enter {
   from {
     transform: translateX(100%);

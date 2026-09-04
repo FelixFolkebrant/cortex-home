@@ -25,7 +25,7 @@ has one canonical document even when it changes several modules.
 
 - Voice-controlled lighting is Voice work with a Lighting dependency.
 - Alarm-triggered lighting is Alarm work with a Lighting dependency.
-- Channel navigation or shared overlays are Shell work.
+- Home composition, display-mode selection, or shared overlays are Shell work.
 - Deployment and endpoint provisioning are Platform work.
 - Use General only when no module is a meaningful primary owner.
 

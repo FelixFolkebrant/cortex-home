@@ -60,7 +60,7 @@ test("time formatting supports tracks and long episodes", () => {
   assert.equal(formatTime(3_661_000), "1:01:01");
 });
 
-test("Ctrl+M toggles the secondary view only from Music", () => {
+test("Ctrl+M toggles Music fullscreen from Home", () => {
   const keyboardEvent = {
     altKey: false,
     code: "KeyM",
@@ -70,30 +70,11 @@ test("Ctrl+M toggles the secondary view only from Music", () => {
     shiftKey: false,
   };
 
-  assert.equal(isMusicFullscreenShortcut(keyboardEvent, "music"), true);
-  assert.equal(isMusicFullscreenShortcut(keyboardEvent, "today"), false);
-  assert.equal(
-    isMusicFullscreenShortcut({ ...keyboardEvent, repeat: true }, "music"),
-    false,
-  );
-  assert.equal(
-    isMusicFullscreenShortcut({ ...keyboardEvent, ctrlKey: false }, "music"),
-    false,
-  );
-  assert.equal(
-    isMusicFullscreenShortcut({ ...keyboardEvent, altKey: true }, "music"),
-    false,
-  );
-  assert.equal(
-    isMusicFullscreenShortcut({ ...keyboardEvent, shiftKey: true }, "music"),
-    false,
-  );
-  assert.equal(
-    isMusicFullscreenShortcut({ ...keyboardEvent, metaKey: true }, "music"),
-    false,
-  );
-  assert.equal(
-    isMusicFullscreenShortcut({ ...keyboardEvent, code: "F11" }, "music"),
-    false,
-  );
+  assert.equal(isMusicFullscreenShortcut(keyboardEvent), true);
+  assert.equal(isMusicFullscreenShortcut({ ...keyboardEvent, repeat: true }), false);
+  assert.equal(isMusicFullscreenShortcut({ ...keyboardEvent, ctrlKey: false }), false);
+  assert.equal(isMusicFullscreenShortcut({ ...keyboardEvent, altKey: true }), false);
+  assert.equal(isMusicFullscreenShortcut({ ...keyboardEvent, shiftKey: true }), false);
+  assert.equal(isMusicFullscreenShortcut({ ...keyboardEvent, metaKey: true }), false);
+  assert.equal(isMusicFullscreenShortcut({ ...keyboardEvent, code: "F11" }), false);
 });

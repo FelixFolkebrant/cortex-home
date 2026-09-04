@@ -41,7 +41,7 @@ class NodeAgentTests(unittest.TestCase):
             "import json, sys\n"
             "request = json.loads(sys.stdin.read())\n"
             "assert request['transcript'] == 'What is playing?'\n"
-            "assert request['context']['activeChannel'] == 'music'\n"
+            "assert request['context'] == {'home': {}}\n"
             "print(json.dumps({'status': 'completed', "
             "'requestId': request['requestId'], 'answer': 'A test track.'}))\n"
         )
@@ -49,7 +49,7 @@ class NodeAgentTests(unittest.TestCase):
         answer = agent.answer(
             "voice-1",
             "What is playing?",
-            {"activeChannel": "music"},
+            {"home": {}},
             threading.Event(),
         )
 
@@ -71,7 +71,7 @@ class NodeAgentTests(unittest.TestCase):
                     self.agent(body).answer(
                         "voice-1",
                         "Question",
-                        {"activeChannel": "today"},
+                        {"home": {}},
                         threading.Event(),
                     )
                 self.assertEqual(raised.exception.code, "agent_protocol_failed")
@@ -92,7 +92,7 @@ class NodeAgentTests(unittest.TestCase):
                     self.agent(body).answer(
                         "voice-1",
                         "Question",
-                        {"activeChannel": "today"},
+                        {"home": {}},
                         threading.Event(),
                     )
                 self.assertEqual(raised.exception.code, expected)
@@ -113,7 +113,7 @@ class NodeAgentTests(unittest.TestCase):
                 agent.answer,
                 "voice-cancel",
                 "Question",
-                {"activeChannel": "today"},
+                {"home": {}},
                 cancelled,
             )
             for _index in range(100):
@@ -135,7 +135,7 @@ class NodeAgentTests(unittest.TestCase):
             ).answer(
                 "voice-timeout",
                 "Question",
-                {"activeChannel": "today"},
+                {"home": {}},
                 threading.Event(),
             )
         self.assertEqual(raised.exception.code, "agent_timeout")
@@ -155,7 +155,7 @@ class NodeAgentTests(unittest.TestCase):
                 agent.answer,
                 "voice-shutdown",
                 "Question",
-                {"activeChannel": "today"},
+                {"home": {}},
                 threading.Event(),
             )
             for _index in range(100):
@@ -172,7 +172,7 @@ class NodeAgentTests(unittest.TestCase):
             agent.answer(
                 "voice-after-shutdown",
                 "Question",
-                {"activeChannel": "today"},
+                {"home": {}},
                 threading.Event(),
             )
         self.assertEqual(closed.exception.code, "cancelled")
@@ -196,7 +196,7 @@ class NodeAgentTests(unittest.TestCase):
             agent.answer(
                 "voice-env",
                 "Question",
-                {"activeChannel": "today"},
+                {"home": {}},
                 threading.Event(),
             ),
             "Safe.",

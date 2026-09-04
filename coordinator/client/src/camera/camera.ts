@@ -3,65 +3,6 @@ export const CAMERA_CONSTRAINTS = Object.freeze({
   video: true,
 });
 
-export const CAMERA_LIGHTS = Object.freeze([
-  Object.freeze({ color: "transparent", id: "off", label: "Ring light off" }),
-  Object.freeze({
-    color: "rgb(255 214 158 / 96%)",
-    id: "warm",
-    label: "Warm light",
-  }),
-  Object.freeze({
-    color: "rgb(255 255 255 / 96%)",
-    id: "white",
-    label: "White light",
-  }),
-  Object.freeze({
-    color: "rgb(202 232 255 / 96%)",
-    id: "cold",
-    label: "Cold light",
-  }),
-]);
-
-export const CAMERA_LIGHT_WIDTHS = Object.freeze([
-  Object.freeze({ label: "Narrow", value: "clamp(3rem, 6vw, 7rem)" }),
-  Object.freeze({ label: "Medium", value: "clamp(5rem, 10vw, 12rem)" }),
-  Object.freeze({ label: "Wide", value: "clamp(7rem, 14vw, 17rem)" }),
-  Object.freeze({ label: "Extra wide", value: "clamp(9rem, 18vw, 22rem)" }),
-]);
-
-export const DEFAULT_CAMERA_LIGHT_WIDTH = 1;
-
-export function cameraLightAction(event) {
-  if (
-    event.altKey ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.shiftKey ||
-    event.repeat
-  ) {
-    return null;
-  }
-
-  return (
-    {
-      ArrowDown: "narrower",
-      ArrowLeft: "previous",
-      ArrowRight: "next",
-      ArrowUp: "wider",
-    }[event.code] || null
-  );
-}
-
-export function cycleCameraLight(current, direction) {
-  const step = direction === "previous" ? -1 : 1;
-  return (current + step + CAMERA_LIGHTS.length) % CAMERA_LIGHTS.length;
-}
-
-export function adjustCameraLightWidth(current, direction) {
-  const step = direction === "narrower" ? -1 : 1;
-  return Math.max(0, Math.min(CAMERA_LIGHT_WIDTHS.length - 1, current + step));
-}
-
 export function cameraFailureStatus(error) {
   switch (error?.name) {
     case "NotAllowedError":

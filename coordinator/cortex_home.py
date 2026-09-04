@@ -42,7 +42,8 @@ from speech import SpeechError, load_selected_speech, read_capture, read_synthes
 
 ACTION = "endpoint.identify"
 SCENE_ACTION = "room.scene.activate"
-CHANNEL_ACTION = "channel.select"
+DISPLAY_MODE_ACTION = "display.mode.select"
+DISPLAY_MODES = {"home", "camera"}
 ALARM_ARM_ACTION = "alarm.arm"
 ALARM_DISARM_ACTION = "alarm.disarm"
 ALARM_DISMISS_ACTION = "alarm.dismiss"
@@ -53,8 +54,7 @@ ALARM_ACTIONS = {
     ALARM_DISMISS_ACTION,
     ALARM_SLEEP_ACTION,
 }
-ALLOWED_ACTIONS = {ACTION, SCENE_ACTION, CHANNEL_ACTION, *ALARM_ACTIONS}
-CHANNELS = {"today", "music", "camera", "airplay", "alarm"}
+ALLOWED_ACTIONS = {ACTION, SCENE_ACTION, DISPLAY_MODE_ACTION, *ALARM_ACTIONS}
 MAX_BODY_BYTES = 4096
 MAX_AUDIO_BODY_BYTES = 44 + 16_000 * 2 * 15
 MAX_COLLECTION_LENGTH = 512
@@ -214,7 +214,7 @@ class Coordinator:
             "positionMs": 0,
             "observedAt": utc_timestamp(),
         }
-        self.channel = {"active": "today"}
+        self.display_mode = {"active": "home"}
         self.today = {**unavailable_summary(), "observedAt": utc_timestamp()}
         self.hue_status = "unconfigured"
         self.lighting = {
@@ -247,7 +247,7 @@ class Coordinator:
 
             self.endpoint = EndpointConnection()
             self.endpoint.send("music.playback", self.playback)
-            self.endpoint.send("channel.active", self.channel)
+            self.endpoint.send("display.mode", self.display_mode)
             self.endpoint.send("today.summary", self.today)
             self.endpoint.send("room.lighting", self.lighting)
             self.endpoint.send("alarm.state", self.alarm.payload())
@@ -269,7 +269,14 @@ class Coordinator:
             self._fail_endpoint_interaction_locked(token)
             self._end_endpoint_voice_session_locked(token)
 
-    def submit(self, request_id, action, channel=None, scene=None, alarm_time=None):
+    def submit(
+        self,
+        request_id,
+        action,
+        scene=None,
+        alarm_time=None,
+        mode=None,
+    ):
         self._validate_request_id(request_id)
         if action not in ALLOWED_ACTIONS:
             raise ApiError(
@@ -277,17 +284,17 @@ class Coordinator:
                 "unknown_action",
                 "The action is not allowed.",
             )
-        if action == CHANNEL_ACTION and channel not in CHANNELS:
+        if action == DISPLAY_MODE_ACTION and mode not in DISPLAY_MODES:
             raise ApiError(
                 HTTPStatus.BAD_REQUEST,
-                "invalid_channel",
-                "channel must be today, music, camera, airplay, or alarm.",
+                "invalid_display_mode",
+                "mode must be home or camera.",
             )
-        if action != CHANNEL_ACTION and channel is not None:
+        if action != DISPLAY_MODE_ACTION and mode is not None:
             raise ApiError(
                 HTTPStatus.BAD_REQUEST,
                 "invalid_action_arguments",
-                "The action does not accept a channel.",
+                "The action does not accept a display mode.",
             )
         if action == SCENE_ACTION and not isinstance(scene, str):
             raise ApiError(
@@ -301,16 +308,8 @@ class Coordinator:
                 "invalid_action_arguments",
                 "The action does not accept a scene.",
             )
-        if action == ALARM_ARM_ACTION and (
-            channel is not None or scene is not None
-        ):
-            raise ApiError(
-                HTTPStatus.BAD_REQUEST,
-                "invalid_action_arguments",
-                "The action does not accept a channel or scene.",
-            )
         if action in {ALARM_DISARM_ACTION, ALARM_DISMISS_ACTION, ALARM_SLEEP_ACTION} and (
-            channel is not None or scene is not None or alarm_time is not None
+            alarm_time is not None
         ):
             raise ApiError(
                 HTTPStatus.BAD_REQUEST,
@@ -382,8 +381,8 @@ class Coordinator:
             elif self.endpoint:
                 self.endpoint.send("action.status", pending.payload())
 
-            if action == CHANNEL_ACTION:
-                self._report_channel_locked(channel, force=True)
+            if action == DISPLAY_MODE_ACTION:
+                self._report_display_mode_locked(mode, force=True)
                 self._finish_locked(pending, "completed", None, HTTPStatus.OK)
                 return pending.http_status, pending.payload()
             if action in ALARM_ACTIONS:
@@ -539,7 +538,7 @@ class Coordinator:
                     self._raise_interaction_error(interaction, HTTPStatus.BAD_GATEWAY, "transcription_failed", "Speech transcription failed.")
                 with self.lock:
                     self._require_interaction_current_locked(interaction)
-                    context = build_answer_context(self.channel.get("active"), self.today, self.playback)
+                    context = build_answer_context(self.today, self.playback)
                     interaction.phase = "thinking"
                     self._publish_interaction_locked(interaction)
                 if session.dialogue:
@@ -680,11 +679,7 @@ class Coordinator:
 
             with self.lock:
                 self._require_interaction_current_locked(interaction)
-                context = build_answer_context(
-                    self.channel.get("active"),
-                    self.today,
-                    self.playback,
-                )
+                context = build_answer_context(self.today, self.playback)
                 interaction.phase = "thinking"
                 self._publish_interaction_locked(interaction)
 
@@ -913,7 +908,6 @@ class Coordinator:
     def context(self):
         with self.lock:
             return build_room_context(
-                self.channel.get("active"),
                 self.today,
                 self.playback,
                 self.lighting,
@@ -1022,13 +1016,13 @@ class Coordinator:
                 self.endpoint.send("music.playback", self.playback)
             return self.playback
 
-    def _report_channel_locked(self, active, force=False):
-        if active == self.channel["active"] and not force:
-            return self.channel
-        self.channel = {"active": active}
+    def _report_display_mode_locked(self, active, force=False):
+        if active == self.display_mode["active"] and not force:
+            return self.display_mode
+        self.display_mode = {"active": active}
         if self.endpoint:
-            self.endpoint.send("channel.active", self.channel)
-        return self.channel
+            self.endpoint.send("display.mode", self.display_mode)
+        return self.display_mode
 
     def _wait_for_endpoint_action(self, pending):
         if not pending.finished.wait(self.action_timeout):
@@ -1132,7 +1126,7 @@ class Coordinator:
             self.alarm_store.save(self.alarm)
             self._schedule_alarm_locked()
             self._publish_alarm_locked()
-            self._report_channel_locked("alarm", force=True)
+            self._report_display_mode_locked("home", force=True)
         thread = threading.Thread(
             target=self._activate_wake_scene,
             args=(fires_at,),
@@ -1439,7 +1433,7 @@ class Coordinator:
 
         if pending.action in {
             SCENE_ACTION,
-            CHANNEL_ACTION,
+            DISPLAY_MODE_ACTION,
             *ALARM_ACTIONS,
         } and self.endpoint:
             self.endpoint.send("action.status", pending.payload())
@@ -1592,14 +1586,14 @@ class CortexHomeHandler(BaseHTTPRequestHandler):
 
             if path == "/api/actions":
                 body = self._read_json(
-                    {"requestId", "action", "channel", "scene", "time"}
+                    {"requestId", "action", "mode", "scene", "time"}
                 )
                 status, payload = self.server.coordinator.submit(
                     body.get("requestId"),
                     body.get("action"),
-                    body.get("channel"),
-                    body.get("scene"),
-                    body.get("time"),
+                    scene=body.get("scene"),
+                    alarm_time=body.get("time"),
+                    mode=body.get("mode"),
                 )
                 self._send_json(status, payload)
                 return

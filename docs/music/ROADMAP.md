@@ -10,6 +10,8 @@
   progress, and artwork-fallback states.
 - [MUS-004](issues/MUS-004.md) adds focused room-scale polish, browser-derived
   artwork color, and the Music-only full-screen presentation.
+- [SHL-005](../shell/wip/SHL-005.md) replaces the ordinary Music channel with a
+  compact live Home card while retaining local `Control`+`M` fullscreen.
 
 ## Next
 
@@ -25,8 +27,8 @@
 
 ## Open Decisions
 
-- Whether another source should share the Music channel or become its own
-  channel.
+- Whether another source should reuse the same normalized Home card and
+  fullscreen presentation.
 
 ## Accepted Decisions
 
@@ -35,5 +37,5 @@
 - Use repository-owned librespot event normalization instead of Spotify Web API
   polling or audio inference.
 - Keep reporting best-effort so failures never stop audio.
-- Keep full-screen state local to Music and derive artwork colors in the
+- Keep fullscreen state local to Music and derive artwork colors in the
   browser without persisting them.

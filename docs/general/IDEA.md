@@ -6,9 +6,9 @@ Cortex Home is a local-first home interface for a one-room flat. It turns a
 small collection of existing devices into a playful, understandable room
 computer without making an AI model or a hosted service the owner of the home.
 
-The system should be useful through its visible channels and ordinary keyboard
-controls even when voice, internet services, or individual integrations are
-unavailable.
+The system should be useful through its persistent Home surface and ordinary
+keyboard controls even when voice, internet services, or individual
+integrations are unavailable.
 
 ## Product Character
 
@@ -28,7 +28,7 @@ unavailable.
 
 ### Agent-Ready, Not Agent-Dependent
 
-- The coordinator, visible views, and manual controls remain authoritative.
+- The coordinator, visible surfaces, and manual controls remain authoritative.
 - Voice and future agents receive explicit, narrow context and permissions.
 - Sensing is deliberate and visible; recordings and conversation state are not
   retained unless a later accepted feature explicitly requires it.
@@ -42,11 +42,12 @@ unavailable.
 - A Sonos Play:5 Gen 1 receives analog room audio from the iMac.
 - A Philips Hue bridge remains the authority for three room lamps and their
   scenes.
-- One React client presents explicit channels while the coordinator publishes
-  normalized state and accepts allow-listed actions.
+- One React client composes normalized room state on Home and enters only
+  deliberate temporary modes while the coordinator accepts allow-listed
+  actions.
 
 Detailed hardware and deployment facts belong to the
-[Platform module](../platform/IDEA.md). View-specific behavior belongs to the
+[Platform module](../platform/IDEA.md). Surface-specific behavior belongs to the
 corresponding module rather than this document.
 
 ## Shared Constraints

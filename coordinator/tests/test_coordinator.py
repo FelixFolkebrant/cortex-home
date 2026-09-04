@@ -27,8 +27,8 @@ from cortex_home import (
     ALARM_SLEEP_ACTION,
     AGENT_CHILD,
     AGENT_NODE,
-    CHANNEL_ACTION,
-    CHANNELS,
+    DISPLAY_MODE_ACTION,
+    DISPLAY_MODES,
     SCENE_ACTION,
     ApiError,
     Coordinator,
@@ -151,7 +151,7 @@ class CoordinatorTests(unittest.TestCase):
             set(snapshots),
             {
                 "music.playback",
-                "channel.active",
+                "display.mode",
                 "today.summary",
                 "room.lighting",
                 "alarm.state",
@@ -175,8 +175,7 @@ class CoordinatorTests(unittest.TestCase):
             self.coordinator.submit,
             request_id,
             SCENE_ACTION,
-            None,
-            scene,
+            scene=scene,
         )
         self.addCleanup(executor.shutdown)
         return future
@@ -367,7 +366,7 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "alarm_wake_out_of_range")
         coordinator.close()
 
-    def test_ringing_alarm_selects_its_channel_and_activates_only_warm_low(self):
+    def test_ringing_alarm_restores_home_and_activates_only_warm_low(self):
         class Timer:
             def __init__(self, *_args, **_kwargs):
                 self.daemon = False
@@ -400,9 +399,9 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(calls, [("Warm low", coordinator.action_timeout)])
         self.assertEqual(coordinator.alarm.status, "ringing")
         self.assertEqual(endpoint.events.get(timeout=1)[0], "alarm.state")
-        event, channel = endpoint.events.get(timeout=1)
-        self.assertEqual(event, "channel.active")
-        self.assertEqual(channel, {"active": "alarm"})
+        event, mode = endpoint.events.get(timeout=1)
+        self.assertEqual(event, "display.mode")
+        self.assertEqual(mode, {"active": "home"})
         coordinator.close()
 
     def test_wake_scene_failure_keeps_the_alarm_ringing_and_dismissible(self):
@@ -721,82 +720,66 @@ class CoordinatorTests(unittest.TestCase):
         self.make_scenes_available()
         cases = [
             (
-                ("missing-scene", SCENE_ACTION),
+                ("missing-scene", {}),
                 "invalid_scene",
             ),
             (
-                ("unknown-scene", SCENE_ACTION, None, "Missing"),
+                ("unknown-scene", {"scene": "Missing"}),
                 "invalid_scene",
             ),
             (
-                ("scene-on-channel", CHANNEL_ACTION, "today", "Warm"),
+                ("scene-with-extra-argument", {"scene": "Warm", "mode": "home"}),
                 "invalid_action_arguments",
             ),
         ]
 
-        for arguments, expected_code in cases:
-            with self.subTest(arguments=arguments):
+        for request, expected_code in cases:
+            with self.subTest(request=request):
                 with self.assertRaises(ApiError) as raised:
-                    self.coordinator.submit(*arguments)
+                    self.coordinator.submit(request[0], SCENE_ACTION, **request[1])
                 self.assertEqual(raised.exception.code, expected_code)
 
-    def test_selects_a_channel_after_publishing_matching_state(self):
+    def test_selects_a_display_mode_after_publishing_matching_state(self):
         status, payload = self.coordinator.submit(
-            "today-to-camera",
-            CHANNEL_ACTION,
-            "camera",
+            "home-to-camera",
+            DISPLAY_MODE_ACTION,
+            mode="camera",
         )
 
         self.assertEqual(status, HTTPStatus.OK)
         self.assertEqual(
             payload,
             {
-                "requestId": "today-to-camera",
-                "action": CHANNEL_ACTION,
+                "requestId": "home-to-camera",
+                "action": DISPLAY_MODE_ACTION,
                 "status": "completed",
             },
         )
         event, accepted = self.endpoint.events.get(timeout=1)
         self.assertEqual(event, "action.status")
         self.assertEqual(accepted["status"], "accepted")
-        event, channel = self.endpoint.events.get(timeout=1)
-        self.assertEqual(event, "channel.active")
-        self.assertEqual(channel, {"active": "camera"})
+        event, mode = self.endpoint.events.get(timeout=1)
+        self.assertEqual(event, "display.mode")
+        self.assertEqual(mode, {"active": "camera"})
         event, completed = self.endpoint.events.get(timeout=1)
         self.assertEqual(event, "action.status")
         self.assertEqual(completed, payload)
 
-    def test_accepts_airplay_as_the_fourth_fixed_channel(self):
-        status, payload = self.coordinator.submit(
-            "today-to-airplay",
-            CHANNEL_ACTION,
-            "airplay",
-        )
-
-        self.assertEqual(status, HTTPStatus.OK)
-        self.assertEqual(payload["status"], "completed")
-        self.endpoint.events.get(timeout=1)
-        event, channel = self.endpoint.events.get(timeout=1)
-        self.assertEqual(event, "channel.active")
-        self.assertEqual(channel, {"active": "airplay"})
-
-    def test_context_tracks_active_channel_and_isolates_nested_values(self):
+    def test_context_contains_the_home_surface_and_isolates_nested_values(self):
         self.coordinator.report_playback(PLAYING_OBSERVATION)
         self.endpoint.events.get(timeout=1)
         self.coordinator.report_lighting(AVAILABLE_LIGHTING)
         self.endpoint.events.get(timeout=1)
 
-        self.coordinator.submit("today-to-music", CHANNEL_ACTION, "music")
-        for _index in range(3):
-            self.endpoint.events.get(timeout=1)
-
         context = self.coordinator.context()
-        self.assertEqual(context["activeChannel"], "music")
-        self.assertEqual(context["channel"]["type"], "music")
-        self.assertEqual(context["channel"]["title"], "Never Gonna Give You Up")
-        self.assertNotIn("artworkUrl", context["channel"])
+        self.assertEqual(context["home"]["today"]["type"], "today")
+        self.assertEqual(context["home"]["music"]["type"], "music")
+        self.assertEqual(
+            context["home"]["music"]["title"], "Never Gonna Give You Up"
+        )
+        self.assertNotIn("artworkUrl", context["home"]["music"])
 
-        context["channel"]["creators"].append("Mutated")
+        context["home"]["music"]["creators"].append("Mutated")
         context["lighting"]["scenes"].append("Mutated")
         self.assertEqual(
             self.coordinator.playback["item"]["creators"],
@@ -807,25 +790,29 @@ class CoordinatorTests(unittest.TestCase):
             ["Bright", "Relax", "Warm"],
         )
 
-    def test_selects_a_channel_without_an_endpoint_and_rejects_invalid_values(self):
+    def test_selects_a_display_mode_without_an_endpoint_and_rejects_invalid_values(self):
         self.coordinator.disconnect_endpoint(self.endpoint.token)
-        self.assertEqual(CHANNELS, {"today", "music", "camera", "airplay", "alarm"})
+        self.assertEqual(DISPLAY_MODES, {"home", "camera"})
 
         status, payload = self.coordinator.submit(
             "select-without-endpoint",
-            CHANNEL_ACTION,
-            "camera",
+            DISPLAY_MODE_ACTION,
+            mode="camera",
         )
 
         self.assertEqual(status, HTTPStatus.OK)
         self.assertEqual(payload["status"], "completed")
-        self.assertEqual(self.coordinator.channel, {"active": "camera"})
-        for channel in (None, "news", True):
-            with self.subTest(channel=channel):
+        self.assertEqual(self.coordinator.display_mode, {"active": "camera"})
+        for mode in (None, "news", True):
+            with self.subTest(mode=mode):
                 with self.assertRaises(ApiError) as raised:
-                    self.coordinator.submit("invalid-channel", CHANNEL_ACTION, channel)
-                self.assertEqual(raised.exception.code, "invalid_channel")
-                self.assertEqual(self.coordinator.channel, {"active": "camera"})
+                    self.coordinator.submit(
+                        "invalid-mode", DISPLAY_MODE_ACTION, mode=mode
+                    )
+                self.assertEqual(raised.exception.code, "invalid_display_mode")
+                self.assertEqual(
+                    self.coordinator.display_mode, {"active": "camera"}
+                )
 
     def test_endpoint_disconnect_does_not_fail_a_scene_action(self):
         self.make_scenes_available()
@@ -1021,8 +1008,8 @@ class AgentInteractionTests(unittest.TestCase):
         request_id, transcript, context = self.agent.request
         self.assertEqual(request_id, "voice-1")
         self.assertEqual(transcript, self.recognizer.transcript)
-        self.assertEqual(context["activeChannel"], "today")
-        self.assertEqual(set(context), {"activeChannel", "channel"})
+        self.assertEqual(set(context), {"home"})
+        self.assertEqual(set(context["home"]), {"today", "music"})
         self.next_phase("transcribing")
         self.next_phase("thinking")
         speaking = self.coordinator.update_interaction(
@@ -1252,8 +1239,8 @@ class AgentInteractionTests(unittest.TestCase):
             with self.assertRaises(ApiError) as raised:
                 self.coordinator.submit(
                     "action-during-voice",
-                    CHANNEL_ACTION,
-                    "music",
+                    DISPLAY_MODE_ACTION,
+                    mode="camera",
                 )
             self.assertEqual(raised.exception.code, "action_busy")
             self.coordinator.cancel_interaction(
@@ -1552,7 +1539,7 @@ class HttpTests(unittest.TestCase):
             set(snapshots),
             {
                 "music.playback",
-                "channel.active",
+                "display.mode",
                 "today.summary",
                 "room.lighting",
                 "alarm.state",
@@ -2033,15 +2020,15 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(status, HTTPStatus.SERVICE_UNAVAILABLE)
         self.assertEqual(payload["code"], "endpoint_unavailable")
 
-    def test_selects_a_channel_over_http(self):
+    def test_selects_a_display_mode_over_http(self):
         status, payload = self.request(
             "POST",
             "/api/actions",
             body=json.dumps(
                 {
                     "requestId": "http-select-camera",
-                    "action": CHANNEL_ACTION,
-                    "channel": "camera",
+                    "action": DISPLAY_MODE_ACTION,
+                    "mode": "camera",
                 }
             ),
             headers={"Content-Type": "application/json"},
@@ -2049,23 +2036,23 @@ class HttpTests(unittest.TestCase):
 
         self.assertEqual(status, HTTPStatus.OK)
         self.assertEqual(payload["status"], "completed")
-        self.assertEqual(self.server.coordinator.channel, {"active": "camera"})
+        self.assertEqual(self.server.coordinator.display_mode, {"active": "camera"})
 
         status, payload = self.request(
             "POST",
             "/api/actions",
             body=json.dumps(
                 {
-                    "requestId": "http-invalid-channel",
-                    "action": CHANNEL_ACTION,
-                    "channel": "news",
+                    "requestId": "http-invalid-mode",
+                    "action": DISPLAY_MODE_ACTION,
+                    "mode": "news",
                 }
             ),
             headers={"Content-Type": "application/json"},
         )
         self.assertEqual(status, HTTPStatus.BAD_REQUEST)
-        self.assertEqual(payload["code"], "invalid_channel")
-        self.assertEqual(self.server.coordinator.channel, {"active": "camera"})
+        self.assertEqual(payload["code"], "invalid_display_mode")
+        self.assertEqual(self.server.coordinator.display_mode, {"active": "camera"})
 
     def test_rejects_a_callback_without_an_endpoint_token(self):
         status, payload = self.request(

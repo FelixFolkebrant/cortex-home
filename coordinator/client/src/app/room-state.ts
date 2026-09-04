@@ -1,20 +1,13 @@
 export const IDENTIFY_ACTION = "endpoint.identify";
 export const SCENE_ACTION = "room.scene.activate";
-export const CHANNEL_ACTION = "channel.select";
-const CHANNELS = ["today", "music", "camera", "airplay", "alarm"];
-
-function adjacentChannel(channel, direction) {
-  const currentIndex = Math.max(0, CHANNELS.indexOf(channel));
-  const offset = direction === "previous" ? -1 : 1;
-  return CHANNELS[(currentIndex + offset + CHANNELS.length) % CHANNELS.length];
-}
+export const DISPLAY_MODE_ACTION = "display.mode.select";
 export const ALARM_ARM_ACTION = "alarm.arm";
 export const ALARM_DISARM_ACTION = "alarm.disarm";
 export const ALARM_DISMISS_ACTION = "alarm.dismiss";
 
 export const initialRoomState = {
   connection: "connecting",
-  channel: null,
+  displayMode: null,
   today: null,
   playback: null,
   lighting: null,
@@ -40,10 +33,10 @@ export function roomReducer(state, event) {
         ...state,
         playback: event.snapshot,
       };
-    case "channel":
+    case "display.mode":
       return {
         ...state,
-        channel: event.snapshot,
+        displayMode: event.snapshot,
       };
     case "today":
       return {
@@ -105,7 +98,29 @@ export function nextScene(lighting) {
   return lighting.scenes[(activeIndex + 1) % lighting.scenes.length];
 }
 
-export function keyboardAction(event, lighting, activeChannel) {
+export function isCameraModeShortcut(event) {
+  return (
+    event.code === "Digit3" &&
+    event.ctrlKey &&
+    event.altKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.repeat
+  );
+}
+
+export function isHomeShortcut(event) {
+  return (
+    event.code === "Digit1" &&
+    event.ctrlKey &&
+    event.altKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.repeat
+  );
+}
+
+export function keyboardAction(event, lighting) {
   if (
     !event.ctrlKey ||
     !event.altKey ||
@@ -114,28 +129,6 @@ export function keyboardAction(event, lighting, activeChannel) {
     event.repeat
   ) {
     return null;
-  }
-
-  const channel = {
-    Digit1: "today",
-    Digit2: "music",
-    Digit3: "camera",
-    Digit4: "airplay",
-    Digit5: "alarm",
-  }[event.code];
-  if (channel) {
-    return { action: CHANNEL_ACTION, channel };
-  }
-
-  const direction = {
-    ArrowLeft: "previous",
-    ArrowRight: "next",
-  }[event.code];
-  if (direction) {
-    return {
-      action: CHANNEL_ACTION,
-      channel: adjacentChannel(activeChannel, direction),
-    };
   }
 
   if (event.code === "KeyS") {

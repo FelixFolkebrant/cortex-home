@@ -72,7 +72,7 @@ unrelated endpoint configuration. It installs Ubuntu's UxPlay and the required
 GStreamer runtime packages, but no AirPlay service, compositor, or window
 watcher. On the stripped iMac baseline, the simulated install adds 135 packages
 for codecs and runtime libraries. UxPlay runs while the kiosk session is active
-so `Skärmen` remains discoverable, even outside the AirPlay channel.
+so `Skärmen` remains discoverable without a dedicated AirPlay browser screen.
 
 The command restores the qualified room mixer baseline—Master 80% and unmuted,
 built-in Speaker muted, rear Headphone 60% and unmuted—and pins room output to
@@ -131,14 +131,13 @@ built-in analog PulseAudio sink rather than writing beneath PulseAudio through
 ALSA, so increases and decreases apply coherently to both Raspotify and speech
 playback without selecting the Anker output or changing microphone input.
 
-`Control`+`Option`+`4` selects the AirPlay view. The kiosk starts UxPlay when
-the session begins, and `Skärmen` remains available from any channel. The
-AirPlay view identifies the receiver with `Select tv Skärmen to cast screen`;
-it has no switch. Open Screen Mirroring on the iPhone and choose `Skärmen`.
+The kiosk starts UxPlay when the session begins, and `Skärmen` remains available
+from Home or either local mode. There is no AirPlay screen or keyboard shortcut.
+Open Screen Mirroring on the iPhone and choose `Skärmen`.
 The receiver deliberately does not request a PIN or retain a pairing key, so
 there is no password to display or enter. Any device on the same trusted LAN
 can connect while the kiosk session is active. A mirror therefore appears above
-the current Cortex channel, not only while the AirPlay channel is selected.
+the current Cortex surface.
 
 The X11 receiver forces UxPlay's software H.264 decoder, disables audio/video
 timestamp synchronization, and renders through XVideo. This is the stable
@@ -173,7 +172,7 @@ UxPlay creates its native GStreamer window only after a client begins
 mirroring. Openbox makes every matching window borderless, fullscreen, focused,
 and above Chromium. The native mirror therefore replaces the browser while
 connected; this design intentionally has no browser HUD, compositor, or
-per-pixel transparency. Stopping mirroring reveals the current Cortex view.
+per-pixel transparency. Stopping mirroring reveals the current Cortex surface.
 UxPlay reinitializes its receiver after a normal client teardown; `-reset 1`
 also resets an unresponsive connection after its first three-second NTP timeout.
 A prior moving-mirror sample observed approximately 16–56% UxPlay CPU and
@@ -200,17 +199,17 @@ directly without provisioning:
 scp <local-mp3> imac:/var/lib/cortex-endpoint/alarm-audio/
 ```
 
-From the disarmed Alarm view, press `A` to open the sound dropdown, use Up and
-Down to choose a file, and press Enter to apply it. The endpoint accepts only
-regular, bounded-name `.mp3` files from that folder and plays only the selected
-file while an observed ringing alarm is active. Pressing Enter to dismiss or
-Escape to disarm stops the local player even after the view changes.
+The visible alarm editor is retired pending the on-demand Home editor in
+`ALA-002`. The endpoint accepts only regular, bounded-name `.mp3` files from
+that folder and plays only the selected file while an observed ringing alarm is
+active. Pressing Enter while ringing dismisses the alarm and stops the local
+player.
 
 To qualify the physical sleep/wake path after the alarm audio is installed,
-set an alarm at least two minutes ahead, press `Ctrl`+`Alt`+`5`, press Enter
-to arm it, then press `Ctrl`+`Enter` after the armed confirmation appears.
+set an alarm at least two minutes ahead through the coordinator API, then invoke
+the existing sleep action after the armed observation appears.
 Confirm that UxPlay stops, the iMac enters suspend-to-idle, and it resumes at the
-selected instant with normal black levels and colors, the Alarm clock visible,
+selected instant with normal black levels and colors, Home visible,
 `Warm low` requested, and one looping alarm sound. The suspend helper leaves a
 short browser-acknowledgement window before sleeping. Suspend-to-idle consumes
 more power than deep suspend, but avoids corrupting the legacy Radeon display

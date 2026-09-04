@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from cortex_home import CHANNEL_ACTION, SCENE_ACTION, ApiError
+from cortex_home import DISPLAY_MODE_ACTION, SCENE_ACTION, ApiError
 from development import (
     DEVELOPMENT_LIGHTING,
     DEVELOPMENT_PLAYBACK,
@@ -103,7 +103,7 @@ class DevelopmentCoordinatorTests(unittest.TestCase):
             self.assertEqual(snapshots["alarm.state"]["status"], "disarmed")
 
             status, result = coordinator.submit(
-                "channel-1", CHANNEL_ACTION, channel="music"
+                "camera-1", DISPLAY_MODE_ACTION, mode="camera"
             )
             self.assertEqual(status, 200)
             self.assertEqual(result["status"], "completed")

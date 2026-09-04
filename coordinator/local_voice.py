@@ -20,7 +20,12 @@ from speech import (
 )
 
 
-LOCAL_CONTEXT = {"activeChannel": "today", "channel": {"available": False, "type": "today"}}
+LOCAL_CONTEXT = {
+    "home": {
+        "music": {"available": False, "type": "music"},
+        "today": {"available": False, "type": "today"},
+    }
+}
 MAX_AGENT_OUTPUT_BYTES = 2_048
 MAX_ANSWER_CHARACTERS = 1_000
 PHASES = {

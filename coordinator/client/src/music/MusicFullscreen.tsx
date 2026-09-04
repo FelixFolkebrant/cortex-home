@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { cn } from "../../shared/classes";
+import { cn } from "../shared/classes";
 import { FALLBACK_MUSIC_PALETTE, paletteFromImage } from "./music-palette";
-import { artworkSource, formatTime, projectPosition } from "./music-state";
+import { artworkSource, projectPosition } from "./music-state";
 
 const FULLSCREEN_TRANSITION_MS = 400;
 const FULLSCREEN_ITEM_GRACE_MS = 800;
@@ -98,167 +98,6 @@ function useArtworkPalette(item) {
     };
   }
   return { palette: null, resolved: false };
-}
-
-function Artwork({ item }) {
-  const source = artworkSource(item);
-  const [failedSource, setFailedSource] = useState(null);
-  const showArtwork = source && failedSource !== source;
-
-  return (
-    <>
-      {showArtwork && (
-        <img
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-[-8%] h-[116%] w-[116%] scale-110 object-cover opacity-20 blur-[90px] saturate-75"
-          src={source}
-          alt=""
-          referrerPolicy="no-referrer"
-          onError={() => setFailedSource(source)}
-        />
-      )}
-      <div className="relative z-10 aspect-square w-full overflow-hidden rounded-[clamp(1rem,1.8vw,2rem)] border border-white/10 bg-[#201b15] shadow-[0_2.5rem_8rem_rgb(0_0_0_/_48%)] after:pointer-events-none after:absolute after:inset-0 after:content-[''] after:shadow-[inset_0_0_0_1px_rgb(255_255_255_/_8%),inset_0_-4rem_8rem_rgb(0_0_0_/_12%)]">
-        {showArtwork ? (
-          <img
-            className="h-full w-full object-cover"
-            src={source}
-            alt={`Artwork for ${item.title}`}
-            referrerPolicy="no-referrer"
-            onError={() => setFailedSource(source)}
-          />
-        ) : (
-          <div
-            className="grid h-full w-full place-items-center bg-[radial-gradient(circle_at_center,transparent_0_19%,#d6a95412_19.2%_19.7%,transparent_20%),repeating-radial-gradient(circle_at_center,#2b251d_0,#2b251d_2px,#1b1712_3px,#1b1712_7px)]"
-            role="img"
-            aria-label={`Artwork unavailable for ${item.title}`}
-          >
-            <div className="grid aspect-square w-[38%] place-items-center rounded-full border border-[#d6a954]/35 bg-[#16130f] shadow-[0_0_4rem_rgb(214_169_84_/_18%)]">
-              <span className="text-[clamp(1rem,2vw,2rem)] font-bold tracking-[0.3em] text-[#d6a954]">
-                CH
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-function PlaybackProgress({ playback }) {
-  const position = useProjectedPosition(playback);
-  const duration = playback.item.durationMs;
-
-  return (
-    <div className="mt-[clamp(2rem,5vh,5rem)] max-w-[54rem]">
-      <progress
-        className="block h-1.5 w-full appearance-none overflow-hidden rounded-full border-0 bg-[rgb(244_234_213_/_15%)] [&::-moz-progress-bar]:rounded-full [&::-moz-progress-bar]:bg-[#f3d18a] [&::-moz-progress-bar]:shadow-[0_0_1.5rem_rgb(243_209_138_/_45%)] [&::-moz-progress-bar]:transition-[width] [&::-moz-progress-bar]:duration-700 [&::-moz-progress-bar]:ease-linear [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-[rgb(244_234_213_/_15%)] [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-[#f3d18a] [&::-webkit-progress-value]:shadow-[0_0_1.5rem_rgb(243_209_138_/_45%)] [&::-webkit-progress-value]:transition-[width] [&::-webkit-progress-value]:duration-700 [&::-webkit-progress-value]:ease-linear motion-reduce:[&::-moz-progress-bar]:transition-none motion-reduce:[&::-webkit-progress-value]:transition-none"
-        value={position}
-        max={duration}
-        aria-label={`Playback progress: ${formatTime(position)} of ${formatTime(duration)}`}
-      />
-      <div className="mt-4 flex justify-between font-mono text-[clamp(0.95rem,1.2vw,1.25rem)] tracking-[0.08em] text-[#c9bda6] tabular-nums">
-        <span>{formatTime(position)}</span>
-        <span>{formatTime(duration)}</span>
-      </div>
-    </div>
-  );
-}
-
-function SpotifySource() {
-  return (
-    <div className="inline-flex items-center gap-3 text-[clamp(1rem,1.2vw,1.25rem)] font-bold tracking-[-0.02em] text-[#e8ddc8]">
-      <span className="sr-only">Playback source:</span>
-      <svg
-        aria-hidden="true"
-        className="h-[1.5em] w-[1.5em] shrink-0"
-        viewBox="0 0 24 24"
-      >
-        <circle cx="12" cy="12" r="12" fill="#1ed760" />
-        <path
-          d="M5.8 8.9c4.1-1.2 8.8-.9 12.4.9M6.7 12.3c3.5-1 7.5-.7 10.6.8M7.5 15.5c2.9-.8 6.1-.6 8.7.7"
-          fill="none"
-          stroke="#101010"
-          strokeLinecap="round"
-          strokeWidth="1.65"
-        />
-      </svg>
-      <span>Spotify</span>
-    </div>
-  );
-}
-
-function LoadedMusic({ playback }) {
-  const { item } = playback;
-
-  return (
-    <main className="relative z-10 grid min-h-screen items-center gap-[clamp(3rem,6vw,8rem)] px-[clamp(2rem,6vw,8rem)] py-[clamp(2rem,5vh,5rem)] md:grid-cols-[minmax(20rem,0.88fr)_minmax(0,1.12fr)]">
-      <section className="relative mx-auto w-full max-w-[42rem]">
-        <Artwork item={item} />
-      </section>
-
-      <section className="min-w-0">
-        <div className="mb-[clamp(1.5rem,3vh,3rem)]">
-          <SpotifySource />
-        </div>
-
-        <h1 className="line-clamp-3 max-w-[12ch] text-[clamp(3.5rem,6.2vw,8rem)] leading-[0.88] font-bold tracking-[-0.065em] text-[#fff7e7]">
-          {item.title}
-        </h1>
-        <p className="mt-[clamp(1.5rem,3vh,3rem)] text-[clamp(1.5rem,2.4vw,3rem)] leading-tight font-medium tracking-[-0.025em] text-[#e1d4bd]">
-          {item.creators.join(", ")}
-        </p>
-        <p className="mt-3 max-w-[42ch] truncate text-[clamp(1rem,1.35vw,1.5rem)] text-[#948a79]">
-          {item.collection}
-        </p>
-        <PlaybackProgress playback={playback} />
-      </section>
-    </main>
-  );
-}
-
-function EmptyMusic({ playback, connection }) {
-  if (playback?.status === "stopped") {
-    return (
-      <main className="relative z-10 grid min-h-screen place-content-center px-[8vw] text-center">
-        <div className="mb-8 flex justify-center">
-          <SpotifySource />
-        </div>
-        <h1 className="mx-auto max-w-[18ch] text-[clamp(3rem,6vw,7rem)] leading-[0.92] font-bold tracking-[-0.06em] text-[#fff7e7]">
-          Choose &quot;Högtalaren&quot; as speaker in Spotify to connect
-        </h1>
-      </main>
-    );
-  }
-
-  let title = "Loading the room.";
-  let message = "Waiting for the first playback observation.";
-  let label = "Connecting";
-
-  if (playback?.status === "unavailable") {
-    title = "Receiver unavailable.";
-    message = "Högtalaren will report again after the next receiver event.";
-    label = "Unavailable";
-  } else if (connection === "connecting") {
-    title = "Finding the room.";
-    message = "Connecting to the coordinator.";
-  }
-
-  return (
-    <main className="relative z-10 grid min-h-screen place-content-center px-[8vw] text-center">
-      <div className="mb-8 flex justify-center">
-        <SpotifySource />
-      </div>
-      <h1 className="mx-auto max-w-[12ch] text-[clamp(4.5rem,9vw,10rem)] leading-[0.88] font-bold tracking-[-0.07em] text-[#fff7e7]">
-        {title}
-      </h1>
-      <p className="mx-auto mt-10 max-w-[42ch] text-[clamp(1.2rem,2vw,2rem)] leading-relaxed text-[#b9ad98]">
-        {message}
-      </p>
-      <p className="mt-14 text-sm font-bold tracking-[0.24em] text-[#756d60] uppercase">
-        {label}
-      </p>
-    </main>
-  );
 }
 
 function FullscreenArtwork({ item }) {
@@ -501,13 +340,5 @@ export function MusicFullscreen({ playback }) {
         />
       )}
     </main>
-  );
-}
-
-export function MusicChannel({ playback, connection }) {
-  return playback?.item ? (
-    <LoadedMusic playback={playback} />
-  ) : (
-    <EmptyMusic playback={playback} connection={connection} />
   );
 }

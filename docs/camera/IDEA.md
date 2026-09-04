@@ -8,13 +8,11 @@ sensor.
 
 ## Experience
 
-- Entering Camera starts one mirrored, video-only preview after Camera is the
-  observed active channel.
+- Entering Camera fades Home to black, then starts one mirrored, video-only
+  preview after Camera is the observed display mode.
 - Leaving Camera immediately releases every media track.
-- Clear unsupported, permission, unavailable, ended-stream, and recovery states
-  replace blank or frozen output.
-- A Camera-local screen ring light offers off, warm, white, and cold modes with
-  a small set of useful widths.
+- Camera shows only the feed. Startup, unsupported, permission, unavailable,
+  ended-stream, and recovery states remain black with no text or controls.
 
 ## Boundaries
 
@@ -23,11 +21,11 @@ sensor.
 - Request camera permission only for the configured coordinator origin.
 - The component owns capture for exactly its mounted lifetime, including stale
   asynchronous results and failures.
-- Keep camera presentation and controls local to this module; Shell owns only
-  selection and shared feedback.
+- Keep capture local to this module; Shell owns mode selection and the
+  fade-through-black boundary.
 
 ## Relevant Code
 
-- `coordinator/client/src/channels/camera/`
+- `coordinator/client/src/camera/`
 - `ops/roles/endpoint/tasks/main.yml`
 - `ops/roles/endpoint/tasks/media.yml`

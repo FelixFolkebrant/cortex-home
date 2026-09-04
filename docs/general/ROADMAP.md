@@ -3,7 +3,7 @@
 ## Current
 
 Cortex Home runs as one integration repository with an always-on ThinkPad
-coordinator, a provisioned iMac room endpoint, one explicit React channel shell,
+coordinator, a provisioned iMac room endpoint, one explicit React Home shell,
 local room integrations, and module-owned documentation.
 
 [GEN-002](issues/GEN-002.md) replaced the former project-wide planning hierarchy
@@ -17,23 +17,23 @@ preserving the existing runtime boundaries.
 | Module | Current state |
 |---|---|
 | [Platform](../platform/ROADMAP.md) | Coordinator and reproducible iMac endpoint are deployed |
-| [Shell](../shell/ROADMAP.md) | Five explicit channels, shared feedback, and diagnostics |
-| [Today](../today/ROADMAP.md) | Local clock and Linköping weather dashboard |
-| [Music](../music/ROADMAP.md) | Spotify Connect playback and room-scale presentation |
+| [Shell](../shell/ROADMAP.md) | Persistent Home, deliberate Music and Camera modes, shared feedback, and diagnostics |
+| [Today](../today/ROADMAP.md) | Local clock and current Linköping weather on Home |
+| [Music](../music/ROADMAP.md) | Spotify Connect playback, Home summary, and full-screen presentation |
 | [Lighting](../lighting/ROADMAP.md) | Observed Hue scene catalog and exact scene actions |
 | [Voice](../voice/ROADMAP.md) | One-turn local and room baseline; natural duplex dialogue is the active priority |
-| [Camera](../camera/ROADMAP.md) | Endpoint-local full-screen mirror |
-| [AirPlay](../airplay/ROADMAP.md) | On-demand iPhone screen receiver |
-| [Alarm](../alarm/ROADMAP.md) | One-shot wake alarm with endpoint sleep and local audio |
+| [Camera](../camera/ROADMAP.md) | Endpoint-local feed-only full-screen mirror |
+| [AirPlay](../airplay/ROADMAP.md) | Always-ready native iPhone screen receiver |
+| [Alarm](../alarm/ROADMAP.md) | One-shot wake alarm, Home summary, endpoint sleep, and local audio |
 
 ## Current Direction
 
 - Establish natural Voice dialogue with continuous active-session listening and
   barge-in before adding any room-agent permissions.
 - Finish reviewer-owned physical confirmation recorded in active Shell and
-  Alarm issues.
-- Let each view evolve through its own roadmap without introducing a generic
-  view registry or separate repository.
+  Alarm issues, including the Home redesign.
+- Let Home regions and deliberate modes evolve through their owning roadmaps
+  without introducing a generic widget registry or separate repository.
 - Keep deployment and shared hardware testing serialized because every module
   uses the same physical room.
 
@@ -60,8 +60,8 @@ preserving the existing runtime boundaries.
   physical room share one release and testing lifecycle.
 - Keep the ThinkPad as state and coordination authority and the iMac as a
   replaceable presentation and nearby-media endpoint.
-- Keep one explicit React shell with direct channel imports. Add no router,
-  plugin registry, or dynamic channel discovery without a demonstrated need.
+- Keep one explicit React Home shell with direct feature composition. Add no
+  router, plugin registry, or dynamic discovery without a demonstrated need.
 - Use a small coordinator as the shared boundary for product state and exact
   actions; integrations keep provider credentials and identifiers private.
 - Keep AI interaction subordinate to explicit sensing, normalized context,

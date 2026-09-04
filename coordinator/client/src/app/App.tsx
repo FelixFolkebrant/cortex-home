@@ -1,15 +1,13 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { AirPlayChannel } from "../channels/airplay/AirPlayChannel";
-import { AlarmChannel, requestSleep } from "../channels/alarm/AlarmChannel";
-import { CameraChannel } from "../channels/camera/CameraChannel";
-import { MusicChannel, MusicFullscreen } from "../channels/music/MusicChannel";
-import { isMusicFullscreenShortcut } from "../channels/music/music-state";
-import { TodayChannel } from "../channels/today/TodayChannel";
+import { AlarmRuntime, requestSleep } from "../alarm/AlarmRuntime";
+import { CameraMode } from "../camera/CameraMode";
 import {
   isSystemStatsDismissShortcut,
   isSystemStatsShortcut,
   SystemStats,
 } from "../diagnostics/SystemStats";
+import { MusicFullscreen } from "../music/MusicFullscreen";
+import { isMusicFullscreenShortcut } from "../music/music-state";
 import {
   AGENT_INTERACTION_ACTION,
   isVoiceDebugShortcut,
@@ -21,10 +19,13 @@ import {
   VoiceCapture,
   voiceSessionTransition,
 } from "../voice/voice-capture";
+import { HomeSurface } from "./HomeSurface";
 import {
-  CHANNEL_ACTION,
+  DISPLAY_MODE_ACTION,
   IDENTIFY_ACTION,
   initialRoomState,
+  isCameraModeShortcut,
+  isHomeShortcut,
   keyboardAction,
   roomReducer,
   SCENE_ACTION,
@@ -113,6 +114,7 @@ async function playIdentifySound() {
 
 export function App() {
   const [room, dispatch] = useReducer(roomReducer, initialRoomState);
+  const [cameraPhase, setCameraPhase] = useState("home");
   const [musicFullscreen, setMusicFullscreen] = useState(false);
   const [systemStatsVisible, setSystemStatsVisible] = useState(false);
   const [voiceDebug, setVoiceDebug] = useState(null);
@@ -124,11 +126,12 @@ export function App() {
   const endpointToken = useRef(null);
   const activeRequestId = useRef(null);
   const lighting = useRef(null);
-  const alarm = useRef(null);
   const alarmAction = useRef(null);
   const actionGeneration = useRef(0);
   const interactionTimer = useRef(null);
-  const activeChannel = useRef("today");
+  const cameraPhaseRef = useRef("home");
+  const cameraTimer = useRef(null);
+  const activeDisplayMode = useRef("home");
   const systemStatsVisibleRef = useRef(false);
   const voiceRequestId = useRef(null);
   const voiceSessionId = useRef(null);
@@ -150,6 +153,33 @@ export function App() {
         window.clearTimeout(interactionTimer.current);
         interactionTimer.current = null;
       }
+    }
+
+    function showDisplayMode(mode) {
+      if (cameraTimer.current) {
+        window.clearTimeout(cameraTimer.current);
+        cameraTimer.current = null;
+      }
+      activeDisplayMode.current = mode;
+      if (mode !== "camera") {
+        setMusicFullscreen(false);
+        cameraPhaseRef.current = "home";
+        setCameraPhase("home");
+        return;
+      }
+      if (cameraPhaseRef.current === "camera") {
+        return;
+      }
+      setMusicFullscreen(false);
+      systemStatsVisibleRef.current = false;
+      setSystemStatsVisible(false);
+      cameraPhaseRef.current = "entering";
+      setCameraPhase("entering");
+      cameraTimer.current = window.setTimeout(() => {
+        cameraPhaseRef.current = "camera";
+        setCameraPhase("camera");
+        cameraTimer.current = null;
+      }, 320);
     }
 
     function showInteraction(
@@ -318,7 +348,10 @@ export function App() {
         showInteraction(VOICE_CAPTURE_ACTION, "failed", error.message, 5000);
       },
       onLevel: (requestId, level) => {
-        if (voiceRequestId.current === requestId) {
+        if (
+          voiceRequestId.current === requestId ||
+          voiceSessionId.current === requestId
+        ) {
           dispatch({ type: "interaction.level", level });
         }
       },
@@ -491,18 +524,21 @@ export function App() {
       }
     }
 
-    async function selectChannel(channel) {
-      const requestId = `keyboard-${channel}-${Date.now().toString(36)}-${Math.random()
+    async function selectDisplayMode(mode) {
+      const requestId = `keyboard-${mode}-${Date.now().toString(36)}-${Math.random()
         .toString(36)
         .slice(2, 10)}`;
       activeRequestId.current = requestId;
-      showInteraction(CHANNEL_ACTION, "working");
 
       try {
         const response = await fetch("/api/actions", {
-          method: "POST",
+          body: JSON.stringify({
+            requestId,
+            action: DISPLAY_MODE_ACTION,
+            mode,
+          }),
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ requestId, action: CHANNEL_ACTION, channel }),
+          method: "POST",
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -510,7 +546,6 @@ export function App() {
         }
         if (activeRequestId.current === requestId) {
           activeRequestId.current = null;
-          showInteraction(CHANNEL_ACTION, "completed", null, 2500);
         }
       } catch (error) {
         if (activeRequestId.current !== requestId) {
@@ -518,7 +553,7 @@ export function App() {
         }
         activeRequestId.current = null;
         const message = error instanceof Error ? error.message : "Unknown failure.";
-        showInteraction(CHANNEL_ACTION, "failed", message, 5000);
+        showInteraction(DISPLAY_MODE_ACTION, "failed", message, 5000);
       }
     }
 
@@ -638,14 +673,11 @@ export function App() {
       }
     });
 
-    events.addEventListener("channel.active", (event) => {
+    events.addEventListener("display.mode", (event) => {
       const snapshot = parseMessage(event);
-      if (snapshot) {
-        activeChannel.current = snapshot.active;
-        if (snapshot.active !== "music") {
-          setMusicFullscreen(false);
-        }
-        dispatch({ type: "channel", snapshot });
+      if (snapshot?.active === "home" || snapshot?.active === "camera") {
+        showDisplayMode(snapshot.active);
+        dispatch({ type: "display.mode", snapshot });
       }
     });
 
@@ -667,7 +699,6 @@ export function App() {
     events.addEventListener("alarm.state", (event) => {
       const snapshot = parseMessage(event);
       if (snapshot) {
-        alarm.current = snapshot;
         dispatch({ type: "alarm", snapshot });
       }
     });
@@ -750,7 +781,7 @@ export function App() {
         !message ||
         ![
           SCENE_ACTION,
-          CHANNEL_ACTION,
+          DISPLAY_MODE_ACTION,
           "alarm.arm",
           "alarm.disarm",
           "alarm.dismiss",
@@ -830,6 +861,30 @@ export function App() {
     };
 
     async function onKeyDown(event) {
+      if (isCameraModeShortcut(event)) {
+        if (!activeRequestId.current) {
+          event.preventDefault();
+          void selectDisplayMode(
+            activeDisplayMode.current === "camera" ? "home" : "camera",
+          );
+        }
+        return;
+      }
+
+      if (isHomeShortcut(event)) {
+        if (!activeRequestId.current) {
+          event.preventDefault();
+          if (activeDisplayMode.current !== "home") {
+            void selectDisplayMode("home");
+          }
+        }
+        return;
+      }
+
+      if (cameraPhaseRef.current !== "home") {
+        return;
+      }
+
       if (isSystemStatsShortcut(event)) {
         event.preventDefault();
         setSystemStatsVisible((current) => {
@@ -853,7 +908,7 @@ export function App() {
         return;
       }
 
-      if (isMusicFullscreenShortcut(event, activeChannel.current)) {
+      if (isMusicFullscreenShortcut(event)) {
         event.preventDefault();
         setMusicFullscreen((current) => !current);
         return;
@@ -876,16 +931,12 @@ export function App() {
         return;
       }
 
-      const request = keyboardAction(event, lighting.current, activeChannel.current);
+      const request = keyboardAction(event, lighting.current);
       if (!request || activeRequestId.current) {
         return;
       }
       event.preventDefault();
-      if (request.action === CHANNEL_ACTION) {
-        selectChannel(request.channel);
-      } else {
-        activateScene(request.scene);
-      }
+      activateScene(request.scene);
     }
 
     function onBlur() {
@@ -901,6 +952,10 @@ export function App() {
       voiceCapture.dispose();
       spokenInteraction.dispose();
       alarmAction.current = null;
+      if (cameraTimer.current) {
+        window.clearTimeout(cameraTimer.current);
+        cameraTimer.current = null;
+      }
       frontendDiagnostic("event stream closed by cleanup", {
         readyState: events.readyState,
       });
@@ -910,67 +965,68 @@ export function App() {
     };
   }, [currentClientEntry]);
 
-  const channel = room.channel?.active || "today";
-  const showMusicFullscreen = channel === "music" && musicFullscreen;
-  let channelPresentation;
-  if (channel === "alarm") {
-    channelPresentation = (
-      <AlarmChannel
-        onAction={(action, time) => alarmAction.current?.(action, time)}
-        snapshot={room.alarm}
-      />
-    );
-  } else if (channel === "airplay") {
-    channelPresentation = <AirPlayChannel />;
-  } else if (channel === "music") {
-    channelPresentation = (
-      <MusicChannel playback={room.playback} connection={room.connection} />
-    );
-  } else if (channel === "camera") {
-    channelPresentation = <CameraChannel />;
-  } else {
-    channelPresentation = <TodayChannel summary={room.today} />;
-  }
+  const showMusicFullscreen = cameraPhase === "home" && musicFullscreen;
+  const voiceVisualActive =
+    [VOICE_CAPTURE_ACTION, AGENT_INTERACTION_ACTION].includes(
+      room.interaction.action,
+    ) && !["idle", "completed", "ended", "failed"].includes(room.interaction.state);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#120f0c] text-[#f8f0dc]">
-      {showMusicFullscreen ? (
-        <MusicFullscreen playback={room.playback} />
-      ) : (
-        <>
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_22%_42%,rgb(111_78_37_/_22%)_0,transparent_34%),radial-gradient(circle_at_78%_68%,rgb(67_51_34_/_18%)_0,transparent_40%),linear-gradient(135deg,#17130f_0%,#0f0d0a_100%)]"
-          />
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgb(255_255_255_/_5%)_1px,transparent_1px),linear-gradient(90deg,rgb(255_255_255_/_5%)_1px,transparent_1px)] [background-size:4rem_4rem] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
-          />
+    <div className="relative min-h-screen overflow-hidden bg-white text-black">
+      <AlarmRuntime
+        onDismiss={() => alarmAction.current?.("alarm.dismiss")}
+        snapshot={room.alarm}
+      />
 
-          {channelPresentation}
-        </>
+      {cameraPhase === "camera" ? (
+        <CameraMode />
+      ) : (
+        <div
+          className={
+            voiceVisualActive
+              ? "opacity-[0.12] transition-opacity duration-300 motion-reduce:transition-none"
+              : "opacity-100 transition-opacity duration-300 motion-reduce:transition-none"
+          }
+        >
+          {showMusicFullscreen ? (
+            <MusicFullscreen playback={room.playback} />
+          ) : (
+            <HomeSurface
+              alarm={room.alarm}
+              playback={room.playback}
+              summary={room.today}
+            />
+          )}
+        </div>
       )}
 
-      {channel !== "airplay" ? (
+      {cameraPhase === "home" ? (
         <RoomFeedback
           connection={room.connection}
-          lighting={room.lighting}
           interaction={room.interaction}
           subtitle={subtitle}
-          showLightingStatus={channel !== "music"}
           voiceDebug={voiceDebug}
           voiceDebugVisible={voiceDebugVisible}
           voiceOnly={showMusicFullscreen}
         />
       ) : null}
 
-      <SystemStats
-        onDismiss={() => {
-          systemStatsVisibleRef.current = false;
-          setSystemStatsVisible(false);
-        }}
-        visible={systemStatsVisible}
-      />
+      {cameraPhase === "home" && (
+        <SystemStats
+          onDismiss={() => {
+            systemStatsVisibleRef.current = false;
+            setSystemStatsVisible(false);
+          }}
+          visible={systemStatsVisible}
+        />
+      )}
+
+      {cameraPhase === "entering" && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-[100] animate-[camera-blackout_320ms_ease-out_both] bg-black motion-reduce:animate-none motion-reduce:opacity-100"
+        />
+      )}
     </div>
   );
 }

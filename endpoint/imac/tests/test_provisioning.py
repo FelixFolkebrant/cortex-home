@@ -359,8 +359,9 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn('remove_runtime_home', helper)
         self.assertIn('"$coordinator_url/api/actions"', helper)
         self.assertIn("--max-time 5", helper)
-        self.assertIn("post_channel airplay", helper)
-        self.assertIn('post_channel "$mode"', helper)
+        self.assertIn('post_mode "$mode"', helper)
+        self.assertIn('"action":"display.mode.select"', helper)
+        self.assertNotIn('"action":"channel.select"', helper)
         self.assertIn('kill -INT "$airplay_pid"', helper)
         self.assertIn('kill -TERM "$airplay_pid"', helper)
         self.assertIn('kill -KILL "$airplay_pid"', helper)
@@ -479,7 +480,7 @@ class ProvisioningTests(unittest.TestCase):
         self.assertIn("POST && $path =~ ^/alarm/sleep/[0-9]+$", control)
         self.assertIn('nohup sudo -n "$rtc_suspend_helper" "$wake_epoch"', control)
 
-    def test_openbox_controls_airplay_and_raises_each_mirror_window(self):
+    def test_openbox_controls_home_camera_and_raises_each_airplay_window(self):
         openbox = ET.parse(FILES / "openbox-rc.xml")
         namespace = {"openbox": "http://openbox.org/3.4/rc"}
         bindings = {
@@ -494,20 +495,16 @@ class ProvisioningTests(unittest.TestCase):
         }
 
         self.assertEqual(
-            bindings["C-A-4"],
-            "/usr/local/bin/cortex-endpoint-airplay airplay",
-        )
-        self.assertEqual(
             {
-                key: bindings[key]
-                for key in ("C-A-1", "C-A-2", "C-A-3")
+                key: bindings[key] for key in ("C-A-1", "C-A-3")
             },
             {
-                "C-A-1": "/usr/local/bin/cortex-endpoint-airplay today",
-                "C-A-2": "/usr/local/bin/cortex-endpoint-airplay music",
+                "C-A-1": "/usr/local/bin/cortex-endpoint-airplay home",
                 "C-A-3": "/usr/local/bin/cortex-endpoint-airplay camera",
             },
         )
+        self.assertNotIn("C-A-2", bindings)
+        self.assertNotIn("C-A-4", bindings)
 
         applications = openbox.findall(
             "openbox:applications/openbox:application",

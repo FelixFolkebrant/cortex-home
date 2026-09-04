@@ -2,27 +2,26 @@
 
 ## Purpose
 
-Today is the default room dashboard: a quiet, readable glance at local time,
-date, and near-term weather for Linköping.
+Today supplies the quiet time, date, and current-weather regions of Home.
 
 ## Experience
 
 - Show the current local time and date at room-viewing scale.
-- Show current conditions and a three-day forecast without turning the view
-  into a dense weather application.
-- Keep provider attribution visible and the unavailable state honest.
-- Remain useful as the default screen without requiring interaction.
+- Show current conditions without forecast, location detail, or provider text
+  competing with the room-scale clock.
+- Keep unavailable state honest without replacing the rest of Home.
+- Remain useful without requiring interaction.
 
 ## Boundaries
 
 - Only the ThinkPad contacts the weather provider.
 - The browser receives normalized conditions rather than provider payloads,
   cache metadata, or unnecessary location detail.
-- Weather failure must not affect other channels, lighting, voice, or service
-  health.
-- The module owns presentation and weather semantics, not shell navigation.
+- Weather failure must not affect other Home regions, lighting, voice, or
+  service health.
+- The module owns weather semantics and its Home region, not shell composition.
 
 ## Relevant Code
 
 - `coordinator/today.py`
-- `coordinator/client/src/channels/today/`
+- `coordinator/client/src/app/HomeSurface.tsx`

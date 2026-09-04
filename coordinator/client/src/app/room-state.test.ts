@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   initialRoomState,
+  isCameraModeShortcut,
+  isHomeShortcut,
   keyboardAction,
   nextScene,
   roomReducer,
@@ -90,7 +92,7 @@ test("microphone level updates preserve the active interaction", () => {
   });
 });
 
-test("Camera and Today updates preserve Music and room feedback", () => {
+test("display mode and Today updates preserve Music and room feedback", () => {
   const today = {
     status: "available",
     timeZone: "Europe/Stockholm",
@@ -107,14 +109,14 @@ test("Camera and Today updates preserve Music and room feedback", () => {
   });
   const withToday = roomReducer(withLighting, { type: "today", snapshot: today });
   const result = roomReducer(withToday, {
-    type: "channel",
+    type: "display.mode",
     snapshot: { active: "camera" },
   });
 
   assert.equal(result.playback, playing);
   assert.equal(result.lighting.status, "active");
   assert.equal(result.today, today);
-  assert.equal(result.channel.active, "camera");
+  assert.equal(result.displayMode.active, "camera");
 });
 
 test("a terminal snapshot replaces loaded playback", () => {
@@ -138,7 +140,7 @@ test("a terminal snapshot replaces loaded playback", () => {
   assert.equal(result.playback.item, null);
 });
 
-test("only fixed Ctrl+Alt channel shortcuts are accepted", () => {
+test("only exact Home and Camera mode shortcuts are accepted", () => {
   const keyboardEvent = {
     altKey: true,
     code: "Digit1",
@@ -148,41 +150,19 @@ test("only fixed Ctrl+Alt channel shortcuts are accepted", () => {
     shiftKey: false,
   };
 
-  assert.deepEqual(keyboardAction(keyboardEvent), {
-    action: "channel.select",
-    channel: "today",
-  });
-  assert.deepEqual(keyboardAction({ ...keyboardEvent, code: "Digit2" }), {
-    action: "channel.select",
-    channel: "music",
-  });
-  assert.deepEqual(keyboardAction({ ...keyboardEvent, code: "Digit3" }), {
-    action: "channel.select",
-    channel: "camera",
-  });
-  assert.deepEqual(keyboardAction({ ...keyboardEvent, code: "Digit4" }), {
-    action: "channel.select",
-    channel: "airplay",
-  });
-  assert.deepEqual(
-    keyboardAction({ ...keyboardEvent, code: "ArrowRight" }, null, "today"),
-    { action: "channel.select", channel: "music" },
-  );
-  assert.deepEqual(
-    keyboardAction({ ...keyboardEvent, code: "ArrowLeft" }, null, "today"),
-    { action: "channel.select", channel: "alarm" },
-  );
-  assert.deepEqual(
-    keyboardAction({ ...keyboardEvent, code: "ArrowRight" }, null, "airplay"),
-    { action: "channel.select", channel: "alarm" },
-  );
-  assert.deepEqual(keyboardAction({ ...keyboardEvent, code: "Digit5" }), {
-    action: "channel.select",
-    channel: "alarm",
-  });
-  assert.equal(keyboardAction({ ...keyboardEvent, repeat: true }), null);
-  assert.equal(keyboardAction({ ...keyboardEvent, shiftKey: true }), null);
-  assert.equal(keyboardAction({ ...keyboardEvent, metaKey: true }), null);
+  assert.equal(isHomeShortcut(keyboardEvent), true);
+  assert.equal(isCameraModeShortcut({ ...keyboardEvent, code: "Digit3" }), true);
+  for (const changed of [
+    { code: "Digit2" },
+    { code: "Digit4" },
+    { code: "ArrowRight" },
+    { repeat: true },
+    { shiftKey: true },
+    { metaKey: true },
+  ]) {
+    assert.equal(isHomeShortcut({ ...keyboardEvent, ...changed }), false);
+  }
+  assert.equal(keyboardAction(keyboardEvent), null);
 });
 
 test("scene cycling follows the catalog and wraps", () => {
