@@ -9,12 +9,17 @@
   Automated work is complete; final physical reviewer confirmation remains.
 - [SHL-003](issues/SHL-003.md) organizes browser source by channel, app, voice,
   diagnostics, and genuinely shared responsibility.
-- The fixed channel order is Today, Music, Camera, AirPlay, and Alarm, selected
-  by `Control`+`Alt`+`1` through `5` or previous/next arrows.
+- [SHL-005](wip/SHL-005.md) replaces the fixed-channel model with one Home
+  surface, local Music fullscreen, feed-only Camera mode, and Figma-derived
+  voice feedback. Automated work is implemented; room review remains.
+- `Control`+`Alt`+`1` returns Home, `Control`+`Alt`+`3` toggles Camera, and
+  `Control`+`M` toggles Music fullscreen. AirPlay remains always ready without
+  a browser screen.
 
 ## Next
 
-- Finish the reviewer-owned SHL-002 physical confirmation and archive it.
+- Qualify SHL-005 on the physical iMac, then reconcile the superseded SHL-002
+  channel-transition review.
 - [SHL-004](wip/SHL-004.md) will move client styling into Tailwind utilities
   wherever possible and document the small CSS remainder needed for browser
   primitives and genuinely dynamic presentation.
@@ -23,10 +28,10 @@
 
 ## Later
 
-- Add another channel only after its user flow and data or hardware boundary is
-  clear.
-- Reconsider a registry or router only if explicit composition creates repeated
-  behavior that a smaller local extraction cannot solve.
+- Add summoned or draggable Home tools only after their invocation, lifetime,
+  and data boundaries are clear.
+- Reconsider a registry only if real Home composition creates repeated behavior
+  that a smaller local extraction cannot solve.
 
 ## Open Decisions
 
@@ -34,9 +39,11 @@
 
 ## Accepted Decisions
 
-- Use one full-screen React shell with coordinator-owned active-channel state.
-- Replace channels immediately after observed state; do not retain outgoing
-  view trees or animate global channel changes on the current iMac.
-- Keep one hard-coded channel switch and fixed keyboard mapping.
-- Keep channel-specific files together while cross-channel feedback remains
-  outside channel directories.
+- Use one full-screen React Home shell. The coordinator owns only the observed
+  `home` or `camera` display mode; Music fullscreen remains local.
+- Fade Home to black before Camera capture starts. Do not show Camera status,
+  instructions, controls, or failure text over the feed.
+- Keep feature-specific files together while shared feedback remains outside
+  feature directories.
+- Keep Home composition explicit until real summon or drag behavior earns a
+  more general abstraction.

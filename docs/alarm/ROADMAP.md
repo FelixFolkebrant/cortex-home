@@ -10,11 +10,16 @@
 - Automated checks and most physical behavior are complete; the final bounded
   suspend-to-idle, wake, recovery, sound, lighting, dismissal, and early-wake
   reviewer pass remains open in ALA-001.
+- [SHL-005](../shell/wip/SHL-005.md) retires the Alarm channel and permanent
+  editor. Home shows only an armed or ringing alarm time; local ringing audio
+  and plain-Enter dismissal remain active.
 
 ## Next
 
-- Complete and record the physical ALA-001 qualification, then archive its
-  living issue record.
+- Reconcile and complete the still-applicable ALA-001 physical wake, audio,
+  light, and dismissal checks without its superseded channel UI.
+- [ALA-002](wip/ALA-002.md) will add a deliberately summoned Home alarm editor
+  after its invocation and focus behavior are accepted.
 - Fix only observed wake reliability, graphical recovery, network recovery, or
   audio cleanup gaps before expanding scheduling behavior.
 
@@ -42,3 +47,4 @@
   hides the time or creates autonomous retries.
 - Use endpoint-local selectable MP3 files and a narrow RTC helper rather than
   Spotify, generated speech, or a general power API.
+- Keep alarm editing off the permanent Home surface; summon it only on demand.

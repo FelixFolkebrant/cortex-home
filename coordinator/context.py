@@ -1,27 +1,21 @@
-TODAY_CHANNEL = "today"
-MUSIC_CHANNEL = "music"
-CHANNELS = {TODAY_CHANNEL, MUSIC_CHANNEL}
+TODAY_SURFACE = "today"
+MUSIC_SURFACE = "music"
 STATUSES = {"available", "unavailable"}
 PLAYBACK_STATES = {"paused", "playing", "stopped", "unavailable"}
 
 
-def build_room_context(active_channel, today, music, lighting):
-    context = build_answer_context(active_channel, today, music)
+def build_room_context(today, music, lighting):
+    context = build_answer_context(today, music)
     context["lighting"] = project_lighting(lighting)
     return context
 
 
-def build_answer_context(active_channel, today, music):
-    if active_channel not in CHANNELS:
-        active_channel = TODAY_CHANNEL
-
+def build_answer_context(today, music):
     return {
-        "activeChannel": active_channel,
-        "channel": (
-            project_today(today)
-            if active_channel == TODAY_CHANNEL
-            else project_music(music)
-        ),
+        "home": {
+            "today": project_today(today),
+            "music": project_music(music),
+        }
     }
 
 
@@ -34,13 +28,13 @@ def project_today(snapshot):
         or not isinstance(snapshot["timeZone"], str)
         or not isinstance(snapshot["observedAt"], str)
     ):
-        return unavailable_channel(TODAY_CHANNEL)
+        return unavailable_surface(TODAY_SURFACE)
 
     if snapshot["status"] == "unavailable":
         if snapshot["current"] is not None or snapshot["forecast"] != []:
-            return unavailable_channel(TODAY_CHANNEL)
+            return unavailable_surface(TODAY_SURFACE)
         return {
-            "type": TODAY_CHANNEL,
+            "type": TODAY_SURFACE,
             "available": False,
             "timeZone": snapshot["timeZone"],
             "current": None,
@@ -57,7 +51,7 @@ def project_today(snapshot):
         or not number(current["temperatureC"])
         or not isinstance(forecast, list)
     ):
-        return unavailable_channel(TODAY_CHANNEL)
+        return unavailable_surface(TODAY_SURFACE)
 
     projected_forecast = []
     for day in forecast:
@@ -69,7 +63,7 @@ def project_today(snapshot):
             or not number(day["highC"])
             or not number(day["lowC"])
         ):
-            return unavailable_channel(TODAY_CHANNEL)
+            return unavailable_surface(TODAY_SURFACE)
         projected_forecast.append(
             {
                 "condition": day["condition"],
@@ -80,7 +74,7 @@ def project_today(snapshot):
         )
 
     return {
-        "type": TODAY_CHANNEL,
+        "type": TODAY_SURFACE,
         "available": True,
         "timeZone": snapshot["timeZone"],
         "current": {
@@ -100,13 +94,13 @@ def project_music(snapshot):
         or not integer(snapshot["positionMs"])
         or not isinstance(snapshot["observedAt"], str)
     ):
-        return unavailable_channel(MUSIC_CHANNEL)
+        return unavailable_surface(MUSIC_SURFACE)
 
     if snapshot["status"] == "unavailable":
         if snapshot["item"] is not None or snapshot["positionMs"] != 0:
-            return unavailable_channel(MUSIC_CHANNEL)
+            return unavailable_surface(MUSIC_SURFACE)
         return {
-            "type": MUSIC_CHANNEL,
+            "type": MUSIC_SURFACE,
             "available": False,
             "playbackState": "unavailable",
             "observedAt": snapshot["observedAt"],
@@ -114,9 +108,9 @@ def project_music(snapshot):
 
     if snapshot["status"] == "stopped":
         if snapshot["item"] is not None or snapshot["positionMs"] != 0:
-            return unavailable_channel(MUSIC_CHANNEL)
+            return unavailable_surface(MUSIC_SURFACE)
         return {
-            "type": MUSIC_CHANNEL,
+            "type": MUSIC_SURFACE,
             "available": True,
             "playbackState": "stopped",
             "observedAt": snapshot["observedAt"],
@@ -143,10 +137,10 @@ def project_music(snapshot):
         or not integer(item["durationMs"])
         or snapshot["positionMs"] > item["durationMs"]
     ):
-        return unavailable_channel(MUSIC_CHANNEL)
+        return unavailable_surface(MUSIC_SURFACE)
 
     return {
-        "type": MUSIC_CHANNEL,
+        "type": MUSIC_SURFACE,
         "available": True,
         "playbackState": snapshot["status"],
         "itemType": item["type"],
@@ -191,8 +185,8 @@ def project_lighting(snapshot):
     }
 
 
-def unavailable_channel(channel_type):
-    return {"type": channel_type, "available": False}
+def unavailable_surface(surface_type):
+    return {"type": surface_type, "available": False}
 
 
 def unavailable_lighting():

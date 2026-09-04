@@ -19,9 +19,9 @@ ThinkPad remains authoritative for room state and future actions.
 - Assistant speech begins as soon as a useful response segment is available.
   When the person speaks over it, Cortex Home stops the current response and
   playback, then listens to the interruption as the next turn.
-- The display makes session activity, listening, thinking, speaking,
-  interruption, completion, and recoverable failure understandable without
-  exposing private spoken content.
+- The display dims Home during a session. A small red/orange sun and centered
+  microphone-level bar express listening; a larger yellow sun expresses agent
+  speech, with subtitles retained for ephemeral turn content.
 - The same dialogue core can run through the iMac room endpoint and a local
   IdeaPad development workbench.
 
@@ -58,8 +58,8 @@ ThinkPad remains authoritative for room state and future actions.
   it must never replace voice behavior or provider responses with canned,
   simulated output. An unavailable required dependency fails clearly instead.
 - Keep speech engines, turn detection, model selection, context projection,
-  and future tool authority replaceable without coupling channels to a
-  provider.
+  and future tool authority replaceable without coupling Home presentation to
+  a provider.
 
 ## Relevant Code
 

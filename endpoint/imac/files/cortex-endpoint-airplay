@@ -3,16 +3,16 @@
 set -eu
 
 if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 <airplay|camera|music|start-local|stop-local|today>" >&2
+  echo "Usage: $0 <camera|home|start-local|stop-local>" >&2
   exit 1
 fi
 
 mode=$1
 
 case "$mode" in
-  airplay | camera | music | start-local | stop-local | today) ;;
+  camera | home | start-local | stop-local) ;;
   *)
-    echo "Usage: $0 <airplay|camera|music|start-local|stop-local|today>" >&2
+    echo "Usage: $0 <camera|home|start-local|stop-local>" >&2
     exit 1
     ;;
 esac
@@ -64,8 +64,8 @@ cleanup_lock() {
 trap cleanup_lock EXIT
 trap 'exit 1' HUP INT TERM
 
-post_channel() {
-  channel=$1
+post_mode() {
+  display_mode=$1
   coordinator_url_file=/etc/cortex-endpoint/coordinator-url
 
   if [ ! -r "$coordinator_url_file" ]; then
@@ -88,12 +88,12 @@ post_channel() {
     return 1
   fi
 
-  request_id="airplay-$channel-$(date +%s)-$$"
+  request_id="display-$display_mode-$(date +%s)-$$"
   payload=$(
     printf \
-      '{"requestId":"%s","action":"channel.select","channel":"%s"}' \
+      '{"requestId":"%s","action":"display.mode.select","mode":"%s"}' \
       "$request_id" \
-      "$channel"
+      "$display_mode"
   )
 
   /usr/bin/curl \
@@ -180,16 +180,13 @@ start_receiver() {
 }
 
 case "$mode" in
-  airplay)
-    post_channel airplay
-    ;;
   start-local)
     if ! receiver_running; then
       start_receiver
     fi
     ;;
-  camera | music | today)
-    post_channel "$mode"
+  camera | home)
+    post_mode "$mode"
     ;;
   stop-local)
     stop_receiver

@@ -16,8 +16,10 @@ import {
 import { developmentTool } from "./development-tool.ts";
 
 const LOCAL_CONTEXT = Object.freeze({
-  activeChannel: "today",
-  channel: Object.freeze({ available: false, type: "today" }),
+  home: Object.freeze({
+    music: Object.freeze({ available: false, type: "music" }),
+    today: Object.freeze({ available: false, type: "today" }),
+  }),
 });
 const SYSTEM_PROMPT = [
   "You are running one local Cortex Home development voice interaction.",

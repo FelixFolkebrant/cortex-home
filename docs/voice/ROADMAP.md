@@ -23,6 +23,9 @@
   active browser session as ephemeral movie-style subtitles, clearing it before
   the next user turn or terminal session lifecycle event and never exposing it
   to diagnostics.
+- [SHL-005](../shell/wip/SHL-005.md) gives the active session Figma-derived
+  listening and speaking suns, dims Home, and makes the live microphone level
+  grow a centered black input bar.
 
 ## Next
 
@@ -40,7 +43,7 @@
 - Wake words, proactive initiation, or capture outside an explicitly active
   session only with a separately accepted privacy and feedback model.
 - Camera context only through deliberate opt-in work; never infer it from the
-  existence of the Camera channel.
+  existence of Camera mode.
 - Reconsider a fully local language model after hosted latency, cost, quality,
   and privacy have been measured.
 

@@ -42,9 +42,8 @@ export function artworkSource(item) {
   }
 }
 
-export function isMusicFullscreenShortcut(event, channel) {
+export function isMusicFullscreenShortcut(event) {
   return (
-    channel === "music" &&
     event.code === "KeyM" &&
     !event.altKey &&
     event.ctrlKey &&

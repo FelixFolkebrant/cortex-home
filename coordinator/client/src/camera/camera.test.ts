@@ -1,14 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  adjustCameraLightWidth,
   CAMERA_CONSTRAINTS,
-  CAMERA_LIGHT_WIDTHS,
-  CAMERA_LIGHTS,
   cameraFailureStatus,
-  cameraLightAction,
-  cycleCameraLight,
-  DEFAULT_CAMERA_LIGHT_WIDTH,
   startCameraCapture,
 } from "./camera.ts";
 
@@ -90,58 +84,6 @@ async function settleCapture() {
   await Promise.resolve();
   await Promise.resolve();
 }
-
-test("only exact Camera arrow keys control the ring light", () => {
-  const event = {
-    altKey: false,
-    code: "ArrowRight",
-    ctrlKey: false,
-    metaKey: false,
-    repeat: false,
-    shiftKey: false,
-  };
-
-  assert.equal(cameraLightAction(event), "next");
-  assert.equal(cameraLightAction({ ...event, code: "ArrowLeft" }), "previous");
-  assert.equal(cameraLightAction({ ...event, code: "ArrowUp" }), "wider");
-  assert.equal(cameraLightAction({ ...event, code: "ArrowDown" }), "narrower");
-  assert.equal(cameraLightAction({ ...event, code: "Space" }), null);
-  assert.equal(cameraLightAction({ ...event, repeat: true }), null);
-  assert.equal(cameraLightAction({ ...event, altKey: true }), null);
-  assert.equal(cameraLightAction({ ...event, ctrlKey: true }), null);
-  assert.equal(cameraLightAction({ ...event, metaKey: true }), null);
-  assert.equal(cameraLightAction({ ...event, shiftKey: true }), null);
-});
-
-test("Camera light cycles off, warm, white, and cold in both directions", () => {
-  assert.deepEqual(
-    CAMERA_LIGHTS.map((light) => light.id),
-    ["off", "warm", "white", "cold"],
-  );
-
-  let light = 0;
-  light = cycleCameraLight(light, "next");
-  assert.equal(CAMERA_LIGHTS[light].id, "warm");
-  light = cycleCameraLight(light, "next");
-  assert.equal(CAMERA_LIGHTS[light].id, "white");
-  light = cycleCameraLight(light, "next");
-  assert.equal(CAMERA_LIGHTS[light].id, "cold");
-  light = cycleCameraLight(light, "next");
-  assert.equal(CAMERA_LIGHTS[light].id, "off");
-  light = cycleCameraLight(light, "previous");
-  assert.equal(CAMERA_LIGHTS[light].id, "cold");
-});
-
-test("Camera light width grows and shrinks within fixed bounds", () => {
-  assert.equal(CAMERA_LIGHT_WIDTHS[DEFAULT_CAMERA_LIGHT_WIDTH].label, "Medium");
-  assert.equal(adjustCameraLightWidth(1, "wider"), 2);
-  assert.equal(adjustCameraLightWidth(2, "narrower"), 1);
-  assert.equal(adjustCameraLightWidth(0, "narrower"), 0);
-  assert.equal(
-    adjustCameraLightWidth(CAMERA_LIGHT_WIDTHS.length - 1, "wider"),
-    CAMERA_LIGHT_WIDTHS.length - 1,
-  );
-});
 
 test("capture requests video only, attaches it, and stops every owned track", async () => {
   const videoTrack = new FakeTrack();

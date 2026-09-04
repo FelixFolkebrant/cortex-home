@@ -7,8 +7,8 @@ Home remains the normal kiosk experience.
 
 ## Experience
 
-- The receiver starts with the kiosk and is available from any Cortex channel.
-- Selecting AirPlay identifies the receiver; it has no control toggle.
+- The receiver starts with the kiosk and is available whenever the room session
+  is active. There is no AirPlay browser screen or selection shortcut.
 - A connected native mirror is borderless and full-screen; ending a mirror
   restores the browser and leaves the receiver ready for another connection.
 - Discovery is simple on the home LAN and the advertised receiver is named
@@ -24,7 +24,6 @@ Home remains the normal kiosk experience.
 
 ## Relevant Code
 
-- `coordinator/client/src/channels/airplay/`
 - `endpoint/imac/files/cortex-airplay-control`
 - `endpoint/imac/files/cortex-endpoint-airplay`
 - `endpoint/imac/files/openbox-rc.xml`

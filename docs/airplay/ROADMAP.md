@@ -4,8 +4,8 @@
 
 - [AIR-001](issues/AIR-001.md) records the physical UxPlay and Chromium
   composition investigation that introduced the receiver.
-- AirPlay is the fourth fixed channel. Chromium identifies the always-ready
-  receiver; each connected UxPlay mirror window temporarily appears above it.
+- AirPlay has no browser surface. Each connected UxPlay mirror window
+  temporarily appears above Home or the current local mode.
 - Passwordless discovery, a temporary runtime home, exact lifecycle cleanup,
   and the shared Sonos route are qualified on the iMac.
 - [AIR-002](issues/AIR-002.md) starts UxPlay with the kiosk, removes its control
@@ -33,7 +33,7 @@
   inside the browser.
 - Put the native mirror above Chromium while connected; stock Chromium on this
   endpoint cannot provide the required transparent surface with an opaque HUD.
-- Start UxPlay with the kiosk and keep it available across channel changes. Its
+- Start UxPlay with the kiosk and keep it available for the whole session. Its
   built-in connection teardown and reset are the recovery path; do not add a
   process or window watcher.
 - Use passwordless home-LAN discovery without retained pairing identity.

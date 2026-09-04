@@ -18,7 +18,12 @@ function runtime(responses) {
 
 function request(index) {
   return {
-    context: { activeChannel: "today", channel: { available: true, type: "today" } },
+    context: {
+      home: {
+        music: { available: false, type: "music" },
+        today: { available: true, type: "today" },
+      },
+    },
     requestId: `voice-${index}`,
     transcript: `Question ${index}?`,
   };

@@ -20,11 +20,13 @@ import { AgentTurnError, runTurn } from "./agent-turn.ts";
 
 const request = {
   context: {
-    activeChannel: "today",
-    channel: {
-      available: true,
-      current: { condition: "Clear", temperatureC: 21 },
-      type: "today",
+    home: {
+      music: { available: false, type: "music" },
+      today: {
+        available: true,
+        current: { condition: "Clear", temperatureC: 21 },
+        type: "today",
+      },
     },
   },
   requestId: "voice-test-1",
@@ -167,7 +169,7 @@ test("cancelled and failed injected tools cannot produce a late answer", async (
   );
 });
 
-test("the child request is exact, bounded, and channel scoped", () => {
+test("the child request is exact, bounded, and Home scoped", () => {
   assert.deepEqual(validateRequest(request), request);
   for (const invalid of [
     {},
@@ -177,7 +179,13 @@ test("the child request is exact, bounded, and channel scoped", () => {
     { ...request, transcript: " padded " },
     { ...request, transcript: "x".repeat(4_097) },
     { ...request, context: [] },
-    { ...request, context: { activeChannel: "camera" } },
+    { ...request, context: { home: { today: request.context.home.today } } },
+    {
+      ...request,
+      context: {
+        home: { ...request.context.home, music: { available: false, type: "video" } },
+      },
+    },
     { ...request, context: { ...request.context, lighting: {} } },
   ]) {
     assert.throws(
