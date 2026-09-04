@@ -6,6 +6,27 @@ module directories; the roles install those reviewed files onto each host.
 
 ## Controller setup
 
+The root-level wrapper is the normal operator entry point:
+
+```sh
+./deploy all
+```
+
+It creates the pinned Ansible environment and ignored inventory when they do
+not exist, checks SSH connectivity, and deploys the coordinator before the
+iMac. It accepts the same useful Ansible options for focused or checked runs:
+
+```sh
+./deploy coordinator
+./deploy imac --tags media
+./deploy imac --tags raspotify
+./deploy imac --check
+```
+
+Use `./deploy setup` when you only want to prepare the local Ansible
+environment. The wrapper does not fill in private inventory values or bypass
+the existing sudo and secret prompts.
+
 From the repository root, create an isolated Ansible environment:
 
 ```sh
